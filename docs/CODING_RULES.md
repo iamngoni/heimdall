@@ -32,13 +32,15 @@ Every `.rs` file MUST begin with this header:
 //  <module-path>/<filename>
 //
 //  Created by <author> on <YYYY/MM/DD>.
-//  Copyright (c) <YEAR> ModestNerd Co. All rights reserved.
+//  Copyright (c) <YEAR> Codecraft Solutions ZA. All rights reserved.
+//  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 ```
 
 **Rules:**
 - Product name is always `heimdall` (lowercase)
 - Module path matches the file's location under `src/` (e.g., `pipeline/ingest/mod.rs`)
+- Include the SPDX license identifier exactly as shown in the header template
 - No ASCII art, no decorative borders
 - Blank line after the header before `use` statements
 
