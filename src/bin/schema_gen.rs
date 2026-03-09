@@ -29,7 +29,7 @@ fn main() {
             eprintln!("Usage: schema_gen <postgres|sqlite|mysql|mongo|all> [output_path]");
             eprintln!();
             eprintln!("Examples:");
-            eprintln!("  schema_gen postgres                          # writes to migrations/");
+            eprintln!("  schema_gen postgres                          # writes to migrations/postgres/");
             eprintln!("  schema_gen sqlite                            # writes to migrations/sqlite/");
             eprintln!("  schema_gen mysql                             # writes to migrations/mysql/");
             eprintln!("  schema_gen mongo                             # writes to migrations/mongo/");
@@ -44,7 +44,7 @@ fn main() {
 
 fn run_generation(driver: DbDriver, custom_path: Option<&str>) {
     let default_path = match driver {
-        DbDriver::Postgres => "migrations/20260309000000_initial_schema.sql",
+        DbDriver::Postgres => "migrations/postgres/20260309000000_initial_schema.sql",
         DbDriver::Sqlite => "migrations/sqlite/20260309000000_initial_schema.sql",
         DbDriver::Mysql => "migrations/mysql/20260309000000_initial_schema.sql",
         DbDriver::Mongo => "migrations/mongo/20260309000000_initial_schema.js",

@@ -41,7 +41,7 @@ async fn main() -> std::io::Result<()> {
 
     info!("Database connected");
 
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./migrations/postgres")
         .run(&db_pool)
         .await
         .map_err(|e| {
