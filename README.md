@@ -83,7 +83,7 @@ graph TB
     end
 
     subgraph Storage["Storage"]
-        SQLite["SQLite"]
+        PG["PostgreSQL"]
         FS["Filesystem\n<i>Cloned repos</i>"]
     end
 
@@ -104,7 +104,7 @@ graph TB
     MP --> Claude
     MP --> OpenAI
     MP --> Ollama
-    Pipeline --> SQLite
+    Pipeline --> PG
     Pipeline --> FS
     AW --> GH
 ```
@@ -182,7 +182,7 @@ Each finding includes:
 | Web framework | Actix-web 4 |
 | Frontend | HTMX + Tailwind CSS |
 | Templates | askama / minijinja |
-| Database | SQLite (→ Postgres) |
+| Database | PostgreSQL (+ SQLite, MySQL, MongoDB generators) |
 | AST parsing | tree-sitter (polyglot) |
 | Docker SDK | bollard |
 | AI providers | Claude, OpenAI, Ollama (BYOK) |
@@ -209,32 +209,77 @@ erDiagram
 heimdall/
 ├── src/
 │   ├── main.rs                 # Entry point
+│   ├── lib.rs                  # Crate root (public modules)
 │   ├── config.rs               # Environment config
 │   ├── state.rs                # AppState
-│   ├── logging.rs              # Logger setup
-│   ├── db/                     # Database operations
-│   ├── models/                 # Domain models, API response, type aliases
+│   ├── db/
+│   │   ├── mod.rs              # DatabaseOperations (CRUD)
+│   │   └── schema/
+│   │       ├── types.rs        # Driver-agnostic DSL types
+│   │       ├── builder.rs      # Fluent schema builder API
+│   │       ├── definition.rs   # Heimdall schema (single source of truth)
+│   │       └── generator.rs    # Postgres, SQLite, MySQL, MongoDB generators
+│   ├── models/                 # Domain models, enums, type aliases
 │   ├── routes/                 # HTTP handlers (pages, API, fragments)
 │   ├── middleware/             # Request context, auth
 │   ├── pipeline/
 │   │   ├── mod.rs              # ScanPipeline orchestrator
-│   │   ├── ingest/             # Stage 1: Clone + AST indexing
-│   │   ├── tyr/                # Stage 2: Threat modeling
-│   │   ├── static_analysis/    # Stage 3: Pattern matching
-│   │   ├── hunt/               # Stage 4: Agentic discovery
-│   │   ├── garmr/              # Stage 5: Sandbox validation
-│   │   └── report/             # Stage 6: Ranking + patches
+│   │   ├── ingest.rs           # Stage 1: Clone + AST indexing
+│   │   ├── tyr.rs              # Stage 2: Threat modeling
+│   │   ├── static_analysis.rs  # Stage 3: Pattern matching
+│   │   ├── hunt.rs             # Stage 4: Agentic discovery
+│   │   ├── garmr.rs            # Stage 5: Sandbox validation
+│   │   └── report.rs           # Stage 6: Ranking + patches
 │   ├── ai/                     # ModelProvider trait + implementations
-│   ├── templates/              # HTML templates (base, pages, fragments)
-│   └── utils/
+│   ├── index/                  # Code index (symbols, call graph, deps)
+│   ├── bin/
+│   │   └── schema_gen.rs       # CLI: generate migrations per driver
+│   └── templates/              # HTML templates (base, pages, fragments)
+├── migrations/                 # Generated — not committed (.gitignore'd)
+│   ├── postgres/               # schema_gen postgres
+│   ├── sqlite/                 # schema_gen sqlite
+│   ├── mysql/                  # schema_gen mysql
+│   └── mongo/                  # schema_gen mongo
 ├── docs/
 │   ├── SPEC.md                 # Full product specification
 │   ├── CODING_RULES.md         # Strict coding conventions
 │   └── design.pen              # UI/UX designs
 ├── tests/                      # Integration tests
 ├── Cargo.toml
+├── Dockerfile
+├── docker-compose.yml
 └── .gitignore
 ```
+
+## Schema DSL
+
+The database schema is defined once in Rust and generates migrations for any supported driver:
+
+```rust
+Schema::new()
+    .extension("pgcrypto")
+    .table("users", |t| {
+        t.uuid_pk("id");
+        t.text("email").unique().not_null();
+        t.text("role").not_null().default_str("'user'");
+        t.timestamps();
+        t.soft_delete();
+    })
+    .index("idx_users_email", "users", &["email"])
+    .build()
+```
+
+Generate migrations:
+
+```bash
+cargo run --bin schema_gen -- postgres   # migrations/postgres/
+cargo run --bin schema_gen -- sqlite     # migrations/sqlite/
+cargo run --bin schema_gen -- mysql      # migrations/mysql/
+cargo run --bin schema_gen -- mongo      # migrations/mongo/
+cargo run --bin schema_gen -- all        # all four
+```
+
+Migrations are generated artifacts (`.gitignore`'d) — the schema definition in `src/db/schema/definition.rs` is the source of truth.
 
 ## Naming
 
