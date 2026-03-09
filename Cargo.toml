@@ -3,4 +3,67 @@ name = "heimdall"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "heimdall"
+path = "src/main.rs"
+
+[[bin]]
+name = "schema_gen"
+path = "src/bin/schema_gen.rs"
+
 [dependencies]
+# Web
+actix-web = "4"
+actix-rt = "2"
+actix-files = "0.6"
+
+# Templates
+minijinja = { version = "2", features = ["loader"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "uuid"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v7", "serde"] }
+
+# Validation
+validator = { version = "0.19", features = ["derive"] }
+
+# Environment
+dotenvy = "0.15"
+
+# Docker (Garmr)
+bollard = "0.18"
+
+# AI HTTP clients
+reqwest = { version = "0.12", features = ["json"] }
+
+# Async trait
+async-trait = "0.1"
+
+# Password hashing
+argon2 = "0.5"
+
+# Crypto
+sha2 = "0.10"
+
+# Tree-sitter
+tree-sitter = "0.24"

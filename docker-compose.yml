@@ -1,0 +1,70 @@
+services:
+  heimdall:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: heimdall
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8080
+      - DATABASE_URL=postgres://heimdall:heimdall@postgres:5432/heimdall
+      - RUST_LOG=info,heimdall=debug
+      # AI Provider keys (BYOK - uncomment and set your keys)
+      # - ANTHROPIC_API_KEY=
+      # - OPENAI_API_KEY=
+      # - OLLAMA_URL=http://ollama:11434
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Required for Garmr sandbox
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: heimdall-postgres
+    environment:
+      POSTGRES_USER: heimdall
+      POSTGRES_PASSWORD: heimdall
+      POSTGRES_DB: heimdall
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heimdall"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: Local Ollama for AI inference
+  # Uncomment to use local LLM instead of cloud APIs
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: heimdall-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+
+volumes:
+  postgres-data:
+    driver: local
+  # ollama-data:
+  #   driver: local
