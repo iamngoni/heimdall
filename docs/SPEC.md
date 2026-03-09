@@ -56,7 +56,7 @@ End-to-end flow, from the user clicking "Run Scan" to viewing findings:
 
 ### Overview
 
-The pipeline is a sequential chain of five stages. Each stage is a distinct module in `src/pipeline/`. The `ScanPipeline` orchestrator runs them in order, updating the scan status and creating `scan_stages` rows to log execution.
+The pipeline is a sequential chain of six stages. Each stage is a distinct module in `src/pipeline/`. The `ScanPipeline` orchestrator runs them in order, updating the scan status and creating `scan_stages` rows to log execution.
 
 ### Stage 1: Ingest (`pipeline/ingest/`)
 
@@ -108,7 +108,29 @@ The pipeline is a sequential chain of five stages. Each stage is a distinct modu
 
 **User interaction:** The threat model is viewable and editable in the UI. Users can add, remove, or modify boundaries, surfaces, and flows. Edits persist and guide subsequent scans.
 
-### Stage 3: Hunt -- Agentic Discovery (`pipeline/hunt/`)
+### Stage 3: Static Analysis (`pipeline/static_analysis/`)
+
+**Purpose:** Fast, deterministic vulnerability detection before invoking AI agents. Catches low-hanging fruit — known vulnerability patterns, secrets, dependency issues — so the Hunt agent can focus on complex, logic-level vulnerabilities.
+
+**Inputs:** `CodeIndex`, file snapshots, dependency manifests
+
+**Process:**
+- **Pattern matching:** Run tree-sitter-based queries for known vulnerability patterns (SQL injection templates, hardcoded credentials, unsafe deserialization, etc.) using a rule set inspired by Semgrep/CodeQL patterns
+- **Secret detection:** Scan for API keys, tokens, private keys, connection strings using entropy analysis and regex patterns (e.g., `AKIA[0-9A-Z]{16}`, high-entropy base64 strings near keywords like `secret`, `key`, `token`)
+- **Dependency audit:** Parse `Cargo.lock`, `package-lock.json`, `requirements.txt`, `go.sum`, etc. Cross-reference against known vulnerability databases (RustSec, OSV, NVD)
+- **OWASP pattern checks:** Detect common anti-patterns per language — missing CSRF tokens, insecure cookie flags, open redirects, path traversal patterns, command injection sinks
+- **Taint analysis (basic):** Use the CodeIndex call graph to trace user input sources to dangerous sinks (SQL queries, shell commands, file system operations) without LLM involvement
+
+**Outputs:**
+- `findings` rows with `source = 'static'` — these are deterministic, high-confidence results that skip AI validation
+- A `static_analysis_context` summary passed to the Hunt agent, containing:
+  - Known issues already found (so Hunt doesn't rediscover them)
+  - Suspicious patterns that warrant deeper AI investigation
+  - Dependency risk profile
+
+**Key principle:** Static analysis is fast (~seconds), deterministic, and free (no LLM tokens). It provides immediate value and gives the Hunt agent a head start by pre-mapping the attack surface with concrete findings.
+
+### Stage 4: Hunt -- Agentic Discovery (`pipeline/hunt/`)
 
 **Purpose:** Discover real vulnerabilities by reasoning about the codebase, guided by the threat model.
 
@@ -118,7 +140,7 @@ The pipeline is a sequential chain of five stages. Each stage is a distinct modu
 
 **Outputs:** `findings` rows (unvalidated, `poc_validated = false`)
 
-### Stage 4: Garmr -- Sandbox Validation (`pipeline/garmr/`)
+### Stage 5: Garmr -- Sandbox Validation (`pipeline/garmr/`)
 
 **Purpose:** Validate findings by executing proof-of-concept exploits in isolation.
 
@@ -128,7 +150,7 @@ The pipeline is a sequential chain of five stages. Each stage is a distinct modu
 
 **Outputs:** Updated `findings` rows with PoC results, `poc_validated` flag, `poc_exploit` JSON
 
-### Stage 5: Report (`pipeline/report/`)
+### Stage 6: Report (`pipeline/report/`)
 
 **Purpose:** Rank findings, generate patches, produce the final report.
 
