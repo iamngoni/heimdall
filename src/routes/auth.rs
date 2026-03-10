@@ -42,6 +42,19 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     );
 }
 
+/// Flat route registration (no nested `/auth` scope). Used when the parent
+/// scope already provides the `/auth` prefix.
+pub fn init_routes(cfg: &mut web::ServiceConfig) {
+    cfg.route("/register", web::post().to(register))
+        .route("/login", web::post().to(login))
+        .route("/logout", web::post().to(logout))
+        .route("/me", web::get().to(me))
+        .route("/github/authorize", web::get().to(github_authorize))
+        .route("/github/callback", web::get().to(github_callback))
+        .route("/gitlab/authorize", web::get().to(gitlab_authorize))
+        .route("/gitlab/callback", web::get().to(gitlab_callback));
+}
+
 // ---------------------------------------------------------------------------
 // Request bodies
 // ---------------------------------------------------------------------------
@@ -615,7 +628,7 @@ async fn github_authorize(state: web::Data<AppState>) -> HttpResponse {
         "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope={}&state={}",
         urlencoding(client_id),
         urlencoding(redirect_uri),
-        urlencoding("read:user user:email"),
+        urlencoding("read:user user:email repo"),
         urlencoding(&oauth_state),
     );
 
@@ -845,7 +858,7 @@ async fn gitlab_authorize(state: web::Data<AppState>) -> HttpResponse {
         "{base_url}/oauth/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}&state={}",
         urlencoding(client_id),
         urlencoding(redirect_uri),
-        urlencoding("read_user"),
+        urlencoding("read_user read_repository"),
         urlencoding(&oauth_state),
     );
 

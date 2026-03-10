@@ -36,22 +36,27 @@ pub fn init(cfg: &mut ServiceConfig) {
         .finish()
         .expect("Failed to build auth rate limiter config");
 
-    // Public API routes (auth endpoints) — rate limited
+    // Single /api scope with nested sub-scopes for auth (public) and
+    // protected routes. Using two separate web::scope("/api") blocks causes
+    // the first to catch ALL /api/* requests and 404 for non-auth routes.
     cfg.service(
         web::scope("/api")
-            .wrap(Governor::new(&auth_rate_limit))
-            .configure(auth::init),
-    );
-
-    // Protected API routes — require a valid session, prefixed with /api
-    cfg.service(
-        web::scope("/api")
-            .wrap(RequireAuth)
-            .configure(repos::init)
-            .configure(scans::init)
-            .configure(findings::init)
-            .configure(settings::init)
-            .configure(threat_models::init),
+            // Public auth endpoints — rate limited, no session required
+            .service(
+                web::scope("/auth")
+                    .wrap(Governor::new(&auth_rate_limit))
+                    .configure(auth::init_routes),
+            )
+            // Protected API routes — require a valid session
+            .service(
+                web::scope("")
+                    .wrap(RequireAuth)
+                    .configure(repos::init)
+                    .configure(scans::init)
+                    .configure(findings::init)
+                    .configure(settings::init)
+                    .configure(threat_models::init),
+            ),
     );
 
     // Public webhook routes (signature-verified, not session-authenticated)
