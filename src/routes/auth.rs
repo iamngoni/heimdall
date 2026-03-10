@@ -829,7 +829,7 @@ async fn github_callback(
     HttpResponse::Found()
         .cookie(session_cookie(&token, state.config.app.tls_enabled))
         .cookie(clear_state)
-        .insert_header(("Location", "/"))
+        .insert_header(("Location", "/repos"))
         .finish()
 }
 
@@ -1042,7 +1042,7 @@ async fn gitlab_callback(
     HttpResponse::Found()
         .cookie(session_cookie(&token, state.config.app.tls_enabled))
         .cookie(clear_state)
-        .insert_header(("Location", "/"))
+        .insert_header(("Location", "/repos"))
         .finish()
 }
 

@@ -361,8 +361,19 @@ async fn list_github_repos(state: web::Data<AppState>, req: HttpRequest) -> Http
         .await
     {
         Ok(resp) => {
-            if !resp.status().is_success() {
-                let status = resp.status();
+            let status = resp.status();
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
+                // Token is invalid or missing required scopes — tell the client to re-authorize
+                return HttpResponse::Ok().json(serde_json::json!({
+                    "success": false,
+                    "reauthorize": true,
+                    "redirect": "/api/auth/github/authorize",
+                    "error": "GitHub token expired or missing repo scope. Please reconnect your GitHub account."
+                }));
+            }
+            if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
                 return HttpResponse::BadGateway().json(ApiResponse::<()>::error(
                     502,
@@ -422,8 +433,18 @@ async fn list_gitlab_repos(state: web::Data<AppState>, req: HttpRequest) -> Http
         .await
     {
         Ok(resp) => {
-            if !resp.status().is_success() {
-                let status = resp.status();
+            let status = resp.status();
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
+                return HttpResponse::Ok().json(serde_json::json!({
+                    "success": false,
+                    "reauthorize": true,
+                    "redirect": "/api/auth/gitlab/authorize",
+                    "error": "GitLab token expired or missing repository scope. Please reconnect your GitLab account."
+                }));
+            }
+            if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
                 return HttpResponse::BadGateway().json(ApiResponse::<()>::error(
                     502,
