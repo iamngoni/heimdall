@@ -395,6 +395,22 @@ async fn repo_detail_page(
         .collect();
 
     let latest_scan = scans.first();
+    let scan_capability = match state.resolve_ai_for_user(repo.user_id).await {
+        Ok(runtime) => serde_json::json!({
+            "available": true,
+            "provider": runtime.provider_kind.as_str(),
+            "model": runtime.model,
+            "source": runtime.source,
+            "reason": serde_json::Value::Null,
+        }),
+        Err(error) => serde_json::json!({
+            "available": false,
+            "provider": serde_json::Value::Null,
+            "model": serde_json::Value::Null,
+            "source": serde_json::Value::Null,
+            "reason": error.to_string(),
+        }),
+    };
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
@@ -424,6 +440,7 @@ async fn repo_detail_page(
                 .map(|scan| scan.created_at.format("%Y-%m-%d %H:%M").to_string()),
             "finding_count": latest_scan.as_ref().map(|scan| scan.finding_count).unwrap_or(0),
         })),
+        scan_capability => minijinja::Value::from_serialize(&scan_capability),
         page => page,
         per_page => per_page,
         total => total,
