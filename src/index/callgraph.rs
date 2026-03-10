@@ -75,7 +75,10 @@ impl CallGraph {
         }
         let mut out = format!("Callers of `{symbol}`:\n");
         for edge in callers {
-            out.push_str(&format!("- `{}` at {}:{}\n", edge.caller, edge.file, edge.line));
+            out.push_str(&format!(
+                "- `{}` at {}:{}\n",
+                edge.caller, edge.file, edge.line
+            ));
         }
         out
     }

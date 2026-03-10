@@ -83,10 +83,8 @@ impl DependencyGraph {
 
 // --- Language-specific import extraction ---
 
-static RUST_USE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^use\s+([\w:]+)").unwrap());
-static RUST_MOD: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^mod\s+(\w+)").unwrap());
+static RUST_USE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^use\s+([\w:]+)").unwrap());
+static RUST_MOD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^mod\s+(\w+)").unwrap());
 
 static PY_IMPORT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^(?:from\s+([\w.]+)\s+)?import\s+([\w.]+)").unwrap());
@@ -94,8 +92,7 @@ static PY_IMPORT: LazyLock<Regex> =
 static JS_IMPORT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?m)(?:import|require)\s*\(?['"]([^'"]+)['"]\)?"#).unwrap());
 
-static GO_IMPORT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?m)"([^"]+)""#).unwrap());
+static GO_IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)"([^"]+)""#).unwrap());
 
 static JAVA_IMPORT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^import\s+([\w.]+);").unwrap());

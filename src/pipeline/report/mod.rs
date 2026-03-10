@@ -120,9 +120,7 @@ impl ReportStage {
 
         if !patch.is_empty() {
             // Store the patch on the finding
-            self.db
-                .update_finding_patch(finding.id, &patch)
-                .await?;
+            self.db.update_finding_patch(finding.id, &patch).await?;
 
             // Also create a patches row
             self.db

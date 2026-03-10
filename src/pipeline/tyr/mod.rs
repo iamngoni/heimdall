@@ -149,9 +149,7 @@ impl TyrStage {
         };
 
         let threat_model: ThreatModelOutput = serde_json::from_str(json_str).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to parse Tyr threat model response: {e}\nRaw: {json_str}"
-            )
+            anyhow::anyhow!("Failed to parse Tyr threat model response: {e}\nRaw: {json_str}")
         })?;
 
         // Store in DB

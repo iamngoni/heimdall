@@ -11,11 +11,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use bollard::Docker;
 use bollard::container::{
     Config as ContainerConfig, CreateContainerOptions, RemoveContainerOptions,
     StartContainerOptions, WaitContainerOptions,
 };
-use bollard::Docker;
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
@@ -84,11 +84,7 @@ impl GarmrStage {
     }
 
     /// Validate all findings for a scan.
-    pub async fn run(
-        &self,
-        findings: &[Finding],
-        repo_work_dir: &Path,
-    ) -> HeimdallResult<usize> {
+    pub async fn run(&self, findings: &[Finding], repo_work_dir: &Path) -> HeimdallResult<usize> {
         info!(
             "[{}] Starting Garmr validation: {} findings to validate",
             self.scan_id,
@@ -146,7 +142,9 @@ impl GarmrStage {
             .await?;
 
         // Step 3: Analyze results via LLM
-        let analysis = self.analyze_results(finding, &poc_script, &exec_result).await?;
+        let analysis = self
+            .analyze_results(finding, &poc_script, &exec_result)
+            .await?;
 
         let poc_result = PocResult {
             script: poc_script.script,
@@ -229,9 +227,8 @@ impl GarmrStage {
             content
         };
 
-        let poc: PocScript = serde_json::from_str(json_str).map_err(|e| {
-            anyhow::anyhow!("Failed to parse PoC script: {e}\nRaw: {json_str}")
-        })?;
+        let poc: PocScript = serde_json::from_str(json_str)
+            .map_err(|e| anyhow::anyhow!("Failed to parse PoC script: {e}\nRaw: {json_str}"))?;
 
         Ok(poc)
     }
@@ -287,17 +284,13 @@ impl GarmrStage {
             .await?;
 
         // Wait for completion with timeout
-        let wait_result = tokio::time::timeout(
-            Duration::from_secs(self.config.timeout_seconds),
-            async {
-                let mut stream = docker.wait_container(
-                    &container_name,
-                    None::<WaitContainerOptions<String>>,
-                );
+        let wait_result =
+            tokio::time::timeout(Duration::from_secs(self.config.timeout_seconds), async {
+                let mut stream =
+                    docker.wait_container(&container_name, None::<WaitContainerOptions<String>>);
                 stream.next().await
-            },
-        )
-        .await;
+            })
+            .await;
 
         let exit_code = match wait_result {
             Ok(Some(Ok(response))) => response.status_code,
@@ -308,9 +301,7 @@ impl GarmrStage {
             Ok(None) => -1,
             Err(_) => {
                 // Timeout — kill the container
-                let _ = docker
-                    .kill_container::<String>(&container_name, None)
-                    .await;
+                let _ = docker.kill_container::<String>(&container_name, None).await;
                 -1
             }
         };

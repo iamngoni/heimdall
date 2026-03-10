@@ -14,6 +14,7 @@ use log::{debug, info};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
+use crate::crypto;
 use crate::db::DatabaseOperations;
 use crate::index::{CodeIndex, IndexedFile};
 use crate::models::HeimdallResult;
@@ -24,6 +25,7 @@ use crate::models::db_models::Repo;
 pub struct IngestStage {
     pub scan_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
+    pub encryption_key: Option<[u8; 32]>,
 }
 
 /// Output of the ingest stage.
@@ -55,8 +57,16 @@ const SKIP_DIRS: &[&str] = &[
 const MAX_FILE_SIZE: u64 = 1_048_576; // 1 MB — skip very large files
 
 impl IngestStage {
-    pub fn new(scan_id: uuid::Uuid, db: Arc<DatabaseOperations>) -> Self {
-        Self { scan_id, db }
+    pub fn new(
+        scan_id: uuid::Uuid,
+        db: Arc<DatabaseOperations>,
+        encryption_key: Option<[u8; 32]>,
+    ) -> Self {
+        Self {
+            scan_id,
+            db,
+            encryption_key,
+        }
     }
 
     /// Run the ingest stage for a given repo.
@@ -70,9 +80,7 @@ impl IngestStage {
         let commit_sha = detect_commit_sha(&work_dir);
         if let Some(ref sha) = commit_sha {
             info!("[{}] Detected commit SHA: {}", self.scan_id, sha);
-            self.db
-                .update_scan_commit_sha(self.scan_id, sha)
-                .await?;
+            self.db.update_scan_commit_sha(self.scan_id, sha).await?;
         }
 
         // Step 3: Walk files and build code index
@@ -105,10 +113,17 @@ impl IngestStage {
                     .as_deref()
                     .ok_or_else(|| anyhow::anyhow!("Repo has no remote URL"))?;
 
-                info!("[{}] Cloning {} into {:?}", self.scan_id, url, work_dir);
+                let clone_url = self.resolve_clone_url(repo, url).await?;
+
+                info!(
+                    "[{}] Cloning {} into {:?}",
+                    self.scan_id,
+                    repo.remote_url.as_deref().unwrap_or(url),
+                    work_dir
+                );
 
                 let output = tokio::process::Command::new("git")
-                    .args(["clone", "--depth", "1", url])
+                    .args(["clone", "--depth", "1", &clone_url])
                     .arg(&work_dir)
                     .output()
                     .await?;
@@ -131,6 +146,34 @@ impl IngestStage {
         }
 
         Ok(work_dir)
+    }
+
+    async fn resolve_clone_url(&self, repo: &Repo, remote_url: &str) -> HeimdallResult<String> {
+        match repo.source_type.as_str() {
+            "github" | "gitlab" => {
+                let Some(connection_id) = repo.oauth_connection_id else {
+                    return Ok(remote_url.to_string());
+                };
+
+                let connection = self
+                    .db
+                    .get_oauth_connection_by_id(connection_id)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("OAuth connection not found for repository"))?;
+
+                let token = connection.access_token_enc.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!("OAuth connection is missing an access token")
+                })?;
+                let token = crypto::decode_stored_secret(token, self.encryption_key.as_ref())?;
+
+                Ok(embed_token_in_clone_url(
+                    &repo.source_type,
+                    remote_url,
+                    &token,
+                ))
+            }
+            _ => Ok(remote_url.to_string()),
+        }
     }
 
     /// Walk all files in the working directory and build the CodeIndex.
@@ -210,6 +253,20 @@ impl IngestStage {
         info!("[{}] Indexed {file_count} files", self.scan_id);
         Ok(index)
     }
+}
+
+fn embed_token_in_clone_url(provider: &str, url: &str, token: &str) -> String {
+    let Some(rest) = url.strip_prefix("https://") else {
+        return url.to_string();
+    };
+
+    let username = match provider {
+        "github" => "x-access-token",
+        "gitlab" => "oauth2",
+        _ => return url.to_string(),
+    };
+
+    format!("https://{username}:{token}@{rest}")
 }
 
 fn should_skip(entry: &walkdir::DirEntry) -> bool {

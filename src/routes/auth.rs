@@ -25,6 +25,8 @@ const SESSION_EXPIRY_DAYS: i64 = 7;
 
 /// Cookie name for the OAuth state parameter (CSRF protection).
 const OAUTH_STATE_COOKIE: &str = "_oauth_state";
+/// Cookie name for the post-OAuth return target.
+const OAUTH_NEXT_COOKIE: &str = "_oauth_next";
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -207,15 +209,15 @@ async fn register(
         resp.insert_header(("HX-Redirect", "/"));
     }
     resp.json(ApiResponse::ok(serde_json::json!({
-            "token": token,
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "display_name": user.display_name,
-                "role": user.role,
-                "created_at": user.created_at,
-            }
-        })))
+        "token": token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "display_name": user.display_name,
+            "role": user.role,
+            "created_at": user.created_at,
+        }
+    })))
 }
 
 /// POST /auth/login
@@ -238,10 +240,8 @@ async fn login(
     let user = match state.db.get_user_by_email(&body.email).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            return HttpResponse::Unauthorized().json(ApiResponse::<()>::error(
-                401,
-                "Invalid email or password",
-            ));
+            return HttpResponse::Unauthorized()
+                .json(ApiResponse::<()>::error(401, "Invalid email or password"));
         }
         Err(e) => {
             log::error!("Database error during login: {e:#}");
@@ -254,10 +254,8 @@ async fn login(
     match auth::verify_password(&body.password, &user.password_hash) {
         Ok(true) => {} // Password matches
         Ok(false) => {
-            return HttpResponse::Unauthorized().json(ApiResponse::<()>::error(
-                401,
-                "Invalid email or password",
-            ));
+            return HttpResponse::Unauthorized()
+                .json(ApiResponse::<()>::error(401, "Invalid email or password"));
         }
         Err(e) => {
             log::error!("Password verification error: {e:#}");
@@ -278,15 +276,15 @@ async fn login(
         resp.insert_header(("HX-Redirect", "/"));
     }
     resp.json(ApiResponse::ok(serde_json::json!({
-            "token": token,
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "display_name": user.display_name,
-                "role": user.role,
-                "created_at": user.created_at,
-            }
-        })))
+        "token": token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "display_name": user.display_name,
+            "role": user.role,
+            "created_at": user.created_at,
+        }
+    })))
 }
 
 /// POST /auth/logout
@@ -386,8 +384,7 @@ async fn me(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     };
 
     if session.expires_at < Utc::now() {
-        return HttpResponse::Unauthorized()
-            .json(ApiResponse::<()>::error(401, "Session expired"));
+        return HttpResponse::Unauthorized().json(ApiResponse::<()>::error(401, "Session expired"));
     }
 
     let user = match state.db.get_user_by_id(session.user_id).await {
@@ -431,6 +428,109 @@ fn oauth_state_cookie(state: &str, secure: bool) -> Cookie<'static> {
         .same_site(SameSite::Lax)
         .max_age(CookieDuration::seconds(300))
         .finish()
+}
+
+fn oauth_next_cookie(next: &str, secure: bool) -> Cookie<'static> {
+    Cookie::build(OAUTH_NEXT_COOKIE, next.to_string())
+        .path("/")
+        .http_only(true)
+        .secure(secure)
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::seconds(300))
+        .finish()
+}
+
+fn clear_cookie(name: &str) -> Cookie<'static> {
+    let mut cookie = Cookie::build(name.to_string(), "").path("/").finish();
+    cookie.set_path("/");
+    cookie.make_removal();
+    cookie
+}
+
+fn sanitize_oauth_next(next: Option<&str>) -> Option<String> {
+    next.filter(|value| value.starts_with('/') && !value.starts_with("//"))
+        .map(str::to_string)
+}
+
+fn oauth_redirect_target(req: &HttpRequest, fallback: &str) -> String {
+    sanitize_oauth_next(
+        req.cookie(OAUTH_NEXT_COOKIE)
+            .map(|cookie| cookie.value().to_string())
+            .as_deref(),
+    )
+    .unwrap_or_else(|| fallback.to_string())
+}
+
+fn with_query_param(url: &str, key: &str, value: &str) -> String {
+    let separator = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{separator}{key}={}", urlencoding(value))
+}
+
+async fn current_session_user(
+    state: &AppState,
+    req: &HttpRequest,
+) -> Option<crate::models::db_models::User> {
+    let token = req.cookie(SESSION_COOKIE_NAME)?.value().to_string();
+    let token_hash = auth::hash_token(&token);
+    let session = state
+        .db
+        .get_session_by_token_hash(&token_hash)
+        .await
+        .ok()??;
+    if session.expires_at < Utc::now() {
+        return None;
+    }
+    state.db.get_user_by_id(session.user_id).await.ok()?
+}
+
+fn encrypt_oauth_secret(secret: &str, key: Option<&[u8; 32]>) -> String {
+    if let Some(key) = key {
+        crypto::encrypt(secret.as_bytes(), key).unwrap_or_else(|_| hex::encode(secret.as_bytes()))
+    } else {
+        hex::encode(secret.as_bytes())
+    }
+}
+
+async fn upsert_oauth_connection_for_user(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    provider: &str,
+    provider_user_id: &str,
+    access_token: &str,
+    refresh_token: Option<&str>,
+    scopes: Option<&str>,
+    expires_at: Option<chrono::DateTime<Utc>>,
+) -> Result<(), HttpResponse> {
+    let token_enc = encrypt_oauth_secret(access_token, state.encryption_key.as_ref());
+    let refresh_enc =
+        refresh_token.map(|token| encrypt_oauth_secret(token, state.encryption_key.as_ref()));
+
+    state
+        .db
+        .upsert_oauth_connection(
+            user_id,
+            provider,
+            provider_user_id,
+            Some(&token_enc),
+            refresh_enc.as_deref(),
+            scopes,
+            expires_at,
+        )
+        .await
+        .map_err(|e| {
+            log::error!("Failed to upsert OAuth connection: {e:#}");
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to save OAuth connection",
+            ))
+        })?;
+
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthAuthorizeParams {
+    next: Option<String>,
 }
 
 /// Query params returned by OAuth providers on the callback URL.
@@ -494,9 +594,7 @@ struct GitlabTokenResponse {
     error_description: Option<String>,
 }
 
-/// Find or create a user from OAuth provider info, create an OAuth connection,
-/// and return the user. If a user with the same email exists, link the OAuth
-/// connection to that existing user.
+/// Find or create the Heimdall user that should own this OAuth account.
 async fn find_or_create_oauth_user(
     state: &AppState,
     provider: &str,
@@ -564,42 +662,18 @@ async fn find_or_create_oauth_user(
         }
     };
 
-    // 4) Encrypt the access token if encryption key is available, otherwise store as hex
-    let token_enc = if let Some(key) = &state.encryption_key {
-        crypto::encrypt(access_token.as_bytes(), key).unwrap_or_else(|_| {
-            hex::encode(access_token.as_bytes())
-        })
-    } else {
-        hex::encode(access_token.as_bytes())
-    };
-
-    let refresh_enc = refresh_token.map(|rt| {
-        if let Some(key) = &state.encryption_key {
-            crypto::encrypt(rt.as_bytes(), key)
-                .unwrap_or_else(|_| hex::encode(rt.as_bytes()))
-        } else {
-            hex::encode(rt.as_bytes())
-        }
-    });
-
-    // 5) Upsert the OAuth connection
-    state
-        .db
-        .upsert_oauth_connection(
-            user.id,
-            provider,
-            provider_user_id,
-            Some(&token_enc),
-            refresh_enc.as_deref(),
-            scopes,
-            expires_at,
-        )
-        .await
-        .map_err(|e| {
-            log::error!("Failed to upsert OAuth connection: {e:#}");
-            HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, "Failed to save OAuth connection"))
-        })?;
+    // 4) Persist the OAuth connection for the resolved user.
+    upsert_oauth_connection_for_user(
+        state,
+        user.id,
+        provider,
+        provider_user_id,
+        access_token,
+        refresh_token,
+        scopes,
+        expires_at,
+    )
+    .await?;
 
     Ok(user)
 }
@@ -611,7 +685,10 @@ async fn find_or_create_oauth_user(
 /// GET /auth/github/authorize
 ///
 /// Redirect the user to GitHub's authorization page.
-async fn github_authorize(state: web::Data<AppState>) -> HttpResponse {
+async fn github_authorize(
+    state: web::Data<AppState>,
+    query: web::Query<OAuthAuthorizeParams>,
+) -> HttpResponse {
     let config = &state.config.github_oauth;
 
     let Some(client_id) = &config.client_id else {
@@ -632,10 +709,15 @@ async fn github_authorize(state: web::Data<AppState>) -> HttpResponse {
         urlencoding(&oauth_state),
     );
 
-    HttpResponse::Found()
-        .cookie(oauth_state_cookie(&oauth_state, state.config.app.tls_enabled))
-        .insert_header(("Location", auth_url))
-        .finish()
+    let mut response = HttpResponse::Found();
+    response.cookie(oauth_state_cookie(
+        &oauth_state,
+        state.config.app.tls_enabled,
+    ));
+    if let Some(next) = sanitize_oauth_next(query.next.as_deref()) {
+        response.cookie(oauth_next_cookie(&next, state.config.app.tls_enabled));
+    }
+    response.insert_header(("Location", auth_url)).finish()
 }
 
 /// GET /auth/github/callback?code=...&state=...
@@ -649,7 +731,10 @@ async fn github_callback(
 ) -> HttpResponse {
     // Check for error from provider
     if let Some(err) = &params.error {
-        let desc = params.error_description.as_deref().unwrap_or("Unknown error");
+        let desc = params
+            .error_description
+            .as_deref()
+            .unwrap_or("Unknown error");
         log::warn!("GitHub OAuth error: {err}: {desc}");
         return HttpResponse::Found()
             .insert_header(("Location", "/login"))
@@ -657,14 +742,14 @@ async fn github_callback(
     }
 
     let Some(code) = &params.code else {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-            400,
-            "Missing authorization code",
-        ));
+        return HttpResponse::BadRequest()
+            .json(ApiResponse::<()>::error(400, "Missing authorization code"));
     };
 
     // Verify state parameter (CSRF protection)
-    let stored_state = req.cookie(OAUTH_STATE_COOKIE).map(|c| c.value().to_string());
+    let stored_state = req
+        .cookie(OAUTH_STATE_COOKIE)
+        .map(|c| c.value().to_string());
     if stored_state.as_deref() != params.state.as_deref() || stored_state.is_none() {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
@@ -674,16 +759,12 @@ async fn github_callback(
 
     let config = &state.config.github_oauth;
     let Some(client_id) = &config.client_id else {
-        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            "GitHub OAuth not configured",
-        ));
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, "GitHub OAuth not configured"));
     };
     let Some(client_secret) = &config.client_secret else {
-        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            "GitHub OAuth not configured",
-        ));
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, "GitHub OAuth not configured"));
     };
 
     let http = reqwest::Client::new();
@@ -797,39 +878,87 @@ async fn github_callback(
     let provider_user_id = gh_user.id.to_string();
     let display_name = gh_user.name.as_deref().or(Some(&gh_user.login));
 
-    let user = match find_or_create_oauth_user(
-        &state,
-        "github",
-        &provider_user_id,
-        &email,
-        display_name,
-        gh_user.avatar_url.as_deref(),
-        access_token,
-        None, // GitHub doesn't use refresh tokens in basic OAuth
-        token_data.scope.as_deref(),
-        None,
-    )
-    .await
-    {
-        Ok(user) => user,
-        Err(resp) => return resp,
+    let session_user = current_session_user(&state, &req).await;
+    let user = if let Some(current_user) = session_user.clone() {
+        match state
+            .db
+            .get_user_by_oauth_provider("github", &provider_user_id)
+            .await
+        {
+            Ok(Some(owner)) if owner.id != current_user.id => {
+                let redirect_target =
+                    with_query_param("/settings", "integration_error", "github-account-in-use");
+                return HttpResponse::Found()
+                    .cookie(clear_cookie(OAUTH_STATE_COOKIE))
+                    .cookie(clear_cookie(OAUTH_NEXT_COOKIE))
+                    .insert_header(("Location", redirect_target))
+                    .finish();
+            }
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Failed to check GitHub OAuth ownership: {e:#}");
+                return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    500,
+                    "Failed to verify GitHub connection",
+                ));
+            }
+        }
+
+        if let Some(url) = gh_user.avatar_url.as_deref() {
+            let _ = state.db.update_user_avatar(current_user.id, url).await;
+        }
+
+        if let Err(resp) = upsert_oauth_connection_for_user(
+            &state,
+            current_user.id,
+            "github",
+            &provider_user_id,
+            access_token,
+            None,
+            token_data.scope.as_deref(),
+            None,
+        )
+        .await
+        {
+            return resp;
+        }
+
+        current_user
+    } else {
+        match find_or_create_oauth_user(
+            &state,
+            "github",
+            &provider_user_id,
+            &email,
+            display_name,
+            gh_user.avatar_url.as_deref(),
+            access_token,
+            None, // GitHub doesn't use refresh tokens in basic OAuth
+            token_data.scope.as_deref(),
+            None,
+        )
+        .await
+        {
+            Ok(user) => user,
+            Err(resp) => return resp,
+        }
     };
 
-    // Create a session and redirect
-    let token = match create_user_session(&state, user.id, &req).await {
-        Ok(token) => token,
-        Err(resp) => return resp,
-    };
+    let redirect_target = oauth_redirect_target(&req, "/repos/new");
 
-    // Clear the OAuth state cookie
-    let mut clear_state = Cookie::named(OAUTH_STATE_COOKIE);
-    clear_state.set_path("/");
-    clear_state.make_removal();
+    let mut response = HttpResponse::Found();
+    if session_user.is_none() {
+        let token = match create_user_session(&state, user.id, &req).await {
+            Ok(token) => token,
+            Err(resp) => return resp,
+        };
+        response.cookie(session_cookie(&token, state.config.app.tls_enabled));
+    }
 
-    HttpResponse::Found()
-        .cookie(session_cookie(&token, state.config.app.tls_enabled))
-        .cookie(clear_state)
-        .insert_header(("Location", "/repos"))
+    response
+        .cookie(clear_cookie(OAUTH_STATE_COOKIE))
+        .cookie(clear_cookie(OAUTH_NEXT_COOKIE))
+        .insert_header(("Location", redirect_target))
         .finish()
 }
 
@@ -840,7 +969,10 @@ async fn github_callback(
 /// GET /auth/gitlab/authorize
 ///
 /// Redirect the user to GitLab's authorization page.
-async fn gitlab_authorize(state: web::Data<AppState>) -> HttpResponse {
+async fn gitlab_authorize(
+    state: web::Data<AppState>,
+    query: web::Query<OAuthAuthorizeParams>,
+) -> HttpResponse {
     let config = &state.config.gitlab_oauth;
 
     let Some(client_id) = &config.client_id else {
@@ -862,10 +994,15 @@ async fn gitlab_authorize(state: web::Data<AppState>) -> HttpResponse {
         urlencoding(&oauth_state),
     );
 
-    HttpResponse::Found()
-        .cookie(oauth_state_cookie(&oauth_state, state.config.app.tls_enabled))
-        .insert_header(("Location", auth_url))
-        .finish()
+    let mut response = HttpResponse::Found();
+    response.cookie(oauth_state_cookie(
+        &oauth_state,
+        state.config.app.tls_enabled,
+    ));
+    if let Some(next) = sanitize_oauth_next(query.next.as_deref()) {
+        response.cookie(oauth_next_cookie(&next, state.config.app.tls_enabled));
+    }
+    response.insert_header(("Location", auth_url)).finish()
 }
 
 /// GET /auth/gitlab/callback?code=...&state=...
@@ -879,7 +1016,10 @@ async fn gitlab_callback(
 ) -> HttpResponse {
     // Check for error from provider
     if let Some(err) = &params.error {
-        let desc = params.error_description.as_deref().unwrap_or("Unknown error");
+        let desc = params
+            .error_description
+            .as_deref()
+            .unwrap_or("Unknown error");
         log::warn!("GitLab OAuth error: {err}: {desc}");
         return HttpResponse::Found()
             .insert_header(("Location", "/login"))
@@ -887,14 +1027,14 @@ async fn gitlab_callback(
     }
 
     let Some(code) = &params.code else {
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-            400,
-            "Missing authorization code",
-        ));
+        return HttpResponse::BadRequest()
+            .json(ApiResponse::<()>::error(400, "Missing authorization code"));
     };
 
     // Verify state parameter (CSRF protection)
-    let stored_state = req.cookie(OAUTH_STATE_COOKIE).map(|c| c.value().to_string());
+    let stored_state = req
+        .cookie(OAUTH_STATE_COOKIE)
+        .map(|c| c.value().to_string());
     if stored_state.as_deref() != params.state.as_deref() || stored_state.is_none() {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
@@ -904,16 +1044,12 @@ async fn gitlab_callback(
 
     let config = &state.config.gitlab_oauth;
     let Some(client_id) = &config.client_id else {
-        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            "GitLab OAuth not configured",
-        ));
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, "GitLab OAuth not configured"));
     };
     let Some(client_secret) = &config.client_secret else {
-        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            "GitLab OAuth not configured",
-        ));
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, "GitLab OAuth not configured"));
     };
     let base_url = &config.base_url;
 
@@ -1010,39 +1146,87 @@ async fn gitlab_callback(
     let provider_user_id = gl_user.id.to_string();
     let display_name = gl_user.name.as_deref().or(Some(&gl_user.username));
 
-    let user = match find_or_create_oauth_user(
-        &state,
-        "gitlab",
-        &provider_user_id,
-        &email,
-        display_name,
-        gl_user.avatar_url.as_deref(),
-        access_token,
-        token_data.refresh_token.as_deref(),
-        token_data.scope.as_deref(),
-        expires_at,
-    )
-    .await
-    {
-        Ok(user) => user,
-        Err(resp) => return resp,
+    let session_user = current_session_user(&state, &req).await;
+    let user = if let Some(current_user) = session_user.clone() {
+        match state
+            .db
+            .get_user_by_oauth_provider("gitlab", &provider_user_id)
+            .await
+        {
+            Ok(Some(owner)) if owner.id != current_user.id => {
+                let redirect_target =
+                    with_query_param("/settings", "integration_error", "gitlab-account-in-use");
+                return HttpResponse::Found()
+                    .cookie(clear_cookie(OAUTH_STATE_COOKIE))
+                    .cookie(clear_cookie(OAUTH_NEXT_COOKIE))
+                    .insert_header(("Location", redirect_target))
+                    .finish();
+            }
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Failed to check GitLab OAuth ownership: {e:#}");
+                return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    500,
+                    "Failed to verify GitLab connection",
+                ));
+            }
+        }
+
+        if let Some(url) = gl_user.avatar_url.as_deref() {
+            let _ = state.db.update_user_avatar(current_user.id, url).await;
+        }
+
+        if let Err(resp) = upsert_oauth_connection_for_user(
+            &state,
+            current_user.id,
+            "gitlab",
+            &provider_user_id,
+            access_token,
+            token_data.refresh_token.as_deref(),
+            token_data.scope.as_deref(),
+            expires_at,
+        )
+        .await
+        {
+            return resp;
+        }
+
+        current_user
+    } else {
+        match find_or_create_oauth_user(
+            &state,
+            "gitlab",
+            &provider_user_id,
+            &email,
+            display_name,
+            gl_user.avatar_url.as_deref(),
+            access_token,
+            token_data.refresh_token.as_deref(),
+            token_data.scope.as_deref(),
+            expires_at,
+        )
+        .await
+        {
+            Ok(user) => user,
+            Err(resp) => return resp,
+        }
     };
 
-    // Create a session and redirect
-    let token = match create_user_session(&state, user.id, &req).await {
-        Ok(token) => token,
-        Err(resp) => return resp,
-    };
+    let redirect_target = oauth_redirect_target(&req, "/repos/new");
 
-    // Clear the OAuth state cookie
-    let mut clear_state = Cookie::named(OAUTH_STATE_COOKIE);
-    clear_state.set_path("/");
-    clear_state.make_removal();
+    let mut response = HttpResponse::Found();
+    if session_user.is_none() {
+        let token = match create_user_session(&state, user.id, &req).await {
+            Ok(token) => token,
+            Err(resp) => return resp,
+        };
+        response.cookie(session_cookie(&token, state.config.app.tls_enabled));
+    }
 
-    HttpResponse::Found()
-        .cookie(session_cookie(&token, state.config.app.tls_enabled))
-        .cookie(clear_state)
-        .insert_header(("Location", "/repos"))
+    response
+        .cookie(clear_cookie(OAUTH_STATE_COOKIE))
+        .cookie(clear_cookie(OAUTH_NEXT_COOKIE))
+        .insert_header(("Location", redirect_target))
         .finish()
 }
 

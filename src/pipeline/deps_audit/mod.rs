@@ -6,8 +6,8 @@
 pub mod osv;
 pub mod parsers;
 
-use std::sync::Arc;
 use log::info;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::DatabaseOperations;
@@ -42,7 +42,11 @@ pub struct DepsAuditStage {
 
 impl DepsAuditStage {
     pub fn new(scan_id: Uuid, repo_id: Uuid, db: Arc<DatabaseOperations>) -> Self {
-        Self { scan_id, repo_id, db }
+        Self {
+            scan_id,
+            repo_id,
+            db,
+        }
     }
 
     /// Run the dependency audit against all manifest files in the code index.
@@ -52,11 +56,18 @@ impl DepsAuditStage {
         // Find all manifest files
         let manifests = self.find_manifests(code_index);
         if manifests.is_empty() {
-            info!("[{}] No manifest files found, skipping deps audit", self.scan_id);
+            info!(
+                "[{}] No manifest files found, skipping deps audit",
+                self.scan_id
+            );
             return Ok(vec![]);
         }
 
-        info!("[{}] Found {} manifest file(s)", self.scan_id, manifests.len());
+        info!(
+            "[{}] Found {} manifest file(s)",
+            self.scan_id,
+            manifests.len()
+        );
 
         // Parse all dependencies
         let mut all_deps: Vec<(Dependency, String)> = Vec::new(); // (dep, manifest_path)
@@ -70,20 +81,27 @@ impl DepsAuditStage {
             }
         }
 
-        info!("[{}] Parsed {} dependencies from manifests", self.scan_id, all_deps.len());
+        info!(
+            "[{}] Parsed {} dependencies from manifests",
+            self.scan_id,
+            all_deps.len()
+        );
 
         if all_deps.is_empty() {
             return Ok(vec![]);
         }
 
         // Query OSV in batches
-        let queries: Vec<osv::OsvQuery> = all_deps.iter().map(|(dep, _)| osv::OsvQuery {
-            package: osv::OsvPackage {
-                name: dep.name.clone(),
-                ecosystem: dep.ecosystem.clone(),
-            },
-            version: dep.version.clone(),
-        }).collect();
+        let queries: Vec<osv::OsvQuery> = all_deps
+            .iter()
+            .map(|(dep, _)| osv::OsvQuery {
+                package: osv::OsvPackage {
+                    name: dep.name.clone(),
+                    ecosystem: dep.ecosystem.clone(),
+                },
+                version: dep.version.clone(),
+            })
+            .collect();
 
         let results = osv::query_osv_batch(&queries).await;
 
@@ -104,7 +122,12 @@ impl DepsAuditStage {
             }
         }
 
-        info!("[{}] Found {} vulnerabilities across {} dependencies", self.scan_id, vulns.len(), all_deps.len());
+        info!(
+            "[{}] Found {} vulnerabilities across {} dependencies",
+            self.scan_id,
+            vulns.len(),
+            all_deps.len()
+        );
 
         // Persist findings
         for v in &vulns {
@@ -114,19 +137,22 @@ impl DepsAuditStage {
                 v.dep.name, v.dep.version, v.dep.ecosystem, v.summary
             );
 
-            let _ = self.db.create_finding(
-                self.scan_id,
-                self.repo_id,
-                "dependencies",
-                &v.severity,
-                "high",
-                &title,
-                Some(&description),
-                &v.manifest_path,
-                1,
-                None,
-                &format!("deps-{}-{}-{}", v.dep.ecosystem, v.dep.name, v.vuln_id),
-            ).await;
+            let _ = self
+                .db
+                .create_finding(
+                    self.scan_id,
+                    self.repo_id,
+                    "dependencies",
+                    &v.severity,
+                    "high",
+                    &title,
+                    Some(&description),
+                    &v.manifest_path,
+                    1,
+                    None,
+                    &format!("deps-{}-{}-{}", v.dep.ecosystem, v.dep.name, v.vuln_id),
+                )
+                .await;
         }
 
         Ok(vulns)
@@ -135,25 +161,37 @@ impl DepsAuditStage {
     /// Find manifest files from the code index.
     fn find_manifests(&self, code_index: &CodeIndex) -> Vec<(String, String)> {
         let manifest_names = [
-            "Cargo.toml", "Cargo.lock",
-            "package.json", "package-lock.json",
-            "requirements.txt", "Pipfile", "pyproject.toml",
-            "go.mod", "go.sum",
-            "pom.xml", "build.gradle",
-            "Gemfile", "Gemfile.lock",
-            "composer.json", "composer.lock",
+            "Cargo.toml",
+            "Cargo.lock",
+            "package.json",
+            "package-lock.json",
+            "requirements.txt",
+            "Pipfile",
+            "pyproject.toml",
+            "go.mod",
+            "go.sum",
+            "pom.xml",
+            "build.gradle",
+            "Gemfile",
+            "Gemfile.lock",
+            "composer.json",
+            "composer.lock",
         ];
 
-        code_index.files.iter().filter_map(|(_key, f)| {
-            let filename = std::path::Path::new(&f.relative_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())?;
-            if manifest_names.contains(&filename.as_str()) {
-                Some((f.relative_path.clone(), f.content.clone()))
-            } else {
-                None
-            }
-        }).collect()
+        code_index
+            .files
+            .iter()
+            .filter_map(|(_key, f)| {
+                let filename = std::path::Path::new(&f.relative_path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())?;
+                if manifest_names.contains(&filename.as_str()) {
+                    Some((f.relative_path.clone(), f.content.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -211,8 +249,14 @@ mod tests {
 
     #[test]
     fn test_detect_ecosystem_cargo() {
-        assert_eq!(detect_ecosystem("Cargo.toml"), Some("crates.io".to_string()));
-        assert_eq!(detect_ecosystem("src/Cargo.toml"), Some("crates.io".to_string()));
+        assert_eq!(
+            detect_ecosystem("Cargo.toml"),
+            Some("crates.io".to_string())
+        );
+        assert_eq!(
+            detect_ecosystem("src/Cargo.toml"),
+            Some("crates.io".to_string())
+        );
     }
 
     #[test]
@@ -222,7 +266,10 @@ mod tests {
 
     #[test]
     fn test_detect_ecosystem_python() {
-        assert_eq!(detect_ecosystem("requirements.txt"), Some("PyPI".to_string()));
+        assert_eq!(
+            detect_ecosystem("requirements.txt"),
+            Some("PyPI".to_string())
+        );
     }
 
     #[test]

@@ -1,3 +1,5 @@
 /target
 *.log
 migrations/
+node_modules/
+.playwright-cli/

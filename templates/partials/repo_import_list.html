@@ -1,0 +1,61 @@
+<div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    {% if error_message %}
+    <div class="border-b border-slate-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+        {{ error_message }}
+    </div>
+    {% endif %}
+
+    {% if repos|length == 0 %}
+    <div class="px-5 py-12 text-center">
+        <p class="text-sm font-medium text-slate-900">No {{ provider_name }} repositories matched this search.</p>
+        <p class="mt-2 text-sm text-slate-500">Try a broader query or reconnect the provider if access changed.</p>
+    </div>
+    {% else %}
+    <div class="divide-y divide-slate-200">
+        {% for repo in repos %}
+        <div class="repo-picker-row flex items-center gap-4 px-5 py-4">
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                    <p class="truncate text-sm font-semibold text-slate-900">{{ repo.full_name }}</p>
+                    {% if repo.private %}
+                    <span class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Private</span>
+                    {% endif %}
+                </div>
+                <p class="mt-1 truncate text-sm text-slate-500">{{ repo.description or "No description provided." }}</p>
+            </div>
+
+            <div class="hidden w-28 text-sm text-slate-500 md:block">
+                {% if repo.language %}
+                <span class="inline-flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-blue-400"></span>
+                    {{ repo.language }}
+                </span>
+                {% else %}
+                <span class="text-slate-400">Unknown</span>
+                {% endif %}
+            </div>
+
+            <div class="hidden w-24 text-sm text-slate-400 sm:block">{{ repo.default_branch }}</div>
+
+            {% if repo.already_connected %}
+            <span class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                Connected
+            </span>
+            {% else %}
+            <form hx-post="/api/repos/import" hx-swap="none" hx-on::after-request="HeimdallRepoConnect.handleCreateResponse(event)" class="m-0">
+                <input type="hidden" name="provider" value="{{ provider }}">
+                <input type="hidden" name="full_name" value="{{ repo.full_name }}">
+                <input type="hidden" name="clone_url" value="{{ repo.clone_url }}">
+                <input type="hidden" name="name" value="{{ repo.full_name }}">
+                <button type="submit"
+                        class="inline-flex items-center rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-600">
+                    Add
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>

@@ -60,11 +60,8 @@ impl SearchIndex {
                 };
 
                 if matched {
-                    let context_before: Vec<String> = lines
-                        [i.saturating_sub(2)..i]
-                        .iter()
-                        .cloned()
-                        .collect();
+                    let context_before: Vec<String> =
+                        lines[i.saturating_sub(2)..i].iter().cloned().collect();
                     let context_after: Vec<String> = lines
                         .get(i + 1..std::cmp::min(i + 3, lines.len()))
                         .unwrap_or_default()
@@ -141,10 +138,7 @@ mod tests {
     #[test]
     fn test_search_context_lines() {
         let mut index = SearchIndex::new();
-        index.index_file(
-            "file.rs",
-            "line1\nline2\nline3\nMATCH\nline5\nline6\nline7",
-        );
+        index.index_file("file.rs", "line1\nline2\nline3\nMATCH\nline5\nline6\nline7");
 
         let results = index.search("MATCH", None);
         assert_eq!(results.len(), 1);

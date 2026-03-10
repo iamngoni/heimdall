@@ -175,11 +175,7 @@ const RULES: &[Rule] = &[
 ];
 
 impl StaticAnalysisStage {
-    pub fn new(
-        scan_id: uuid::Uuid,
-        repo_id: uuid::Uuid,
-        db: Arc<DatabaseOperations>,
-    ) -> Self {
+    pub fn new(scan_id: uuid::Uuid, repo_id: uuid::Uuid, db: Arc<DatabaseOperations>) -> Self {
         Self {
             scan_id,
             repo_id,
@@ -270,9 +266,8 @@ impl StaticAnalysisStage {
 
     /// Detect high-entropy strings that might be secrets.
     async fn detect_secrets(&self, index: &CodeIndex) -> HeimdallResult<usize> {
-        static HIGH_ENTROPY_RE: LazyLock<Regex> = LazyLock::new(|| {
-            Regex::new(r#"["'][A-Za-z0-9+/=_-]{32,}["']"#).unwrap()
-        });
+        static HIGH_ENTROPY_RE: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r#"["'][A-Za-z0-9+/=_-]{32,}["']"#).unwrap());
         static SECRET_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"(?i)(?:secret|key|token|password|auth|credential|api)").unwrap()
         });
@@ -288,8 +283,7 @@ impl StaticAnalysisStage {
             for (line_idx, line) in file.content.lines().enumerate() {
                 if HIGH_ENTROPY_RE.is_match(line) && SECRET_CONTEXT.is_match(line) {
                     let line_num = (line_idx + 1) as i32;
-                    let fingerprint =
-                        make_fingerprint("high-entropy-secret", file_path, line_num);
+                    let fingerprint = make_fingerprint("high-entropy-secret", file_path, line_num);
 
                     let _ = self
                         .db

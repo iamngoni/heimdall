@@ -8,9 +8,7 @@
 //
 
 use crate::ai::ModelProvider;
-use crate::ai::types::{
-    CompletionRequest, CompletionResponse, StopReason, TokenUsage, ToolCall,
-};
+use crate::ai::types::{CompletionRequest, CompletionResponse, StopReason, TokenUsage, ToolCall};
 use crate::models::HeimdallResult;
 use log::debug;
 use serde::{Deserialize, Serialize};

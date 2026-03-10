@@ -7,7 +7,7 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
-use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
+use actix_web::{Either, HttpMessage, HttpRequest, HttpResponse, web};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -59,28 +59,116 @@ async fn get_finding(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpR
 
 async fn update_finding_status(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
-    body: web::Json<UpdateStatusRequest>,
+    body: Either<web::Json<UpdateStatusRequest>, web::Form<UpdateStatusRequest>>,
 ) -> HttpResponse {
     let finding_id = path.into_inner();
+    let body = match body {
+        Either::Left(json) => json.into_inner(),
+        Either::Right(form) => form.into_inner(),
+    };
+    let new_status = body.status.trim().to_lowercase();
+
+    if !["open", "confirmed", "dismissed", "false_positive", "fixed"].contains(&new_status.as_str())
+    {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            format!("Unsupported finding status: {}", body.status),
+        ));
+    }
+
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let mut finding = match state.db.get_finding_by_id(finding_id).await {
+        Ok(Some(finding)) => finding,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
+                404,
+                format!("Finding '{finding_id}' not found"),
+            ));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch finding: {e}"),
+            ));
+        }
+    };
+
+    let old_status = finding.status.clone();
+
     match state
         .db
-        .update_finding_status(finding_id, &body.status)
+        .update_finding_status(finding_id, &new_status)
         .await
     {
-        Ok(true) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
-            "id": finding_id,
-            "status": body.status,
-        }))),
-        Ok(false) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
-            404,
-            format!("Finding '{finding_id}' not found"),
-        )),
-        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            format!("Failed to update finding status: {e}"),
-        )),
+        Ok(true) => {}
+        Ok(false) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
+                404,
+                format!("Finding '{finding_id}' not found"),
+            ));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to update finding status: {e}"),
+            ));
+        }
     }
+
+    if let Err(e) = state
+        .db
+        .create_finding_event(
+            finding_id,
+            Some(user.id),
+            "status_change",
+            Some(&old_status),
+            Some(&new_status),
+            None,
+        )
+        .await
+    {
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            format!("Status updated but failed to record event: {e}"),
+        ));
+    }
+
+    finding.status = new_status.clone();
+
+    if req.headers().contains_key("HX-Request") {
+        let ctx = minijinja::context! {
+            finding => minijinja::Value::from_serialize(&serde_json::json!({
+                "id": finding.id,
+                "status": finding.status,
+            })),
+        };
+
+        return match state
+            .templates
+            .render("partials/finding_status_controls.html", ctx)
+        {
+            Ok(html) => HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(html),
+            Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Status updated but failed to render controls: {e}"),
+            )),
+        };
+    }
+
+    HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+        "id": finding_id,
+        "old_status": old_status,
+        "status": new_status,
+    })))
 }
 
 async fn apply_patch(

@@ -57,13 +57,16 @@ pub async fn query_osv_batch(queries: &[OsvQuery]) -> Vec<Vec<OsvVulnerability>>
 
     for chunk in queries.chunks(1000) {
         let batch = OsvBatchRequest {
-            queries: chunk.iter().map(|q| OsvQuery {
-                package: OsvPackage {
-                    name: q.package.name.clone(),
-                    ecosystem: q.package.ecosystem.clone(),
-                },
-                version: q.version.clone(),
-            }).collect(),
+            queries: chunk
+                .iter()
+                .map(|q| OsvQuery {
+                    package: OsvPackage {
+                        name: q.package.name.clone(),
+                        ecosystem: q.package.ecosystem.clone(),
+                    },
+                    version: q.version.clone(),
+                })
+                .collect(),
         };
 
         match client.post(OSV_BATCH_URL).json(&batch).send().await {
@@ -105,6 +108,10 @@ mod tests {
         }"#;
         let vuln: OsvVulnerability = serde_json::from_str(json).unwrap();
         assert_eq!(vuln.id, "GHSA-abcd-1234-efgh");
-        assert!(vuln.aliases.unwrap().contains(&"CVE-2023-12345".to_string()));
+        assert!(
+            vuln.aliases
+                .unwrap()
+                .contains(&"CVE-2023-12345".to_string())
+        );
     }
 }

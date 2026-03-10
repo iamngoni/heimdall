@@ -15,17 +15,13 @@ use actix_web::http::Method;
 use actix_web::{Error, HttpResponse};
 use log::debug;
 use rand::Rng;
+use std::cell::RefCell;
 use std::future::{Future, Ready, ready};
 use std::pin::Pin;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Paths that are exempt from CSRF verification.
-const CSRF_EXEMPT_PATHS: &[&str] = &[
-    "/health",
-    "/api/auth/login",
-    "/api/auth/register",
-];
+const CSRF_EXEMPT_PATHS: &[&str] = &["/health", "/api/auth/login", "/api/auth/register"];
 
 /// Methods that require CSRF verification.
 fn requires_csrf_check(method: &Method) -> bool {
@@ -34,8 +30,7 @@ fn requires_csrf_check(method: &Method) -> bool {
 
 /// Check if the path starts with any exempt prefix.
 fn is_exempt_path(path: &str) -> bool {
-    CSRF_EXEMPT_PATHS.iter().any(|exempt| path == *exempt)
-        || path.starts_with("/api/webhooks/")
+    CSRF_EXEMPT_PATHS.iter().any(|exempt| path == *exempt) || path.starts_with("/api/webhooks/")
 }
 
 /// Check if the request has a valid Bearer token (API clients skip CSRF).
@@ -121,11 +116,10 @@ where
 
                 if !valid {
                     debug!("CSRF validation failed for {} {}", method, path);
-                    let response = HttpResponse::Forbidden()
-                        .json(serde_json::json!({
-                            "success": false,
-                            "error": "CSRF token mismatch"
-                        }));
+                    let response = HttpResponse::Forbidden().json(serde_json::json!({
+                        "success": false,
+                        "error": "CSRF token mismatch"
+                    }));
                     return Ok(req.into_response(response).map_into_right_body());
                 }
             }
@@ -145,9 +139,7 @@ where
                     .finish();
 
                 let mut res = res.map_into_left_body();
-                res.response_mut()
-                    .add_cookie(&cookie)
-                    .ok();
+                res.response_mut().add_cookie(&cookie).ok();
                 Ok(res)
             } else {
                 Ok(res.map_into_left_body())

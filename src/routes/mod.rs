@@ -60,10 +60,7 @@ pub fn init(cfg: &mut ServiceConfig) {
     );
 
     // Public webhook routes (signature-verified, not session-authenticated)
-    cfg.service(
-        web::scope("/webhooks")
-            .configure(webhooks::init),
-    );
+    cfg.service(web::scope("/webhooks").configure(webhooks::init));
 
     // Protected page routes — require a valid session (redirects to /login)
     // IMPORTANT: This catch-all scope ("") must be registered LAST so that

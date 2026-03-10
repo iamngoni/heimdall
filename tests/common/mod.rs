@@ -29,5 +29,6 @@ pub async fn test_app_state(db_pool: sqlx::PgPool) -> web::Data<AppState> {
         None, // no AI provider in tests
         broadcaster,
         template_engine,
+        false,
     ))
 }

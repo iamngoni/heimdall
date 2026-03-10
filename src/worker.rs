@@ -14,39 +14,24 @@ use log::{error, info, warn};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use crate::ai::ModelProvider;
-use crate::db::DatabaseOperations;
 use crate::pipeline::ScanPipeline;
-use crate::sse::ScanBroadcaster;
+use crate::state::AppState;
 
 /// Background worker that polls `scan_jobs` and executes scan pipelines.
 pub struct ScanWorker {
     worker_id: String,
-    db: Arc<DatabaseOperations>,
-    ai: Arc<dyn ModelProvider>,
-    default_model: String,
-    sse: Arc<ScanBroadcaster>,
+    state: Arc<AppState>,
     poll_interval: Duration,
     stale_check_interval: Duration,
     stale_timeout_minutes: i32,
 }
 
 impl ScanWorker {
-    pub fn new(
-        db: Arc<DatabaseOperations>,
-        ai: Arc<dyn ModelProvider>,
-        default_model: String,
-        sse: Arc<ScanBroadcaster>,
-        poll_interval: Duration,
-        stale_timeout_minutes: i32,
-    ) -> Self {
+    pub fn new(state: Arc<AppState>, poll_interval: Duration, stale_timeout_minutes: i32) -> Self {
         let worker_id = format!("worker-{}", Uuid::now_v7());
         Self {
             worker_id,
-            db,
-            ai,
-            default_model,
-            sse,
+            state,
             poll_interval,
             stale_check_interval: Duration::from_secs(60),
             stale_timeout_minutes,
@@ -70,7 +55,7 @@ impl ScanWorker {
             }
 
             // Try to claim a job
-            match self.db.claim_next_scan_job(&self.worker_id).await {
+            match self.state.db.claim_next_scan_job(&self.worker_id).await {
                 Ok(Some(job)) => {
                     info!(
                         "[{}] Claimed job {} for scan {}",
@@ -100,6 +85,7 @@ impl ScanWorker {
     ) {
         // Mark as running
         if let Err(e) = self
+            .state
             .db
             .update_scan_job_status(job_id, "running", None)
             .await
@@ -112,22 +98,27 @@ impl ScanWorker {
         }
 
         // Increment attempt counter
-        let _ = self.db.increment_scan_job_attempts(job_id).await;
+        let _ = self.state.db.increment_scan_job_attempts(job_id).await;
 
         // Load the scan to get repo_id
-        let scan = match self.db.get_scan_by_id(scan_id).await {
+        let scan = match self.state.db.get_scan_by_id(scan_id).await {
             Ok(Some(s)) => s,
             Ok(None) => {
                 error!("[{}] Scan {} not found", self.worker_id, scan_id);
                 let _ = self
+                    .state
                     .db
                     .update_scan_job_status(job_id, "failed", Some("Scan not found"))
                     .await;
                 return;
             }
             Err(e) => {
-                error!("[{}] Failed to load scan {}: {:#}", self.worker_id, scan_id, e);
+                error!(
+                    "[{}] Failed to load scan {}: {:#}",
+                    self.worker_id, scan_id, e
+                );
                 let _ = self
+                    .state
                     .db
                     .update_scan_job_status(job_id, "failed", Some(&format!("{e:#}")))
                     .await;
@@ -136,11 +127,15 @@ impl ScanWorker {
         };
 
         // Load the repo
-        let repo = match self.db.get_repo_by_id(scan.repo_id).await {
+        let repo = match self.state.db.get_repo_by_id(scan.repo_id).await {
             Ok(Some(r)) => r,
             Ok(None) => {
-                error!("[{}] Repo {} not found for scan {}", self.worker_id, scan.repo_id, scan_id);
+                error!(
+                    "[{}] Repo {} not found for scan {}",
+                    self.worker_id, scan.repo_id, scan_id
+                );
                 let _ = self
+                    .state
                     .db
                     .update_scan_job_status(job_id, "failed", Some("Repo not found"))
                     .await;
@@ -152,6 +147,7 @@ impl ScanWorker {
                     self.worker_id, scan.repo_id, scan_id, e
                 );
                 let _ = self
+                    .state
                     .db
                     .update_scan_job_status(job_id, "failed", Some(&format!("{e:#}")))
                     .await;
@@ -159,13 +155,37 @@ impl ScanWorker {
             }
         };
 
+        let runtime = match self.state.resolve_ai_for_user(repo.user_id).await {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                let error_msg = format!("{e:#}");
+                error!(
+                    "[{}] No AI runtime available for repo {} / scan {}: {}",
+                    self.worker_id, repo.id, scan_id, error_msg
+                );
+                let _ = self
+                    .state
+                    .db
+                    .update_scan_job_status(job_id, "failed", Some(&error_msg))
+                    .await;
+                let _ = self
+                    .state
+                    .db
+                    .update_scan_status(scan_id, "failed", Some(&error_msg))
+                    .await;
+                self.state.sse.emit_error(scan_id, &error_msg);
+                return;
+            }
+        };
+
         // Run the pipeline
         let pipeline = ScanPipeline::new(
             scan_id,
-            Arc::clone(&self.db),
-            Arc::clone(&self.ai),
-            self.default_model.clone(),
-            Arc::clone(&self.sse),
+            Arc::clone(&self.state.db),
+            Arc::clone(&runtime.provider),
+            runtime.model,
+            Arc::clone(&self.state.sse),
+            self.state.encryption_key,
         );
 
         match pipeline.run(&repo).await {
@@ -175,6 +195,7 @@ impl ScanWorker {
                     self.worker_id, job_id, scan_id
                 );
                 let _ = self
+                    .state
                     .db
                     .update_scan_job_status(job_id, "completed", None)
                     .await;
@@ -189,6 +210,7 @@ impl ScanWorker {
                         self.worker_id, job_id, scan_id, next_attempt, max_attempts, error_msg
                     );
                     let _ = self
+                        .state
                         .db
                         .update_scan_job_status(job_id, "pending", Some(&error_msg))
                         .await;
@@ -198,14 +220,16 @@ impl ScanWorker {
                         self.worker_id, job_id, scan_id, next_attempt, error_msg
                     );
                     let _ = self
+                        .state
                         .db
                         .update_scan_job_status(job_id, "failed", Some(&error_msg))
                         .await;
                     let _ = self
+                        .state
                         .db
                         .update_scan_status(scan_id, "failed", Some(&error_msg))
                         .await;
-                    self.sse.emit_error(scan_id, &error_msg);
+                    self.state.sse.emit_error(scan_id, &error_msg);
                 }
             }
         }
@@ -213,7 +237,12 @@ impl ScanWorker {
 
     /// Reset stale jobs that appear stuck.
     async fn reset_stale_jobs(&self) {
-        match self.db.reset_stale_jobs(self.stale_timeout_minutes).await {
+        match self
+            .state
+            .db
+            .reset_stale_jobs(self.stale_timeout_minutes)
+            .await
+        {
             Ok(count) => {
                 if count > 0 {
                     warn!(

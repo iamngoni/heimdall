@@ -37,10 +37,7 @@ impl SymbolIndex {
     }
 
     pub fn add(&mut self, sym: Symbol) {
-        self.symbols
-            .entry(sym.name.clone())
-            .or_default()
-            .push(sym);
+        self.symbols.entry(sym.name.clone()).or_default().push(sym);
     }
 
     /// Find all symbols with the given name.
@@ -274,8 +271,8 @@ fn extract_rust_ts(root: Node, source: &[u8], file: &str) -> Vec<Symbol> {
                     if let Some(name) = child_text(method_node, "name", source) {
                         let is_public = has_child_kind(method_node, "visibility_modifier");
                         let line = method_node.start_position().row + 1;
-                        let is_entry = (is_public && file.contains("routes"))
-                            || name.starts_with("handle_");
+                        let is_entry =
+                            (is_public && file.contains("routes")) || name.starts_with("handle_");
                         symbols.push(Symbol {
                             name: name.to_string(),
                             kind: "method".to_string(),
@@ -596,8 +593,7 @@ fn extract_java_ts(root: Node, source: &[u8], file: &str) -> Vec<Symbol> {
                 if let Some(name) = child_text(node, "name", source) {
                     let is_public = has_modifier(node, source, "public");
                     let is_entry = name == "main"
-                        || (is_public
-                            && (file.contains("Controller") || file.contains("Handler")));
+                        || (is_public && (file.contains("Controller") || file.contains("Handler")));
                     symbols.push(Symbol {
                         name: name.to_string(),
                         kind: "method".to_string(),
@@ -672,12 +668,11 @@ fn extract_call_identifiers(root: Node, source: &[u8], language: &str) -> Vec<St
             Some(f) if f.kind() == "identifier" || f.kind() == "field_identifier" => {
                 f.utf8_text(source).ok().map(|s| s.to_string())
             }
-            Some(f) if f.kind() == "field_expression" || f.kind() == "member_expression" => {
-                f.child_by_field_name("field")
-                    .or_else(|| f.child_by_field_name("property"))
-                    .and_then(|n| n.utf8_text(source).ok())
-                    .map(|s| s.to_string())
-            }
+            Some(f) if f.kind() == "field_expression" || f.kind() == "member_expression" => f
+                .child_by_field_name("field")
+                .or_else(|| f.child_by_field_name("property"))
+                .and_then(|n| n.utf8_text(source).ok())
+                .map(|s| s.to_string()),
             _ => {
                 // For Java method_invocation, the name field is different
                 node.child_by_field_name("name")
@@ -749,7 +744,8 @@ fn is_builtin_call(name: &str, language: &str) -> bool {
         ),
         "go" => matches!(
             name,
-            "make" | "len"
+            "make"
+                | "len"
                 | "cap"
                 | "append"
                 | "copy"
@@ -784,8 +780,7 @@ static RUBY_MODULE: LazyLock<Regex> =
 static PHP_FUNC: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^\s*(public\s+|private\s+|protected\s+)?function\s+(\w+)").unwrap()
 });
-static PHP_CLASS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^\s*class\s+(\w+)").unwrap());
+static PHP_CLASS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^\s*class\s+(\w+)").unwrap());
 
 fn extract_symbols_regex(content: &str, language: &str, file: &str) -> Vec<Symbol> {
     match language {
@@ -910,10 +905,7 @@ pub async fn handle_request() {}
         let syms = extract_symbols(code, "rust", "src/main.rs");
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"main"), "Expected main, got: {names:?}");
-        assert!(
-            names.contains(&"helper"),
-            "Expected helper, got: {names:?}"
-        );
+        assert!(names.contains(&"helper"), "Expected helper, got: {names:?}");
         assert!(
             names.contains(&"handle_request"),
             "Expected handle_request, got: {names:?}"
@@ -1120,10 +1112,7 @@ type Config struct {
             names.contains(&"HandleRequest"),
             "Expected HandleRequest, got: {names:?}"
         );
-        assert!(
-            names.contains(&"Config"),
-            "Expected Config, got: {names:?}"
-        );
+        assert!(names.contains(&"Config"), "Expected Config, got: {names:?}");
 
         let config = syms.iter().find(|s| s.name == "Config").unwrap();
         assert!(config.is_public);

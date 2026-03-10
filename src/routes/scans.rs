@@ -66,7 +66,11 @@ async fn get_scan_findings(
     let severity = query.severity.as_deref();
     let status = query.status.as_deref();
 
-    let total = match state.db.count_findings_by_scan(scan_id, severity, status).await {
+    let total = match state
+        .db
+        .count_findings_by_scan(scan_id, severity, status)
+        .await
+    {
         Ok(t) => t,
         Err(e) => {
             return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
@@ -88,7 +92,8 @@ async fn get_scan_findings(
         .await
     {
         Ok(findings) => {
-            let resp = PaginatedResponse::new(findings, total, pagination.page(), pagination.per_page());
+            let resp =
+                PaginatedResponse::new(findings, total, pagination.page(), pagination.per_page());
             HttpResponse::Ok().json(ApiResponse::ok(resp))
         }
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
@@ -113,10 +118,7 @@ async fn get_scan_threat_model(state: web::Data<AppState>, path: web::Path<Uuid>
     }
 }
 
-async fn get_scan_patches(
-    state: web::Data<AppState>,
-    path: web::Path<Uuid>,
-) -> HttpResponse {
+async fn get_scan_patches(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
     let scan_id = path.into_inner();
     match state.db.list_patches_by_scan(scan_id).await {
         Ok(patches) => HttpResponse::Ok().json(ApiResponse::ok(patches)),

@@ -8,10 +8,11 @@
 //
 
 use actix_multipart::Multipart;
-use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
+use actix_web::{Either, HttpMessage, HttpRequest, HttpResponse, web};
 use futures_util::StreamExt;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::io::Write as IoWrite;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -25,7 +26,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/repos")
             .route("", web::post().to(create_repo))
-            .route("/new", web::get().to(new_repo_page))
             .route("/{id}", web::get().to(get_repo))
             .route("/{id}/scan", web::post().to(trigger_scan))
             .route("/upload", web::post().to(upload_zip))
@@ -41,12 +41,6 @@ pub struct CreateRepoRequest {
     pub remote_url: Option<String>,
     pub source_type: Option<String>,
     pub default_branch: Option<String>,
-}
-
-async fn new_repo_page() -> HttpResponse {
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body("<html><body><h1>Heimdall — Add Repository</h1><p>Coming soon.</p></body></html>")
 }
 
 async fn get_repo(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
@@ -67,12 +61,19 @@ async fn get_repo(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResp
 async fn create_repo(
     state: web::Data<AppState>,
     req: HttpRequest,
-    body: web::Json<CreateRepoRequest>,
+    body: Either<web::Json<CreateRepoRequest>, web::Form<CreateRepoRequest>>,
 ) -> HttpResponse {
-    let source_type = body.source_type.as_deref().unwrap_or("github");
+    let body = match body {
+        Either::Left(json) => json.into_inner(),
+        Either::Right(form) => form.into_inner(),
+    };
+    let source_type = body.source_type.as_deref().unwrap_or("git_url");
     let default_branch = body.default_branch.as_deref();
 
-    let user = req.extensions().get::<AuthenticatedUser>().cloned()
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
         .expect("auth middleware ensures user exists");
     let user_id = user.id;
 
@@ -88,7 +89,7 @@ async fn create_repo(
         )
         .await
     {
-        Ok(repo) => HttpResponse::Created().json(ApiResponse::ok(repo)),
+        Ok(repo) => repo_created_response(&req, &repo),
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,
             format!("Failed to create repo: {e}"),
@@ -96,19 +97,12 @@ async fn create_repo(
     }
 }
 
-async fn trigger_scan(state: web::Data<AppState>, path: web::Path<Uuid>, req: HttpRequest) -> HttpResponse {
+async fn trigger_scan(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    req: HttpRequest,
+) -> HttpResponse {
     let repo_id = path.into_inner();
-
-    // Check AI provider is configured
-    let ai = match &state.ai {
-        Some(ai) => Arc::clone(ai),
-        None => {
-            return HttpResponse::ServiceUnavailable().json(ApiResponse::<()>::error(
-                503,
-                "No AI provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL.",
-            ));
-        }
-    };
 
     // Fetch the repo
     let repo = match state.db.get_repo_by_id(repo_id).await {
@@ -127,7 +121,18 @@ async fn trigger_scan(state: web::Data<AppState>, path: web::Path<Uuid>, req: Ht
         }
     };
 
-    let user = req.extensions().get::<AuthenticatedUser>().cloned()
+    let runtime = match state.resolve_ai_for_user(repo.user_id).await {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            return HttpResponse::ServiceUnavailable()
+                .json(ApiResponse::<()>::error(503, error.to_string()));
+        }
+    };
+
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
         .expect("auth middleware ensures user exists");
     let user_id = user.id;
 
@@ -146,28 +151,62 @@ async fn trigger_scan(state: web::Data<AppState>, path: web::Path<Uuid>, req: Ht
         }
     };
 
-    let _ = state.db.create_scan_job(scan.id).await;
-
-    // Run pipeline in background
-    let db = Arc::clone(&state.db);
-    let sse = Arc::clone(&state.sse);
-    let model = state.config.ai.default_model.clone();
-    let scan_id = scan.id;
-    let repo_name = repo.name.clone();
-
-    tokio::spawn(async move {
-        let pipeline = ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone());
-        if let Err(e) = pipeline.run(&repo).await {
-            error!("Scan pipeline failed for {scan_id}: {e:#}");
-            sse.emit_error(scan_id, &format!("{e:#}"));
-            let _ = db
-                .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
+    if state.worker_enabled {
+        if let Err(e) = state.db.create_scan_job(scan.id).await {
+            let _ = state
+                .db
+                .update_scan_status(scan.id, "failed", Some(&format!("{e:#}")))
                 .await;
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to enqueue scan: {e}"),
+            ));
         }
-    });
 
-    info!("Scan {} triggered for repo {}", scan.id, repo_name);
-    HttpResponse::Accepted().json(ApiResponse::ok(scan))
+        info!(
+            "Queued scan {} for repo {} using {} ({})",
+            scan.id,
+            repo.name,
+            runtime.provider_kind.as_str(),
+            runtime.source
+        );
+    } else {
+        // Local/dev fallback when the background worker is disabled.
+        let db = Arc::clone(&state.db);
+        let sse = Arc::clone(&state.sse);
+        let ai = Arc::clone(&runtime.provider);
+        let model = runtime.model;
+        let encryption_key = state.encryption_key;
+        let scan_id = scan.id;
+        let repo_name = repo.name.clone();
+
+        tokio::spawn(async move {
+            let pipeline =
+                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key);
+            if let Err(e) = pipeline.run(&repo).await {
+                error!("Scan pipeline failed for {scan_id}: {e:#}");
+                sse.emit_error(scan_id, &format!("{e:#}"));
+                let _ = db
+                    .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
+                    .await;
+            }
+        });
+
+        info!(
+            "Started inline scan {} for repo {} using {} ({})",
+            scan.id,
+            repo_name,
+            runtime.provider_kind.as_str(),
+            runtime.source
+        );
+    }
+
+    let mut response = HttpResponse::Accepted();
+    if req.headers().contains_key("HX-Request") {
+        response.insert_header(("HX-Redirect", format!("/scans/{}", scan.id)));
+    }
+
+    response.json(ApiResponse::ok(scan))
 }
 
 /// Handle zip file upload: saves the file and creates a repo record.
@@ -176,7 +215,8 @@ async fn upload_zip(
     req: HttpRequest,
     mut payload: Multipart,
 ) -> HttpResponse {
-    let user_id = req.extensions()
+    let user_id = req
+        .extensions()
         .get::<crate::middleware::auth::AuthenticatedUser>()
         .map(|u| u.id)
         .unwrap_or_else(Uuid::nil);
@@ -282,7 +322,7 @@ async fn upload_zip(
     {
         Ok(repo) => {
             info!("Zip upload created repo {} from {:?}", repo.id, file_path);
-            HttpResponse::Created().json(ApiResponse::ok(repo))
+            repo_created_response(&req, &repo)
         }
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,
@@ -299,12 +339,18 @@ struct ImportRepoRequest {
     name: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RemoteRepoQuery {
+    q: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct RemoteRepo {
     full_name: String,
     clone_url: String,
     description: Option<String>,
     default_branch: String,
+    language: Option<String>,
     private: bool,
 }
 
@@ -314,6 +360,7 @@ struct GitHubRepo {
     clone_url: String,
     description: Option<String>,
     default_branch: Option<String>,
+    language: Option<String>,
     private: bool,
 }
 
@@ -323,6 +370,7 @@ struct GitLabProject {
     http_url_to_repo: String,
     description: Option<String>,
     default_branch: Option<String>,
+    language: Option<String>,
     visibility: String,
 }
 
@@ -333,156 +381,315 @@ fn extract_user_id(req: &HttpRequest) -> Uuid {
         .unwrap_or_else(Uuid::nil)
 }
 
-async fn list_github_repos(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    let user_id = extract_user_id(&req);
+async fn list_github_repos(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<RemoteRepoQuery>,
+) -> HttpResponse {
+    list_remote_repos(state, req, query, "github").await
+}
 
-    let conn = match state.db.get_oauth_connection(user_id, "github").await {
+async fn list_gitlab_repos(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<RemoteRepoQuery>,
+) -> HttpResponse {
+    list_remote_repos(state, req, query, "gitlab").await
+}
+
+async fn list_remote_repos(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<RemoteRepoQuery>,
+    provider: &str,
+) -> HttpResponse {
+    let user_id = extract_user_id(&req);
+    let connected_urls: HashSet<String> = state
+        .db
+        .list_repos_by_user(user_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|repo| repo.remote_url)
+        .map(|url| normalize_remote_url(&url))
+        .collect();
+
+    let conn = match state.db.get_oauth_connection(user_id, provider).await {
         Ok(Some(c)) => c,
         Ok(None) => {
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-                400,
-                "No GitHub OAuth connection found. Connect your GitHub account first.",
-            ))
+            return render_remote_repo_list(
+                &state,
+                provider,
+                &[],
+                Some(&connected_urls),
+                Some(&format!(
+                    "No {} connection found. Connect your account first.",
+                    provider_display_name(provider)
+                )),
+            );
         }
         Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")))
+            return render_remote_repo_list(
+                &state,
+                provider,
+                &[],
+                Some(&connected_urls),
+                Some(&format!("Failed to load integration: {e}")),
+            );
         }
     };
 
-    let token = conn.access_token_enc.unwrap_or_default();
+    let token = match connection_access_token(&state, &conn) {
+        Ok(token) => token,
+        Err(message) => {
+            return render_remote_repo_list(
+                &state,
+                provider,
+                &[],
+                Some(&connected_urls),
+                Some(&message),
+            );
+        }
+    };
     let client = reqwest::Client::new();
 
-    match client
-        .get("https://api.github.com/user/repos?sort=updated&per_page=50")
-        .header("Authorization", format!("Bearer {token}"))
-        .header("User-Agent", "Heimdall")
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-    {
+    let response = match provider {
+        "github" => client
+            .get("https://api.github.com/user/repos?sort=updated&per_page=100")
+            .header("Authorization", format!("Bearer {token}"))
+            .header("User-Agent", "Heimdall")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await,
+        "gitlab" => client
+            .get("https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=100")
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await,
+        _ => unreachable!(),
+    };
+
+    match response {
         Ok(resp) => {
             let status = resp.status();
             if status == reqwest::StatusCode::UNAUTHORIZED
                 || status == reqwest::StatusCode::FORBIDDEN
             {
-                // Token is invalid or missing required scopes — tell the client to re-authorize
-                return HttpResponse::Ok().json(serde_json::json!({
-                    "success": false,
-                    "reauthorize": true,
-                    "redirect": "/api/auth/github/authorize",
-                    "error": "GitHub token expired or missing repo scope. Please reconnect your GitHub account."
-                }));
+                return render_remote_repo_list(
+                    &state,
+                    provider,
+                    &[],
+                    Some(&connected_urls),
+                    Some(&format!(
+                        "{} needs to be reconnected before repositories can be loaded.",
+                        provider_display_name(provider)
+                    )),
+                );
             }
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                return HttpResponse::BadGateway().json(ApiResponse::<()>::error(
-                    502,
-                    format!("GitHub API error ({status}): {body}"),
-                ));
+                return render_remote_repo_list(
+                    &state,
+                    provider,
+                    &[],
+                    Some(&connected_urls),
+                    Some(&format!(
+                        "{} API error ({status}): {body}",
+                        provider_display_name(provider)
+                    )),
+                );
             }
-            match resp.json::<Vec<GitHubRepo>>().await {
-                Ok(repos) => {
-                    let remote: Vec<RemoteRepo> = repos
+            let repos = match provider {
+                "github" => match resp.json::<Vec<GitHubRepo>>().await {
+                    Ok(repos) => repos
                         .into_iter()
-                        .map(|r| RemoteRepo {
-                            full_name: r.full_name,
-                            clone_url: r.clone_url,
-                            description: r.description,
-                            default_branch: r.default_branch.unwrap_or_else(|| "main".to_string()),
-                            private: r.private,
+                        .map(|repo| RemoteRepo {
+                            full_name: repo.full_name,
+                            clone_url: repo.clone_url,
+                            description: repo.description,
+                            default_branch: repo
+                                .default_branch
+                                .unwrap_or_else(|| "main".to_string()),
+                            language: repo.language,
+                            private: repo.private,
                         })
-                        .collect();
-                    HttpResponse::Ok().json(ApiResponse::ok(remote))
-                }
-                Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                    500,
-                    format!("Failed to parse GitHub repos: {e}"),
-                )),
-            }
+                        .collect(),
+                    Err(e) => {
+                        return render_remote_repo_list(
+                            &state,
+                            provider,
+                            &[],
+                            Some(&connected_urls),
+                            Some(&format!("Failed to parse repositories: {e}")),
+                        );
+                    }
+                },
+                "gitlab" => match resp.json::<Vec<GitLabProject>>().await {
+                    Ok(projects) => projects
+                        .into_iter()
+                        .map(|project| RemoteRepo {
+                            full_name: project.path_with_namespace,
+                            clone_url: project.http_url_to_repo,
+                            description: project.description,
+                            default_branch: project
+                                .default_branch
+                                .unwrap_or_else(|| "main".to_string()),
+                            language: project.language,
+                            private: project.visibility != "public",
+                        })
+                        .collect(),
+                    Err(e) => {
+                        return render_remote_repo_list(
+                            &state,
+                            provider,
+                            &[],
+                            Some(&connected_urls),
+                            Some(&format!("Failed to parse projects: {e}")),
+                        );
+                    }
+                },
+                _ => unreachable!(),
+            };
+
+            let filtered = filter_remote_repos(repos, query.q.as_deref());
+            render_remote_repo_list(&state, provider, &filtered, Some(&connected_urls), None)
         }
-        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            format!("Failed to reach GitHub API: {e}"),
-        )),
+        Err(e) => render_remote_repo_list(
+            &state,
+            provider,
+            &[],
+            Some(&connected_urls),
+            Some(&format!(
+                "Failed to reach {}: {e}",
+                provider_display_name(provider)
+            )),
+        ),
     }
 }
 
-async fn list_gitlab_repos(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
-    let user_id = extract_user_id(&req);
+fn connection_access_token(
+    state: &AppState,
+    connection: &crate::models::db_models::OauthConnection,
+) -> Result<String, String> {
+    let encoded = connection
+        .access_token_enc
+        .as_deref()
+        .ok_or_else(|| "OAuth connection is missing an access token".to_string())?;
 
-    let conn = match state.db.get_oauth_connection(user_id, "gitlab").await {
-        Ok(Some(c)) => c,
-        Ok(None) => {
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-                400,
-                "No GitLab OAuth connection found. Connect your GitLab account first.",
-            ))
+    crate::crypto::decode_stored_secret(encoded, state.encryption_key.as_ref()).map_err(|e| {
+        error!(
+            "Failed to decode {} OAuth token for user {}: {e:#}",
+            connection.provider, connection.user_id
+        );
+        "Failed to decode stored OAuth credentials".to_string()
+    })
+}
+
+fn provider_display_name(provider: &str) -> &'static str {
+    match provider {
+        "github" => "GitHub",
+        "gitlab" => "GitLab",
+        _ => "Provider",
+    }
+}
+
+fn filter_remote_repos(mut repos: Vec<RemoteRepo>, query: Option<&str>) -> Vec<RemoteRepo> {
+    if let Some(query) = query {
+        let needle = query.trim().to_lowercase();
+        if !needle.is_empty() {
+            repos.retain(|repo| {
+                repo.full_name.to_lowercase().contains(&needle)
+                    || repo
+                        .description
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&needle)
+                    || repo
+                        .language
+                        .as_deref()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .contains(&needle)
+            });
         }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")))
-        }
+    }
+
+    repos
+}
+
+fn normalize_remote_url(url: &str) -> String {
+    let mut normalized = url.trim().to_lowercase();
+
+    if let Some(rest) = normalized.strip_prefix("https://") {
+        normalized = rest.to_string();
+    } else if let Some(rest) = normalized.strip_prefix("http://") {
+        normalized = rest.to_string();
+    }
+
+    if let Some((_, rest)) = normalized.rsplit_once('@') {
+        normalized = rest.to_string();
+    }
+
+    normalized.trim_end_matches(".git").to_string()
+}
+
+fn render_remote_repo_list(
+    state: &AppState,
+    provider: &str,
+    repos: &[RemoteRepo],
+    connected_urls: Option<&HashSet<String>>,
+    error_message: Option<&str>,
+) -> HttpResponse {
+    let repo_values: Vec<minijinja::Value> = repos
+        .iter()
+        .map(|repo| {
+            minijinja::Value::from_serialize(&serde_json::json!({
+                "full_name": repo.full_name,
+                "clone_url": repo.clone_url,
+                "description": repo.description,
+                "default_branch": repo.default_branch,
+                "language": repo.language,
+                "private": repo.private,
+                "already_connected": connected_urls
+                    .map(|urls| urls.contains(&normalize_remote_url(&repo.clone_url)))
+                    .unwrap_or(false),
+            }))
+        })
+        .collect();
+
+    let ctx = minijinja::context! {
+        provider => provider,
+        provider_name => provider_display_name(provider),
+        repos => repo_values,
+        error_message => error_message,
     };
 
-    let token = conn.access_token_enc.unwrap_or_default();
-    let client = reqwest::Client::new();
-
-    match client
-        .get("https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=50")
-        .header("Authorization", format!("Bearer {token}"))
-        .send()
-        .await
+    match state
+        .templates
+        .render("partials/repo_import_list.html", ctx)
     {
-        Ok(resp) => {
-            let status = resp.status();
-            if status == reqwest::StatusCode::UNAUTHORIZED
-                || status == reqwest::StatusCode::FORBIDDEN
-            {
-                return HttpResponse::Ok().json(serde_json::json!({
-                    "success": false,
-                    "reauthorize": true,
-                    "redirect": "/api/auth/gitlab/authorize",
-                    "error": "GitLab token expired or missing repository scope. Please reconnect your GitLab account."
-                }));
-            }
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return HttpResponse::BadGateway().json(ApiResponse::<()>::error(
-                    502,
-                    format!("GitLab API error ({status}): {body}"),
-                ));
-            }
-            match resp.json::<Vec<GitLabProject>>().await {
-                Ok(projects) => {
-                    let remote: Vec<RemoteRepo> = projects
-                        .into_iter()
-                        .map(|p| RemoteRepo {
-                            full_name: p.path_with_namespace,
-                            clone_url: p.http_url_to_repo,
-                            description: p.description,
-                            default_branch: p.default_branch.unwrap_or_else(|| "main".to_string()),
-                            private: p.visibility != "public",
-                        })
-                        .collect();
-                    HttpResponse::Ok().json(ApiResponse::ok(remote))
-                }
-                Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                    500,
-                    format!("Failed to parse GitLab projects: {e}"),
-                )),
-            }
+        Ok(html) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(html),
+        Err(e) => {
+            error!("Failed to render repo import list: {e:#}");
+            HttpResponse::InternalServerError()
+                .content_type("text/plain; charset=utf-8")
+                .body("Failed to render repository list")
         }
-        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            format!("Failed to reach GitLab API: {e}"),
-        )),
     }
 }
 
 async fn import_repo(
     state: web::Data<AppState>,
     req: HttpRequest,
-    body: web::Json<ImportRepoRequest>,
+    body: Either<web::Json<ImportRepoRequest>, web::Form<ImportRepoRequest>>,
 ) -> HttpResponse {
+    let body = match body {
+        Either::Left(json) => json.into_inner(),
+        Either::Right(form) => form.into_inner(),
+    };
     let user_id = extract_user_id(&req);
 
     let provider = body.provider.as_str();
@@ -500,18 +707,12 @@ async fn import_repo(
             return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
                 400,
                 format!("No {provider} OAuth connection found"),
-            ))
+            ));
         }
         Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")))
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, format!("{e}")));
         }
-    };
-
-    // Embed token into clone URL for private repos
-    let clone_url = if let Some(ref token) = conn.access_token_enc {
-        embed_token_in_url(&body.clone_url, token)
-    } else {
-        body.clone_url.clone()
     };
 
     let repo_name = body.name.as_deref().unwrap_or(&body.full_name);
@@ -522,13 +723,13 @@ async fn import_repo(
             user_id,
             repo_name,
             provider,
-            Some(&clone_url),
+            Some(&body.clone_url),
             None,
             Some(conn.id),
         )
         .await
     {
-        Ok(repo) => HttpResponse::Created().json(ApiResponse::ok(repo)),
+        Ok(repo) => repo_created_response(&req, &repo),
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,
             format!("Failed to import repo: {e}"),
@@ -536,11 +737,27 @@ async fn import_repo(
     }
 }
 
-/// Embed an OAuth token into a clone URL for authenticated cloning.
-fn embed_token_in_url(url: &str, token: &str) -> String {
-    if let Some(rest) = url.strip_prefix("https://") {
-        format!("https://oauth2:{token}@{rest}")
-    } else {
-        url.to_string()
+fn repo_created_response(req: &HttpRequest, repo: &crate::models::db_models::Repo) -> HttpResponse {
+    let redirect_path = format!("/repos/{}", repo.id);
+
+    if req.headers().contains_key("HX-Request") {
+        return HttpResponse::Created()
+            .insert_header(("HX-Redirect", redirect_path))
+            .finish();
     }
+
+    let accepts_html = req
+        .headers()
+        .get("accept")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.contains("text/html"))
+        .unwrap_or(false);
+
+    if accepts_html {
+        return HttpResponse::SeeOther()
+            .insert_header(("Location", redirect_path))
+            .finish();
+    }
+
+    HttpResponse::Created().json(ApiResponse::ok(repo))
 }

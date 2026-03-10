@@ -113,8 +113,7 @@ fn is_auth_exempt(path: &str) -> bool {
 /// Build an error response for the appropriate route type.
 fn auth_error<B>(req: ServiceRequest, is_api: bool, msg: &str) -> ServiceResponse<EitherBody<B>> {
     if is_api {
-        let response = HttpResponse::Unauthorized()
-            .json(ApiResponse::<()>::error(401, msg));
+        let response = HttpResponse::Unauthorized().json(ApiResponse::<()>::error(401, msg));
         req.into_response(response).map_into_right_body()
     } else {
         let response = HttpResponse::Found()

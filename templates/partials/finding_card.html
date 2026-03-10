@@ -1,25 +1,37 @@
 <a href="/findings/{{ finding.id }}"
-   class="block rounded-lg border border-gray-800 bg-gray-800/50 p-4 hover:border-gray-700 hover:bg-gray-800 transition-colors"
-   hx-get="/findings/{{ finding.id }}" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
-    <div class="flex items-start justify-between">
-        <div class="flex-1 min-w-0">
-            <h3 class="text-sm font-semibold text-gray-100 truncate">{{ finding.title }}</h3>
-            <p class="mt-1 text-xs text-gray-400 font-mono truncate">{{ finding.file_path }}:{{ finding.line_start }}</p>
-        </div>
-        <div class="ml-4 flex flex-shrink-0 items-center space-x-2">
-            {% with severity=finding.severity %}
-                {% include "partials/severity_badge.html" %}
-            {% endwith %}
-        </div>
+   class="grid gap-4 px-6 py-4 transition hover:bg-slate-50 lg:grid-cols-[120px_minmax(0,1.4fr)_160px_150px_170px] lg:items-center">
+    <div class="flex items-center">
+        {% with severity=finding.severity %}
+            {% include "partials/severity_badge.html" %}
+        {% endwith %}
     </div>
-    <div class="mt-3 flex items-center space-x-4 text-xs text-gray-500">
-        {% if finding.cwe_id %}
-        <span>{{ finding.cwe_id }}</span>
-        {% endif %}
-        {% if finding.cve_id %}
-        <span>{{ finding.cve_id }}</span>
-        {% endif %}
-        <span class="capitalize">{{ finding.confidence }} confidence</span>
-        <span class="capitalize">{{ finding.status }}</span>
+
+    <div class="min-w-0">
+        <p class="truncate text-sm font-semibold text-slate-900">{{ finding.title }}</p>
+        <p class="mt-1 truncate text-sm text-slate-500">{{ finding.file_path }}:{{ finding.line_start }}</p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+        <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 capitalize text-slate-600">{{ finding.source|replace("_", " ") }}</span>
+        <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 capitalize text-slate-600">{{ finding.confidence }} confidence</span>
+    </div>
+
+    <div class="text-sm text-slate-500">
+        {% if finding.cwe_id %}<div>{{ finding.cwe_id }}</div>{% endif %}
+        {% if finding.cve_id %}<div class="text-rose-600">{{ finding.cve_id }}</div>{% endif %}
+        {% if not finding.cwe_id and not finding.cve_id %}<div class="text-slate-400">No mapped identifier</div>{% endif %}
+    </div>
+
+    <div class="flex items-center justify-between gap-3 lg:justify-end">
+        <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize
+            {{ 'bg-emerald-50 text-emerald-700' if finding.status == 'confirmed' else
+               'bg-rose-50 text-rose-700' if finding.status == 'open' else
+               'bg-amber-50 text-amber-700' if finding.status == 'false_positive' else
+               'bg-slate-100 text-slate-600' if finding.status == 'dismissed' else
+               'bg-blue-50 text-blue-700' if finding.status == 'fixed' else
+               'bg-slate-100 text-slate-600' }}">
+            {{ finding.status|replace("_", " ") }}
+        </span>
+        <span class="text-xs font-medium text-slate-400">{{ finding.updated_at }}</span>
     </div>
 </a>

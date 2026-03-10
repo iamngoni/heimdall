@@ -1,0 +1,50 @@
+<div id="finding-status" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Finding Status</p>
+            <div class="mt-2 flex items-center gap-3">
+                <span class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold capitalize
+                    {{ 'bg-emerald-50 text-emerald-700' if finding.status == 'confirmed' else
+                       'bg-rose-50 text-rose-700' if finding.status == 'open' else
+                       'bg-amber-50 text-amber-700' if finding.status == 'false_positive' else
+                       'bg-slate-100 text-slate-600' if finding.status == 'dismissed' else
+                       'bg-blue-50 text-blue-700' if finding.status == 'fixed' else
+                       'bg-slate-100 text-slate-600' }}">
+                    {{ finding.status|replace("_", " ") }}
+                </span>
+                <p class="text-sm text-slate-500">Mark the triage decision directly from this review screen.</p>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <button hx-patch="/api/findings/{{ finding.id }}/status"
+                    hx-target="#finding-status"
+                    hx-swap="outerHTML"
+                    hx-vals='{"status":"confirmed"}'
+                    class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-emerald-700 ring-2 ring-emerald-100' if finding.status == 'confirmed' else 'text-emerald-700 hover:bg-emerald-50' }}">
+                Accept
+            </button>
+            <button hx-patch="/api/findings/{{ finding.id }}/status"
+                    hx-target="#finding-status"
+                    hx-swap="outerHTML"
+                    hx-vals='{"status":"dismissed"}'
+                    class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-slate-900 ring-2 ring-slate-100' if finding.status == 'dismissed' else 'text-slate-600 hover:bg-slate-50' }}">
+                Dismiss
+            </button>
+            <button hx-patch="/api/findings/{{ finding.id }}/status"
+                    hx-target="#finding-status"
+                    hx-swap="outerHTML"
+                    hx-vals='{"status":"false_positive"}'
+                    class="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-amber-700 ring-2 ring-amber-100' if finding.status == 'false_positive' else 'text-amber-700 hover:bg-amber-50' }}">
+                False Positive
+            </button>
+            <button hx-patch="/api/findings/{{ finding.id }}/status"
+                    hx-target="#finding-status"
+                    hx-swap="outerHTML"
+                    hx-vals='{"status":"fixed"}'
+                    class="inline-flex items-center justify-center rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-blue-700 ring-2 ring-blue-100' if finding.status == 'fixed' else 'text-blue-700 hover:bg-blue-50' }}">
+                Mark Fixed
+            </button>
+        </div>
+    </div>
+</div>

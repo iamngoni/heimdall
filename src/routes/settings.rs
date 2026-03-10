@@ -24,6 +24,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("", web::get().to(get_settings))
             .route("/profile", web::patch().to(update_profile))
             .route("/change-password", web::post().to(change_password))
+            .route(
+                "/integrations/{provider}",
+                web::delete().to(disconnect_integration),
+            )
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
             .route("/test-connection", web::post().to(test_connection))
@@ -139,6 +143,83 @@ fn encrypt_key(key: &str, encryption_key: Option<&[u8; 32]>) -> String {
     }
 }
 
+fn is_hx_request(req: &HttpRequest) -> bool {
+    req.headers().contains_key("HX-Request")
+}
+
+fn render_api_key_row(
+    state: &AppState,
+    id: Uuid,
+    provider: &str,
+    label: Option<&str>,
+    created_at: chrono::DateTime<chrono::Utc>,
+) -> HttpResponse {
+    let ctx = minijinja::context! {
+        key => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": id,
+            "provider": provider,
+            "label": label,
+            "created_at": created_at.format("%Y-%m-%d %H:%M").to_string(),
+        })),
+    };
+
+    match state.templates.render("partials/api_key_row.html", ctx) {
+        Ok(html) => HttpResponse::Created()
+            .content_type("text/html; charset=utf-8")
+            .body(html),
+        Err(e) => {
+            log::error!("Failed to render API key row: {e:#}");
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to render API key row.",
+            ))
+        }
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn test_connection_html(success: bool, message: &str) -> HttpResponse {
+    let (classes, border_classes) = if success {
+        ("text-emerald-700", "border-emerald-200 bg-emerald-50")
+    } else {
+        ("text-rose-700", "border-rose-200 bg-rose-50")
+    };
+
+    let body = format!(
+        "<div class=\"rounded-xl border {border_classes} px-4 py-3 text-sm font-medium {classes}\">{}</div>",
+        escape_html(message)
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(body)
+}
+
+fn inline_feedback_html(success: bool, message: &str) -> HttpResponse {
+    let (classes, border_classes) = if success {
+        ("text-emerald-700", "border-emerald-200 bg-emerald-50")
+    } else {
+        ("text-rose-700", "border-rose-200 bg-rose-50")
+    };
+
+    let body = format!(
+        "<div class=\"rounded-xl border {border_classes} px-4 py-3 text-sm font-medium {classes}\">{}</div>",
+        escape_html(message)
+    );
+
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(body)
+}
+
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
@@ -165,7 +246,10 @@ async fn create_api_key(
     if !["anthropic", "openai", "ollama"].contains(&provider.as_str()) {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
-            format!("Unsupported provider: {}. Must be anthropic, openai, or ollama.", provider),
+            format!(
+                "Unsupported provider: {}. Must be anthropic, openai, or ollama.",
+                provider
+            ),
         ));
     }
 
@@ -176,7 +260,10 @@ async fn create_api_key(
         ));
     }
 
-    let user = req.extensions().get::<AuthenticatedUser>().cloned()
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
         .expect("auth middleware ensures user exists");
     let user_id = user.id;
     let key_hash = hash_key(&body.key);
@@ -186,10 +273,27 @@ async fn create_api_key(
 
     match state
         .db
-        .create_api_key(user_id, "llm_provider", &provider, label, &key_hash, &encrypted)
+        .create_api_key(
+            user_id,
+            "llm_provider",
+            &provider,
+            label,
+            &key_hash,
+            &encrypted,
+        )
         .await
     {
         Ok(api_key) => {
+            if is_hx_request(&req) {
+                return render_api_key_row(
+                    &state,
+                    api_key.id,
+                    api_key.provider.as_deref().unwrap_or(&provider),
+                    api_key.label.as_deref(),
+                    api_key.created_at,
+                );
+            }
+
             let resp = ApiKeyResponse {
                 id: api_key.id,
                 provider: api_key.provider,
@@ -201,10 +305,8 @@ async fn create_api_key(
         }
         Err(e) => {
             log::error!("Failed to create API key: {e:#}");
-            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                "Failed to store API key.",
-            ))
+            HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to store API key."))
         }
     }
 }
@@ -212,32 +314,35 @@ async fn create_api_key(
 /// DELETE /settings/api-keys/{id} — soft-delete an API key.
 async fn delete_api_key(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
 ) -> HttpResponse {
     let id = path.into_inner();
     match state.db.delete_api_key(id).await {
-        Ok(true) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
-            "deleted": true,
-            "id": id,
-        }))),
+        Ok(true) => {
+            if is_hx_request(&req) {
+                return HttpResponse::Ok().finish();
+            }
+
+            HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "deleted": true,
+                "id": id,
+            })))
+        }
         Ok(false) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
             404,
             "API key not found or already deleted.",
         )),
         Err(e) => {
             log::error!("Failed to delete API key: {e:#}");
-            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                "Failed to delete API key.",
-            ))
+            HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to delete API key."))
         }
     }
 }
 
 /// POST /settings/test-connection — test an AI provider connection.
-async fn test_connection(
-    body: web::Json<TestConnectionRequest>,
-) -> HttpResponse {
+async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest>) -> HttpResponse {
     let provider = body.provider.to_lowercase();
 
     let test_provider: Box<dyn ai::ModelProvider> = match provider.as_str() {
@@ -247,7 +352,10 @@ async fn test_connection(
         _ => {
             return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
                 400,
-                format!("Unsupported provider: {}. Must be anthropic, openai, or ollama.", provider),
+                format!(
+                    "Unsupported provider: {}. Must be anthropic, openai, or ollama.",
+                    provider
+                ),
             ));
         }
     };
@@ -277,6 +385,9 @@ async fn test_connection(
                 test_provider.provider_name(),
                 resp.content.chars().take(100).collect::<String>(),
             );
+            if is_hx_request(&req) {
+                return test_connection_html(true, &msg);
+            }
             HttpResponse::Ok().json(ApiResponse::ok(TestConnectionResponse {
                 success: true,
                 provider: test_provider.provider_name().to_string(),
@@ -285,6 +396,9 @@ async fn test_connection(
         }
         Err(e) => {
             let msg = format!("Connection failed: {e:#}");
+            if is_hx_request(&req) {
+                return test_connection_html(false, &msg);
+            }
             HttpResponse::Ok().json(ApiResponse::ok(TestConnectionResponse {
                 success: false,
                 provider: test_provider.provider_name().to_string(),
@@ -297,7 +411,10 @@ async fn test_connection(
 /// GET /settings/ai-status — return AI provider status from env and DB.
 async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     let ai_cfg = &state.config.ai;
-    let user = req.extensions().get::<AuthenticatedUser>().cloned()
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
         .expect("auth middleware ensures user exists");
     let user_id = user.id;
 
@@ -348,6 +465,9 @@ async fn update_profile(
     if let Some(ref display_name) = body.display_name {
         let name = display_name.trim();
         if name.is_empty() {
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "Display name must not be empty.");
+            }
             return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
                 400,
                 "Display name must not be empty.",
@@ -356,19 +476,25 @@ async fn update_profile(
         match state.db.update_user_display_name(user.id, name).await {
             Ok(true) => {}
             Ok(false) => {
-                return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                    404,
-                    "User not found.",
-                ));
+                if is_hx_request(&req) {
+                    return inline_feedback_html(false, "User not found.");
+                }
+                return HttpResponse::NotFound()
+                    .json(ApiResponse::<()>::error(404, "User not found."));
             }
             Err(e) => {
                 log::error!("Failed to update display name: {e:#}");
-                return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                    500,
-                    "Failed to update profile.",
-                ));
+                if is_hx_request(&req) {
+                    return inline_feedback_html(false, "Failed to update profile.");
+                }
+                return HttpResponse::InternalServerError()
+                    .json(ApiResponse::<()>::error(500, "Failed to update profile."));
             }
         }
+    }
+
+    if is_hx_request(&req) {
+        return inline_feedback_html(true, "Profile updated.");
     }
 
     HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
@@ -401,17 +527,12 @@ async fn change_password(
     let db_user = match state.db.get_user_by_id(user.id).await {
         Ok(Some(u)) => u,
         Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                "User not found.",
-            ));
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "User not found."));
         }
         Err(e) => {
             log::error!("Failed to load user: {e:#}");
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                "Failed to load user data.",
-            ));
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to load user data."));
         }
     };
 
@@ -426,10 +547,8 @@ async fn change_password(
         }
         Err(e) => {
             log::error!("Password verification failed: {e:#}");
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                "Failed to verify password.",
-            ));
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to verify password."));
         }
     }
 
@@ -451,15 +570,82 @@ async fn change_password(
             "success": true,
             "message": "Password changed successfully.",
         }))),
-        Ok(false) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
-            404,
-            "User not found.",
-        )),
+        Ok(false) => {
+            HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "User not found."))
+        }
         Err(e) => {
             log::error!("Failed to update password: {e:#}");
+            HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to change password."))
+        }
+    }
+}
+
+/// DELETE /settings/integrations/{provider} — disconnect a source control integration.
+async fn disconnect_integration(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let provider = path.into_inner().to_lowercase();
+    if provider != "github" && provider != "gitlab" {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Provider must be 'github' or 'gitlab'.",
+        ));
+    }
+
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let connection = match state.db.get_oauth_connection(user.id, &provider).await {
+        Ok(Some(connection)) => connection,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
+                404,
+                "Integration is not connected.",
+            ));
+        }
+        Err(e) => {
+            log::error!("Failed to load integration for disconnect: {e:#}");
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to load integration."));
+        }
+    };
+
+    if let Err(e) = state.db.clear_repo_oauth_connection(connection.id).await {
+        log::error!("Failed to unlink repos from integration: {e:#}");
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            "Failed to unlink repositories from integration.",
+        ));
+    }
+
+    match state.db.delete_oauth_connection(user.id, &provider).await {
+        Ok(rows) if rows > 0 => {
+            if is_hx_request(&req) {
+                return HttpResponse::Ok()
+                    .insert_header(("HX-Redirect", "/settings"))
+                    .finish();
+            }
+
+            HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "success": true,
+                "provider": provider,
+            })))
+        }
+        Ok(_) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
+            404,
+            "Integration is not connected.",
+        )),
+        Err(e) => {
+            log::error!("Failed to disconnect integration: {e:#}");
             HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
                 500,
-                "Failed to change password.",
+                "Failed to disconnect integration.",
             ))
         }
     }

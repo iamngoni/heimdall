@@ -1,0 +1,11 @@
+{
+  "name": "heimdall",
+  "private": true,
+  "scripts": {
+    "build:css": "BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./assets/css/app.css -o ./static/css/app.css --minify",
+    "watch:css": "BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./assets/css/app.css -o ./static/css/app.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

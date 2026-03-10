@@ -8,7 +8,7 @@
 
 mod common;
 
-use actix_web::{test, App};
+use actix_web::{App, test};
 use heimdall::routes;
 
 #[actix_rt::test]

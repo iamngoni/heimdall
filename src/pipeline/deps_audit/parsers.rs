@@ -224,7 +224,11 @@ fn parse_pom_xml(content: &str) -> Vec<Dependency> {
         }
 
         if trimmed == "</dependency>" {
-            if in_dependency && !artifact_id.is_empty() && !version.is_empty() && !version.contains("${") {
+            if in_dependency
+                && !artifact_id.is_empty()
+                && !version.is_empty()
+                && !version.contains("${")
+            {
                 deps.push(Dependency {
                     name: format!("{}:{}", group_id, artifact_id),
                     version: version.clone(),

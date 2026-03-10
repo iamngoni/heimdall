@@ -157,7 +157,9 @@ impl GithubOAuthConfig {
     fn from_env() -> Self {
         GithubOAuthConfig {
             client_id: env::var("GITHUB_CLIENT_ID").ok().filter(|s| !s.is_empty()),
-            client_secret: env::var("GITHUB_CLIENT_SECRET").ok().filter(|s| !s.is_empty()),
+            client_secret: env::var("GITHUB_CLIENT_SECRET")
+                .ok()
+                .filter(|s| !s.is_empty()),
             redirect_uri: env::var("GITHUB_REDIRECT_URI")
                 .unwrap_or_else(|_| "http://localhost:8080/api/auth/github/callback".to_string()),
         }
@@ -173,7 +175,9 @@ impl GitlabOAuthConfig {
     fn from_env() -> Self {
         GitlabOAuthConfig {
             client_id: env::var("GITLAB_CLIENT_ID").ok().filter(|s| !s.is_empty()),
-            client_secret: env::var("GITLAB_CLIENT_SECRET").ok().filter(|s| !s.is_empty()),
+            client_secret: env::var("GITLAB_CLIENT_SECRET")
+                .ok()
+                .filter(|s| !s.is_empty()),
             redirect_uri: env::var("GITLAB_REDIRECT_URI")
                 .unwrap_or_else(|_| "http://localhost:8080/api/auth/gitlab/callback".to_string()),
             base_url: env::var("GITLAB_BASE_URL")

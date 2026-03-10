@@ -190,7 +190,9 @@ pub fn hunt_tool_definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "get_dependencies".to_string(),
-            description: "Get the dependency graph for a file — what it imports and what depends on it".to_string(),
+            description:
+                "Get the dependency graph for a file — what it imports and what depends on it"
+                    .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {

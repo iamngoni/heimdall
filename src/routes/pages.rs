@@ -25,6 +25,7 @@ pub fn init_public(cfg: &mut web::ServiceConfig) {
 pub fn init_protected(cfg: &mut web::ServiceConfig) {
     cfg.route("/", web::get().to(dashboard_page))
         .route("/repos", web::get().to(repos_page))
+        .route("/repos/new", web::get().to(repo_new_page))
         .route("/repos/{id}", web::get().to(repo_detail_page))
         .route("/scans/{id}", web::get().to(scan_detail_page))
         .route("/scans/{id}/findings", web::get().to(scan_findings_page))
@@ -94,33 +95,139 @@ fn user_ctx(req: &HttpRequest) -> minijinja::Value {
     }
 }
 
+fn user_initial(req: &HttpRequest) -> String {
+    get_user(req)
+        .and_then(|user| {
+            user.display_name
+                .as_deref()
+                .or(Some(user.email.as_str()))
+                .and_then(|value| value.chars().next())
+        })
+        .unwrap_or('H')
+        .to_uppercase()
+        .collect()
+}
+
+fn source_type_label(source_type: &str) -> &'static str {
+    match source_type {
+        "github" => "GitHub",
+        "gitlab" => "GitLab",
+        "git_url" => "Git URL",
+        "zip" => "ZIP Upload",
+        _ => "Source",
+    }
+}
+
+async fn oauth_connections_ctx(state: &AppState, user_id: Uuid) -> minijinja::Value {
+    let oauth_connections = state
+        .db
+        .list_oauth_connections_by_user(user_id)
+        .await
+        .unwrap_or_default();
+
+    let github = oauth_connections
+        .iter()
+        .find(|conn| conn.provider == "github");
+    let gitlab = oauth_connections
+        .iter()
+        .find(|conn| conn.provider == "gitlab");
+
+    minijinja::Value::from_serialize(&serde_json::json!({
+        "github": {
+            "connected": github.is_some(),
+            "scopes": github.and_then(|conn| conn.scopes.clone()),
+            "updated_at": github.map(|conn| conn.updated_at.format("%Y-%m-%d %H:%M").to_string()),
+        },
+        "gitlab": {
+            "connected": gitlab.is_some(),
+            "scopes": gitlab.and_then(|conn| conn.scopes.clone()),
+            "updated_at": gitlab.map(|conn| conn.updated_at.format("%Y-%m-%d %H:%M").to_string()),
+        }
+    }))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RepoNewQuery {
+    source: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SettingsPageQuery {
+    integration_error: Option<String>,
+}
+
 async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     let user = get_user(&req).expect("auth middleware ensures user exists");
 
-    let repos = state.db.list_repos_by_user(user.id).await.unwrap_or_default();
+    let repos = state
+        .db
+        .list_repos_by_user(user.id)
+        .await
+        .unwrap_or_default();
     let total_repos = repos.len();
 
-    let mut recent_scans = Vec::new();
+    let mut recent_scan_rows = Vec::new();
+    let mut repo_summaries = Vec::new();
     for repo in &repos {
         if let Ok(scans) = state.db.list_scans_by_repo(repo.id).await {
+            let latest_scan = scans.first();
+
+            repo_summaries.push(minijinja::Value::from_serialize(&serde_json::json!({
+                "id": repo.id,
+                "name": repo.name,
+                "host": match repo.source_type.as_str() {
+                    "github" | "gitlab" | "git_url" => repo
+                        .remote_url
+                        .as_deref()
+                        .and_then(|remote| remote.split('/').nth(2))
+                        .unwrap_or("Unknown host"),
+                    "zip" => "ZIP Upload",
+                    _ => "Local / Upload",
+                },
+                "source_label": source_type_label(&repo.source_type),
+                "last_scan_status": latest_scan.as_ref().map(|scan| scan.status.clone()),
+                "last_scan_at": latest_scan
+                    .as_ref()
+                    .map(|scan| scan.created_at.format("%Y-%m-%d %H:%M").to_string()),
+                "finding_count": latest_scan.as_ref().map(|scan| scan.finding_count).unwrap_or(0),
+            })));
+
             for scan in scans {
-                recent_scans.push(minijinja::Value::from_serialize(&serde_json::json!({
-                    "id": scan.id,
-                    "repo_name": repo.name,
-                    "status": scan.status,
-                    "finding_count": scan.finding_count,
-                    "created_at": scan.created_at.format("%Y-%m-%d %H:%M").to_string(),
-                })));
+                recent_scan_rows.push((
+                    scan.created_at.timestamp(),
+                    minijinja::Value::from_serialize(&serde_json::json!({
+                        "id": scan.id,
+                        "repo_name": repo.name,
+                        "status": scan.status,
+                        "scan_type": scan.scan_type,
+                        "finding_count": scan.finding_count,
+                        "created_at": scan.created_at.format("%Y-%m-%d %H:%M").to_string(),
+                    })),
+                ));
             }
         }
     }
-    recent_scans.truncate(10);
+    recent_scan_rows.sort_by(|left, right| right.0.cmp(&left.0));
+    let recent_scans: Vec<minijinja::Value> = recent_scan_rows
+        .into_iter()
+        .take(8)
+        .map(|(_, scan)| scan)
+        .collect();
 
-    let open_findings: i64 = state.db.count_open_findings_by_user(user.id).await.unwrap_or(0);
-    let critical_findings: i64 = state.db.count_critical_findings_by_user(user.id).await.unwrap_or(0);
+    let open_findings: i64 = state
+        .db
+        .count_open_findings_by_user(user.id)
+        .await
+        .unwrap_or(0);
+    let critical_findings: i64 = state
+        .db
+        .count_critical_findings_by_user(user.id)
+        .await
+        .unwrap_or(0);
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
         stats => minijinja::Value::from_serialize(&serde_json::json!({
             "total_repos": total_repos,
             "recent_scans": recent_scans.len(),
@@ -128,6 +235,8 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
             "critical_findings": critical_findings,
         })),
         recent_scans => recent_scans,
+        repo_summaries => repo_summaries.into_iter().take(5).collect::<Vec<_>>(),
+        integrations => oauth_connections_ctx(&state, user.id).await,
     };
 
     render_html(&state, "pages/dashboard.html", ctx)
@@ -166,41 +275,74 @@ async fn repos_page(
         ((total as f64) / (per_page as f64)).ceil() as u32
     };
 
-    let repo_values: Vec<minijinja::Value> = repos
-        .iter()
-        .map(|r| {
-            minijinja::Value::from_serialize(&serde_json::json!({
-                "id": r.id,
-                "name": r.name,
-                "source_type": r.source_type,
-                "remote_url": r.remote_url,
-                "default_branch": r.default_branch,
-                "created_at": r.created_at.format("%Y-%m-%d %H:%M").to_string(),
-            }))
-        })
-        .collect();
+    let mut repo_values = Vec::with_capacity(repos.len());
+    for repo in &repos {
+        let latest_scan = state
+            .db
+            .list_scans_by_repo(repo.id)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .next();
 
-    // Check which OAuth providers are connected
-    let oauth_connections = state
-        .db
-        .list_oauth_connections_by_user(user.id)
-        .await
-        .unwrap_or_default();
-    let has_github = oauth_connections.iter().any(|c| c.provider == "github");
-    let has_gitlab = oauth_connections.iter().any(|c| c.provider == "gitlab");
+        repo_values.push(minijinja::Value::from_serialize(&serde_json::json!({
+            "id": repo.id,
+            "name": repo.name,
+            "source_type": repo.source_type,
+            "source_label": source_type_label(&repo.source_type),
+            "remote_url": repo.remote_url,
+            "default_branch": repo.default_branch,
+            "host": match repo.source_type.as_str() {
+                "github" | "gitlab" | "git_url" => repo.remote_url
+                    .as_deref()
+                    .and_then(|remote| remote.split('/').nth(2))
+                    .unwrap_or("Unknown host"),
+                "zip" => "ZIP Upload",
+                _ => "Local / Upload",
+            },
+            "last_scan_status": latest_scan.as_ref().map(|scan| scan.status.clone()),
+            "last_scan_at": latest_scan.as_ref().map(|scan| scan.created_at.format("%Y-%m-%d %H:%M").to_string()),
+            "finding_count": latest_scan.as_ref().map(|scan| scan.finding_count).unwrap_or(0),
+            "created_at": repo.created_at.format("%Y-%m-%d %H:%M").to_string(),
+        })));
+    }
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
         repos => repo_values,
         page => page,
         per_page => per_page,
         total => total,
         total_pages => total_pages,
-        has_github => has_github,
-        has_gitlab => has_gitlab,
+        integrations => oauth_connections_ctx(&state, user.id).await,
     };
 
     render_html(&state, "pages/repos.html", ctx)
+}
+
+async fn repo_new_page(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<RepoNewQuery>,
+) -> HttpResponse {
+    let user = get_user(&req).expect("auth middleware ensures user exists");
+    let integrations = oauth_connections_ctx(&state, user.id).await;
+
+    let requested_source = query.source.as_deref().unwrap_or("github");
+    let active_source = match requested_source {
+        "github" | "gitlab" | "git_url" | "zip" => requested_source,
+        _ => "github",
+    };
+
+    let ctx = minijinja::context! {
+        user => user_ctx(&req),
+        user_initial => user_initial(&req),
+        active_source => active_source,
+        integrations => integrations,
+    };
+
+    render_html(&state, "pages/repo_new.html", ctx)
 }
 
 async fn repo_detail_page(
@@ -243,6 +385,7 @@ async fn repo_detail_page(
         .map(|s| {
             minijinja::Value::from_serialize(&serde_json::json!({
                 "id": s.id,
+                "short_id": s.id.to_string().chars().take(8).collect::<String>(),
                 "scan_type": s.scan_type,
                 "status": s.status,
                 "finding_count": s.finding_count,
@@ -251,16 +394,36 @@ async fn repo_detail_page(
         })
         .collect();
 
+    let latest_scan = scans.first();
+
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
         repo => minijinja::Value::from_serialize(&serde_json::json!({
             "id": repo.id,
             "name": repo.name,
             "source_type": repo.source_type,
+            "source_label": source_type_label(&repo.source_type),
             "remote_url": repo.remote_url,
             "default_branch": repo.default_branch,
+            "host": match repo.source_type.as_str() {
+                "github" | "gitlab" | "git_url" => repo
+                    .remote_url
+                    .as_deref()
+                    .and_then(|remote| remote.split('/').nth(2))
+                    .unwrap_or("Unknown host"),
+                "zip" => "ZIP Upload",
+                _ => "Local / Upload",
+            },
         })),
         scans => scan_values,
+        latest_scan => minijinja::Value::from_serialize(&serde_json::json!({
+            "status": latest_scan.as_ref().map(|scan| scan.status.clone()),
+            "created_at": latest_scan
+                .as_ref()
+                .map(|scan| scan.created_at.format("%Y-%m-%d %H:%M").to_string()),
+            "finding_count": latest_scan.as_ref().map(|scan| scan.finding_count).unwrap_or(0),
+        })),
         page => page,
         per_page => per_page,
         total => total,
@@ -302,8 +465,10 @@ async fn scan_detail_page(
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
         scan => minijinja::Value::from_serialize(&serde_json::json!({
             "id": scan.id,
+            "short_id": scan.id.to_string().chars().take(8).collect::<String>(),
             "repo_id": scan.repo_id,
             "scan_type": scan.scan_type,
             "status": scan.status,
@@ -326,6 +491,25 @@ async fn scan_findings_page(
     req: HttpRequest,
 ) -> HttpResponse {
     let scan_id = path.into_inner();
+    let scan = match state.db.get_scan_by_id(scan_id).await {
+        Ok(Some(scan)) => scan,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!("Failed to fetch scan {scan_id} for findings page: {e}");
+            return server_error_html(&state);
+        }
+    };
+    let repo = match state.db.get_repo_by_id(scan.repo_id).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!(
+                "Failed to fetch repo {} for findings page: {e}",
+                scan.repo_id
+            );
+            return server_error_html(&state);
+        }
+    };
 
     let severity = query.severity.as_deref();
     let status = query.status.as_deref();
@@ -366,6 +550,7 @@ async fn scan_findings_page(
             minijinja::Value::from_serialize(&serde_json::json!({
                 "id": f.id,
                 "title": f.title,
+                "source": f.source,
                 "severity": f.severity,
                 "confidence": f.confidence,
                 "status": f.status,
@@ -373,14 +558,27 @@ async fn scan_findings_page(
                 "line_start": f.line_start,
                 "cwe_id": f.cwe_id,
                 "cve_id": f.cve_id,
+                "updated_at": f.updated_at.format("%Y-%m-%d %H:%M").to_string(),
             }))
         })
         .collect();
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
+        repo => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": repo.id,
+            "name": repo.name,
+        })),
+        scan => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": scan.id,
+            "status": scan.status,
+            "finding_count": scan.finding_count,
+        })),
         scan_id => scan_id.to_string(),
         findings => finding_values,
+        severity_filter => query.severity.clone().unwrap_or_default(),
+        status_filter => query.status.clone().unwrap_or_default(),
         page => page,
         per_page => per_page,
         total => total,
@@ -407,13 +605,55 @@ async fn finding_detail_page(
             return server_error_html(&state);
         }
     };
+    let repo = match state.db.get_repo_by_id(finding.repo_id).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!(
+                "Failed to fetch repo {} for finding {finding_id}: {e}",
+                finding.repo_id
+            );
+            return server_error_html(&state);
+        }
+    };
+    let patch = state
+        .db
+        .get_patch_for_finding(finding_id)
+        .await
+        .unwrap_or_default();
+    let events = state
+        .db
+        .list_finding_events(finding_id)
+        .await
+        .unwrap_or_default();
+    let event_values: Vec<minijinja::Value> = events
+        .iter()
+        .rev()
+        .take(6)
+        .map(|event| {
+            minijinja::Value::from_serialize(&serde_json::json!({
+                "event_type": event.event_type,
+                "old_value": event.old_value,
+                "new_value": event.new_value,
+                "comment": event.comment,
+                "created_at": event.created_at.format("%Y-%m-%d %H:%M").to_string(),
+            }))
+        })
+        .collect();
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
+        repo => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": repo.id,
+            "name": repo.name,
+        })),
         finding => minijinja::Value::from_serialize(&serde_json::json!({
             "id": finding.id,
             "scan_id": finding.scan_id,
+            "repo_id": finding.repo_id,
             "title": finding.title,
+            "source": finding.source,
             "severity": finding.severity,
             "confidence": finding.confidence,
             "status": finding.status,
@@ -429,6 +669,14 @@ async fn finding_detail_page(
             "poc_validated": finding.poc_validated,
             "agent_reasoning": finding.agent_reasoning,
         })),
+        patch => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": patch.as_ref().map(|patch| patch.id),
+            "applied": patch.as_ref().map(|patch| patch.applied).unwrap_or(false),
+            "created_at": patch
+                .as_ref()
+                .map(|patch| patch.created_at.format("%Y-%m-%d %H:%M").to_string()),
+        })),
+        events => event_values,
     };
 
     render_html(&state, "pages/finding_detail.html", ctx)
@@ -440,6 +688,25 @@ async fn threat_model_page(
     req: HttpRequest,
 ) -> HttpResponse {
     let scan_id = path.into_inner();
+    let scan = match state.db.get_scan_by_id(scan_id).await {
+        Ok(Some(scan)) => scan,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!("Failed to fetch scan {scan_id} for threat model page: {e}");
+            return server_error_html(&state);
+        }
+    };
+    let repo = match state.db.get_repo_by_id(scan.repo_id).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!(
+                "Failed to fetch repo {} for threat model page: {e}",
+                scan.repo_id
+            );
+            return server_error_html(&state);
+        }
+    };
 
     let threat_model = match state.db.get_threat_model_by_scan(scan_id).await {
         Ok(Some(tm)) => tm,
@@ -469,9 +736,22 @@ async fn threat_model_page(
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
+        repo => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": repo.id,
+            "name": repo.name,
+        })),
+        scan => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": scan.id,
+            "status": scan.status,
+            "finding_count": scan.finding_count,
+        })),
         scan_id => scan_id.to_string(),
         threat_model => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": threat_model.id,
             "summary": threat_model.summary,
+            "model_version": threat_model.model_version,
+            "updated_at": threat_model.updated_at.format("%Y-%m-%d %H:%M").to_string(),
         })),
         boundaries => minijinja::Value::from_serialize(&boundaries),
         surfaces => minijinja::Value::from_serialize(&surfaces),
@@ -481,11 +761,28 @@ async fn threat_model_page(
     render_html(&state, "pages/threat_model.html", ctx)
 }
 
-async fn settings_page(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+async fn settings_page(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<SettingsPageQuery>,
+) -> HttpResponse {
     let user = get_user(&req).expect("auth middleware ensures user exists");
     let ai_cfg = &state.config.ai;
 
-    let api_keys = state.db.list_api_keys_by_user(user.id).await.unwrap_or_default();
+    let api_keys = state
+        .db
+        .list_api_keys_by_user(user.id)
+        .await
+        .unwrap_or_default();
+    let has_stored_anthropic = api_keys
+        .iter()
+        .any(|key| key.provider.as_deref() == Some("anthropic"));
+    let has_stored_openai = api_keys
+        .iter()
+        .any(|key| key.provider.as_deref() == Some("openai"));
+    let has_stored_ollama = api_keys
+        .iter()
+        .any(|key| key.provider.as_deref() == Some("ollama"));
     let key_values: Vec<minijinja::Value> = api_keys
         .iter()
         .map(|k| {
@@ -500,13 +797,16 @@ async fn settings_page(state: web::Data<AppState>, req: HttpRequest) -> HttpResp
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
+        user_initial => user_initial(&req),
+        integrations => oauth_connections_ctx(&state, user.id).await,
         ai_config => minijinja::Value::from_serialize(&serde_json::json!({
-            "has_anthropic": ai_cfg.anthropic_api_key.is_some(),
-            "has_openai": ai_cfg.openai_api_key.is_some(),
-            "has_ollama": ai_cfg.ollama_url.is_some(),
+            "has_anthropic": ai_cfg.anthropic_api_key.is_some() || has_stored_anthropic,
+            "has_openai": ai_cfg.openai_api_key.is_some() || has_stored_openai,
+            "has_ollama": ai_cfg.ollama_url.is_some() || has_stored_ollama,
             "default_model": ai_cfg.default_model,
         })),
         api_keys => key_values,
+        integration_error => query.integration_error.clone(),
     };
 
     render_html(&state, "pages/settings.html", ctx)

@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Add Repository{% endblock %}
+
+{% block body %}
+{% set active_nav = "repos" %}
+{% set breadcrumb_parent = "Repositories" %}
+{% set breadcrumb_current = "Add Repository" %}
+<div class="min-h-screen bg-slate-100 text-slate-900">
+    <div class="flex min-h-screen">
+        {% include "partials/app_sidebar.html" %}
+
+        <div class="flex min-h-screen flex-1 flex-col">
+            {% include "partials/app_topbar.html" %}
+
+            <main class="flex-1 px-7 py-6">
+                <div class="mx-auto max-w-6xl space-y-6">
+                    <div>
+                        <h1 class="text-2xl font-bold tracking-tight text-slate-900">Add Repository</h1>
+                        <p class="mt-1 text-sm text-slate-500">Connect a repository to start scanning for vulnerabilities.</p>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 border-b border-slate-200">
+                        <a href="/repos/new?source=github"
+                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'github' else 'text-slate-500 hover:text-slate-900' }}">
+                            GitHub
+                        </a>
+                        <a href="/repos/new?source=gitlab"
+                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'gitlab' else 'text-slate-500 hover:text-slate-900' }}">
+                            GitLab
+                        </a>
+                        <a href="/repos/new?source=git_url"
+                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'git_url' else 'text-slate-500 hover:text-slate-900' }}">
+                            Git URL
+                        </a>
+                        <a href="/repos/new?source=zip"
+                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'zip' else 'text-slate-500 hover:text-slate-900' }}">
+                            Upload ZIP
+                        </a>
+                    </div>
+
+                    <div id="repo-connect-feedback" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
+
+                    {% if active_source == "github" or active_source == "gitlab" %}
+                    {% set provider = integrations.github if active_source == "github" else integrations.gitlab %}
+                    {% set provider_name = "GitHub" if active_source == "github" else "GitLab" %}
+                    {% set connect_href = "/api/auth/github/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgithub" if active_source == "github" else "/api/auth/gitlab/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgitlab" %}
+                    <section class="space-y-4">
+                        <div class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
+                            <span class="h-2 w-2 rounded-full {{ 'bg-emerald-500' if provider.connected else 'bg-slate-300' }}"></span>
+                            {{ provider_name }} {{ 'connected' if provider.connected else 'not connected' }}
+                        </div>
+
+                        {% if provider.connected %}
+                        <div class="space-y-4">
+                            <div class="relative">
+                                <input type="search"
+                                       name="q"
+                                       placeholder="Search your repositories..."
+                                       class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       hx-get="/api/repos/{{ active_source }}/list"
+                                       hx-target="#provider-results"
+                                       hx-trigger="input changed delay:250ms, search">
+                            </div>
+
+                            <div id="provider-results"
+                                 hx-get="/api/repos/{{ active_source }}/list"
+                                 hx-trigger="load"
+                                 hx-swap="innerHTML"
+                                 class="min-h-[20rem]">
+                                <div class="flex h-80 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-400 shadow-sm">
+                                    Loading {{ provider_name }} repositories...
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-16 text-center shadow-sm">
+                            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl {{ 'bg-slate-900 text-white' if active_source == 'github' else 'bg-orange-500 text-white' }}">
+                                {{ 'G' if active_source == 'github' else 'L' }}
+                            </div>
+                            <h2 class="mt-5 text-lg font-semibold text-slate-900">Continue with {{ provider_name }}</h2>
+                            <p class="mt-2 text-sm text-slate-500">Authorize Heimdall once, then pick the repositories you want to scan.</p>
+                            <a href="{{ connect_href }}"
+                               hx-boost="false"
+                               class="mt-6 inline-flex items-center justify-center rounded-xl {{ 'bg-slate-900 text-white hover:bg-slate-800' if active_source == 'github' else 'bg-orange-500 text-white hover:bg-orange-600' }} px-4 py-2.5 text-sm font-semibold transition">
+                                Continue with {{ provider_name }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    </section>
+                    {% elif active_source == "git_url" %}
+                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div class="max-w-2xl">
+                            <h2 class="text-lg font-semibold text-slate-900">Add a public Git URL</h2>
+                            <p class="mt-1 text-sm text-slate-500">Use this when the repository is public or you want to point Heimdall at a simple HTTPS clone URL.</p>
+                        </div>
+
+                        <form class="mt-6 grid gap-4 md:grid-cols-2"
+                              hx-post="/api/repos"
+                              hx-swap="none"
+                              hx-on::after-request="HeimdallRepoConnect.handleCreateResponse(event)">
+                            <input type="hidden" name="source_type" value="git_url">
+
+                            <label class="block">
+                                <span class="mb-2 block text-sm font-medium text-slate-700">Repository name</span>
+                                <input name="name" required
+                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       placeholder="acme-api">
+                            </label>
+
+                            <label class="block">
+                                <span class="mb-2 block text-sm font-medium text-slate-700">Default branch</span>
+                                <input name="default_branch"
+                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       placeholder="main">
+                            </label>
+
+                            <label class="block md:col-span-2">
+                                <span class="mb-2 block text-sm font-medium text-slate-700">HTTPS clone URL</span>
+                                <input name="remote_url" required
+                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       placeholder="https://github.com/acme/acme-api.git">
+                            </label>
+
+                            <div class="md:col-span-2">
+                                <button type="submit"
+                                        class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                    Add Repository
+                                </button>
+                            </div>
+                        </form>
+                    </section>
+                    {% else %}
+                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <div class="max-w-2xl">
+                            <h2 class="text-lg font-semibold text-slate-900">Upload a ZIP archive</h2>
+                            <p class="mt-1 text-sm text-slate-500">Use this for local source snapshots or when source control access is not available.</p>
+                        </div>
+
+                        <form class="mt-6 space-y-4"
+                              hx-post="/api/repos/upload"
+                              hx-encoding="multipart/form-data"
+                              hx-swap="none"
+                              hx-on::after-request="HeimdallRepoConnect.handleCreateResponse(event)">
+                            <label class="block max-w-xl">
+                                <span class="mb-2 block text-sm font-medium text-slate-700">Repository name</span>
+                                <input name="name"
+                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       placeholder="acme-api-snapshot">
+                            </label>
+
+                            <label class="block max-w-xl">
+                                <span class="mb-2 block text-sm font-medium text-slate-700">ZIP file</span>
+                                <input type="file" name="file" accept=".zip" required
+                                       class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700">
+                            </label>
+
+                            <button type="submit"
+                                    class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                Upload Repository
+                            </button>
+                        </form>
+                    </section>
+                    {% endif %}
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<script>
+window.HeimdallRepoConnect = {
+    handleCreateResponse(event) {
+        const banner = document.getElementById('repo-connect-feedback');
+        const xhr = event.detail.xhr;
+        let payload = null;
+
+        try {
+            payload = JSON.parse(xhr.responseText);
+        } catch (_) {
+            payload = null;
+        }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+            const redirectHeader = xhr.getResponseHeader('HX-Redirect');
+            const redirectPath = redirectHeader || (payload && payload.data ? `/repos/${payload.data.id}` : null);
+            if (redirectPath) {
+                window.location.href = redirectPath;
+                return;
+            }
+        }
+
+        const message = payload && payload.error
+            ? (payload.error.message || payload.error)
+            : 'Something went wrong while connecting the repository.';
+
+        banner.textContent = message;
+        banner.className = 'rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700';
+        banner.classList.remove('hidden');
+    }
+};
+</script>
+{% endblock %}

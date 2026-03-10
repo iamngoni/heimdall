@@ -3,9 +3,9 @@
 //  src/pipeline/taint/mod.rs
 //
 
+use log::info;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use log::info;
 use uuid::Uuid;
 
 use crate::db::DatabaseOperations;
@@ -15,10 +15,21 @@ use crate::models::HeimdallResult;
 // ---- Types ----
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SourceCategory { UserInput, Environment, File, Network }
+pub enum SourceCategory {
+    UserInput,
+    Environment,
+    File,
+    Network,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SinkCategory { Sql, Command, FileAccess, Xss, Deserialization }
+pub enum SinkCategory {
+    Sql,
+    Command,
+    FileAccess,
+    Xss,
+    Deserialization,
+}
 
 #[derive(Debug, Clone)]
 pub struct TaintSource {
@@ -51,66 +62,262 @@ pub struct TaintFlow {
 
 const SOURCES: &[TaintSource] = &[
     // Python
-    TaintSource { pattern: "request.args", category: SourceCategory::UserInput, languages: &["python"] },
-    TaintSource { pattern: "request.form", category: SourceCategory::UserInput, languages: &["python"] },
-    TaintSource { pattern: "request.json", category: SourceCategory::UserInput, languages: &["python"] },
-    TaintSource { pattern: "request.data", category: SourceCategory::UserInput, languages: &["python"] },
-    TaintSource { pattern: "request.get_json", category: SourceCategory::UserInput, languages: &["python"] },
-    TaintSource { pattern: "input(", category: SourceCategory::UserInput, languages: &["python"] },
-    TaintSource { pattern: "sys.argv", category: SourceCategory::UserInput, languages: &["python"] },
-    TaintSource { pattern: "os.environ", category: SourceCategory::Environment, languages: &["python"] },
+    TaintSource {
+        pattern: "request.args",
+        category: SourceCategory::UserInput,
+        languages: &["python"],
+    },
+    TaintSource {
+        pattern: "request.form",
+        category: SourceCategory::UserInput,
+        languages: &["python"],
+    },
+    TaintSource {
+        pattern: "request.json",
+        category: SourceCategory::UserInput,
+        languages: &["python"],
+    },
+    TaintSource {
+        pattern: "request.data",
+        category: SourceCategory::UserInput,
+        languages: &["python"],
+    },
+    TaintSource {
+        pattern: "request.get_json",
+        category: SourceCategory::UserInput,
+        languages: &["python"],
+    },
+    TaintSource {
+        pattern: "input(",
+        category: SourceCategory::UserInput,
+        languages: &["python"],
+    },
+    TaintSource {
+        pattern: "sys.argv",
+        category: SourceCategory::UserInput,
+        languages: &["python"],
+    },
+    TaintSource {
+        pattern: "os.environ",
+        category: SourceCategory::Environment,
+        languages: &["python"],
+    },
     // JavaScript
-    TaintSource { pattern: "req.body", category: SourceCategory::UserInput, languages: &["javascript", "typescript"] },
-    TaintSource { pattern: "req.query", category: SourceCategory::UserInput, languages: &["javascript", "typescript"] },
-    TaintSource { pattern: "req.params", category: SourceCategory::UserInput, languages: &["javascript", "typescript"] },
-    TaintSource { pattern: "document.location", category: SourceCategory::UserInput, languages: &["javascript", "typescript"] },
-    TaintSource { pattern: "window.location", category: SourceCategory::UserInput, languages: &["javascript", "typescript"] },
-    TaintSource { pattern: "process.argv", category: SourceCategory::UserInput, languages: &["javascript", "typescript"] },
-    TaintSource { pattern: "process.env", category: SourceCategory::Environment, languages: &["javascript", "typescript"] },
+    TaintSource {
+        pattern: "req.body",
+        category: SourceCategory::UserInput,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSource {
+        pattern: "req.query",
+        category: SourceCategory::UserInput,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSource {
+        pattern: "req.params",
+        category: SourceCategory::UserInput,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSource {
+        pattern: "document.location",
+        category: SourceCategory::UserInput,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSource {
+        pattern: "window.location",
+        category: SourceCategory::UserInput,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSource {
+        pattern: "process.argv",
+        category: SourceCategory::UserInput,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSource {
+        pattern: "process.env",
+        category: SourceCategory::Environment,
+        languages: &["javascript", "typescript"],
+    },
     // Go
-    TaintSource { pattern: "r.URL.Query", category: SourceCategory::UserInput, languages: &["go"] },
-    TaintSource { pattern: "r.FormValue", category: SourceCategory::UserInput, languages: &["go"] },
-    TaintSource { pattern: "r.Body", category: SourceCategory::UserInput, languages: &["go"] },
+    TaintSource {
+        pattern: "r.URL.Query",
+        category: SourceCategory::UserInput,
+        languages: &["go"],
+    },
+    TaintSource {
+        pattern: "r.FormValue",
+        category: SourceCategory::UserInput,
+        languages: &["go"],
+    },
+    TaintSource {
+        pattern: "r.Body",
+        category: SourceCategory::UserInput,
+        languages: &["go"],
+    },
     // Java
-    TaintSource { pattern: "request.getParameter", category: SourceCategory::UserInput, languages: &["java"] },
-    TaintSource { pattern: "request.getAttribute", category: SourceCategory::UserInput, languages: &["java"] },
-    TaintSource { pattern: "request.getHeader", category: SourceCategory::UserInput, languages: &["java"] },
-    TaintSource { pattern: "getInputStream", category: SourceCategory::UserInput, languages: &["java"] },
+    TaintSource {
+        pattern: "request.getParameter",
+        category: SourceCategory::UserInput,
+        languages: &["java"],
+    },
+    TaintSource {
+        pattern: "request.getAttribute",
+        category: SourceCategory::UserInput,
+        languages: &["java"],
+    },
+    TaintSource {
+        pattern: "request.getHeader",
+        category: SourceCategory::UserInput,
+        languages: &["java"],
+    },
+    TaintSource {
+        pattern: "getInputStream",
+        category: SourceCategory::UserInput,
+        languages: &["java"],
+    },
     // Rust
-    TaintSource { pattern: "web::Json", category: SourceCategory::UserInput, languages: &["rust"] },
-    TaintSource { pattern: "web::Query", category: SourceCategory::UserInput, languages: &["rust"] },
-    TaintSource { pattern: "web::Path", category: SourceCategory::UserInput, languages: &["rust"] },
+    TaintSource {
+        pattern: "web::Json",
+        category: SourceCategory::UserInput,
+        languages: &["rust"],
+    },
+    TaintSource {
+        pattern: "web::Query",
+        category: SourceCategory::UserInput,
+        languages: &["rust"],
+    },
+    TaintSource {
+        pattern: "web::Path",
+        category: SourceCategory::UserInput,
+        languages: &["rust"],
+    },
 ];
 
 const SINKS: &[TaintSink] = &[
     // SQL injection
-    TaintSink { pattern: "execute(", category: SinkCategory::Sql, languages: &["python", "javascript", "java"] },
-    TaintSink { pattern: "cursor.execute", category: SinkCategory::Sql, languages: &["python"] },
-    TaintSink { pattern: "db.query", category: SinkCategory::Sql, languages: &["javascript", "typescript"] },
-    TaintSink { pattern: "f\"SELECT", category: SinkCategory::Sql, languages: &["python"] },
-    TaintSink { pattern: "f\"INSERT", category: SinkCategory::Sql, languages: &["python"] },
-    TaintSink { pattern: "f\"UPDATE", category: SinkCategory::Sql, languages: &["python"] },
-    TaintSink { pattern: "f\"DELETE", category: SinkCategory::Sql, languages: &["python"] },
-    TaintSink { pattern: "\"SELECT \" +", category: SinkCategory::Sql, languages: &["javascript", "typescript", "java"] },
-    TaintSink { pattern: "\"INSERT \" +", category: SinkCategory::Sql, languages: &["javascript", "typescript", "java"] },
+    TaintSink {
+        pattern: "execute(",
+        category: SinkCategory::Sql,
+        languages: &["python", "javascript", "java"],
+    },
+    TaintSink {
+        pattern: "cursor.execute",
+        category: SinkCategory::Sql,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "db.query",
+        category: SinkCategory::Sql,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSink {
+        pattern: "f\"SELECT",
+        category: SinkCategory::Sql,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "f\"INSERT",
+        category: SinkCategory::Sql,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "f\"UPDATE",
+        category: SinkCategory::Sql,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "f\"DELETE",
+        category: SinkCategory::Sql,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "\"SELECT \" +",
+        category: SinkCategory::Sql,
+        languages: &["javascript", "typescript", "java"],
+    },
+    TaintSink {
+        pattern: "\"INSERT \" +",
+        category: SinkCategory::Sql,
+        languages: &["javascript", "typescript", "java"],
+    },
     // Command injection
-    TaintSink { pattern: "os.system(", category: SinkCategory::Command, languages: &["python"] },
-    TaintSink { pattern: "subprocess.call(", category: SinkCategory::Command, languages: &["python"] },
-    TaintSink { pattern: "subprocess.Popen(", category: SinkCategory::Command, languages: &["python"] },
-    TaintSink { pattern: "subprocess.run(", category: SinkCategory::Command, languages: &["python"] },
-    TaintSink { pattern: "exec(", category: SinkCategory::Command, languages: &["javascript", "typescript", "python"] },
-    TaintSink { pattern: "child_process.exec(", category: SinkCategory::Command, languages: &["javascript", "typescript"] },
-    TaintSink { pattern: "child_process.spawn(", category: SinkCategory::Command, languages: &["javascript", "typescript"] },
-    TaintSink { pattern: "Runtime.exec(", category: SinkCategory::Command, languages: &["java"] },
-    TaintSink { pattern: "ProcessBuilder(", category: SinkCategory::Command, languages: &["java"] },
+    TaintSink {
+        pattern: "os.system(",
+        category: SinkCategory::Command,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "subprocess.call(",
+        category: SinkCategory::Command,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "subprocess.Popen(",
+        category: SinkCategory::Command,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "subprocess.run(",
+        category: SinkCategory::Command,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "exec(",
+        category: SinkCategory::Command,
+        languages: &["javascript", "typescript", "python"],
+    },
+    TaintSink {
+        pattern: "child_process.exec(",
+        category: SinkCategory::Command,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSink {
+        pattern: "child_process.spawn(",
+        category: SinkCategory::Command,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSink {
+        pattern: "Runtime.exec(",
+        category: SinkCategory::Command,
+        languages: &["java"],
+    },
+    TaintSink {
+        pattern: "ProcessBuilder(",
+        category: SinkCategory::Command,
+        languages: &["java"],
+    },
     // XSS
-    TaintSink { pattern: ".innerHTML", category: SinkCategory::Xss, languages: &["javascript", "typescript"] },
-    TaintSink { pattern: "document.write(", category: SinkCategory::Xss, languages: &["javascript", "typescript"] },
-    TaintSink { pattern: "|safe", category: SinkCategory::Xss, languages: &["python"] },
+    TaintSink {
+        pattern: ".innerHTML",
+        category: SinkCategory::Xss,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSink {
+        pattern: "document.write(",
+        category: SinkCategory::Xss,
+        languages: &["javascript", "typescript"],
+    },
+    TaintSink {
+        pattern: "|safe",
+        category: SinkCategory::Xss,
+        languages: &["python"],
+    },
     // Deserialization
-    TaintSink { pattern: "pickle.loads(", category: SinkCategory::Deserialization, languages: &["python"] },
-    TaintSink { pattern: "yaml.load(", category: SinkCategory::Deserialization, languages: &["python"] },
-    TaintSink { pattern: "eval(", category: SinkCategory::Deserialization, languages: &["javascript", "typescript", "python"] },
+    TaintSink {
+        pattern: "pickle.loads(",
+        category: SinkCategory::Deserialization,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "yaml.load(",
+        category: SinkCategory::Deserialization,
+        languages: &["python"],
+    },
+    TaintSink {
+        pattern: "eval(",
+        category: SinkCategory::Deserialization,
+        languages: &["javascript", "typescript", "python"],
+    },
 ];
 
 // ---- Analyzer ----
@@ -214,9 +421,10 @@ impl TaintAnalyzer {
 
     /// Analyze multiple files.
     pub fn analyze_files(&self, files: &[(String, String, String)]) -> Vec<TaintFlow> {
-        files.iter().flat_map(|(path, content, lang)| {
-            self.analyze_file(path, content, lang)
-        }).collect()
+        files
+            .iter()
+            .flat_map(|(path, content, lang)| self.analyze_file(path, content, lang))
+            .collect()
     }
 }
 
@@ -242,7 +450,11 @@ fn extract_assigned_var(line: &str) -> Option<String> {
         let after_eq_start = &stripped[eq_idx..];
 
         // Skip ==, !=, <=, >=
-        if after_eq_start.starts_with("==") || before_eq.ends_with('!') || before_eq.ends_with('<') || before_eq.ends_with('>') {
+        if after_eq_start.starts_with("==")
+            || before_eq.ends_with('!')
+            || before_eq.ends_with('<')
+            || before_eq.ends_with('>')
+        {
             return None;
         }
 
@@ -253,7 +465,11 @@ fn extract_assigned_var(line: &str) -> Option<String> {
         let var_name = var_name.split(':').next()?.trim(); // Strip TS type annotations
         let var_name = var_name.split_whitespace().last()?; // Take last token
 
-        if var_name.is_empty() || var_name.contains('(') || var_name.contains(')') || var_name.contains('[') {
+        if var_name.is_empty()
+            || var_name.contains('(')
+            || var_name.contains(')')
+            || var_name.contains('[')
+        {
             return None;
         }
 
@@ -287,7 +503,11 @@ pub struct TaintAnalysisStage {
 
 impl TaintAnalysisStage {
     pub fn new(scan_id: Uuid, repo_id: Uuid, db: Arc<DatabaseOperations>) -> Self {
-        Self { scan_id, repo_id, db }
+        Self {
+            scan_id,
+            repo_id,
+            db,
+        }
     }
 
     pub async fn run(&self, code_index: &CodeIndex) -> HeimdallResult<Vec<TaintFlow>> {
@@ -306,7 +526,11 @@ impl TaintAnalysisStage {
             all_flows.extend(flows);
         }
 
-        info!("[{}] Taint analysis found {} flows", self.scan_id, all_flows.len());
+        info!(
+            "[{}] Taint analysis found {} flows",
+            self.scan_id,
+            all_flows.len()
+        );
 
         // Persist findings
         for flow in &all_flows {
@@ -324,24 +548,32 @@ impl TaintAnalysisStage {
             );
             let description = format!(
                 "Data flows from untrusted source (line {}) to dangerous sink (line {}).\n\nSource: {}\nSink: {}\nVariable chain: {}",
-                flow.source_line, flow.sink_line,
-                flow.source_text.trim(), flow.sink_text.trim(),
+                flow.source_line,
+                flow.sink_line,
+                flow.source_text.trim(),
+                flow.sink_text.trim(),
                 flow.variable_chain.join(" → ")
             );
 
-            let _ = self.db.create_finding(
-                self.scan_id,
-                self.repo_id,
-                "static",
-                &flow.severity,
-                "medium",
-                &title,
-                Some(&description),
-                &flow.file_path,
-                flow.source_line as i32,
-                Some(flow.sink_line as i32),
-                &format!("taint-{}-{}-{}", flow.file_path, flow.source_line, flow.sink_line),
-            ).await;
+            let _ = self
+                .db
+                .create_finding(
+                    self.scan_id,
+                    self.repo_id,
+                    "static",
+                    &flow.severity,
+                    "medium",
+                    &title,
+                    Some(&description),
+                    &flow.file_path,
+                    flow.source_line as i32,
+                    Some(flow.sink_line as i32),
+                    &format!(
+                        "taint-{}-{}-{}",
+                        flow.file_path, flow.source_line, flow.sink_line
+                    ),
+                )
+                .await;
         }
 
         Ok(all_flows)
@@ -365,7 +597,11 @@ cursor.execute(query)
 "#;
         let flows = analyzer().analyze_file("app.py", code, "python");
         assert!(!flows.is_empty());
-        assert!(flows.iter().any(|f| matches!(f.sink_category, SinkCategory::Sql)));
+        assert!(
+            flows
+                .iter()
+                .any(|f| matches!(f.sink_category, SinkCategory::Sql))
+        );
     }
 
     #[test]
@@ -376,7 +612,11 @@ os.system(cmd)
 "#;
         let flows = analyzer().analyze_file("app.py", code, "python");
         assert!(!flows.is_empty());
-        assert!(flows.iter().any(|f| matches!(f.sink_category, SinkCategory::Command)));
+        assert!(
+            flows
+                .iter()
+                .any(|f| matches!(f.sink_category, SinkCategory::Command))
+        );
     }
 
     #[test]
@@ -398,7 +638,11 @@ element.innerHTML = input;
 "#;
         let flows = analyzer().analyze_file("app.js", code, "javascript");
         assert!(!flows.is_empty());
-        assert!(flows.iter().any(|f| matches!(f.sink_category, SinkCategory::Xss)));
+        assert!(
+            flows
+                .iter()
+                .any(|f| matches!(f.sink_category, SinkCategory::Xss))
+        );
     }
 
     #[test]
@@ -410,7 +654,10 @@ clean = processed.lower()
 os.system(clean)
 "#;
         let flows = analyzer().analyze_file("app.py", code, "python");
-        assert!(!flows.is_empty(), "Should detect taint through variable chain");
+        assert!(
+            !flows.is_empty(),
+            "Should detect taint through variable chain"
+        );
     }
 
     #[test]
@@ -447,8 +694,14 @@ print(user_input)
     #[test]
     fn test_extract_assigned_var() {
         assert_eq!(extract_assigned_var("x = 1"), Some("x".to_string()));
-        assert_eq!(extract_assigned_var("let name = req.body"), Some("name".to_string()));
-        assert_eq!(extract_assigned_var("const val = foo"), Some("val".to_string()));
+        assert_eq!(
+            extract_assigned_var("let name = req.body"),
+            Some("name".to_string())
+        );
+        assert_eq!(
+            extract_assigned_var("const val = foo"),
+            Some("val".to_string())
+        );
         assert_eq!(extract_assigned_var("if x == 1:"), None);
         assert_eq!(extract_assigned_var("  return foo"), None);
     }

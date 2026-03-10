@@ -370,13 +370,11 @@ impl DatabaseOperations {
     }
 
     pub async fn count_scans_by_repo(&self, repo_id: Uuid) -> HeimdallResult<i64> {
-        sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM scans WHERE repo_id = $1",
-        )
-        .bind(repo_id)
-        .fetch_one(&self.pool)
-        .await
-        .context("Failed to count scans by repo")
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM scans WHERE repo_id = $1")
+            .bind(repo_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to count scans by repo")
     }
 
     pub async fn update_scan_status(
@@ -709,11 +707,7 @@ impl DatabaseOperations {
     // Scan stages
     // -----------------------------------------------------------------------
 
-    pub async fn create_scan_stage(
-        &self,
-        scan_id: Uuid,
-        stage: &str,
-    ) -> HeimdallResult<ScanStage> {
+    pub async fn create_scan_stage(&self, scan_id: Uuid, stage: &str) -> HeimdallResult<ScanStage> {
         sqlx::query_as::<_, ScanStage>(
             "INSERT INTO scan_stages (scan_id, stage) VALUES ($1, $2) RETURNING *",
         )
@@ -779,11 +773,7 @@ impl DatabaseOperations {
     // Extended scan operations
     // -----------------------------------------------------------------------
 
-    pub async fn update_scan_commit_sha(
-        &self,
-        id: Uuid,
-        commit_sha: &str,
-    ) -> HeimdallResult<bool> {
+    pub async fn update_scan_commit_sha(&self, id: Uuid, commit_sha: &str) -> HeimdallResult<bool> {
         let result = sqlx::query("UPDATE scans SET commit_sha = $1 WHERE id = $2")
             .bind(commit_sha)
             .bind(id)
@@ -981,14 +971,12 @@ impl DatabaseOperations {
         id: Uuid,
         suggested_patch: &str,
     ) -> HeimdallResult<bool> {
-        let result = sqlx::query(
-            "UPDATE findings SET suggested_patch = $1 WHERE id = $2",
-        )
-        .bind(suggested_patch)
-        .bind(id)
-        .execute(&self.pool)
-        .await
-        .context("Failed to update finding patch")?;
+        let result = sqlx::query("UPDATE findings SET suggested_patch = $1 WHERE id = $2")
+            .bind(suggested_patch)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to update finding patch")?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -1022,10 +1010,7 @@ impl DatabaseOperations {
         .context("Failed to create finding event")
     }
 
-    pub async fn list_finding_events(
-        &self,
-        finding_id: Uuid,
-    ) -> HeimdallResult<Vec<FindingEvent>> {
+    pub async fn list_finding_events(&self, finding_id: Uuid) -> HeimdallResult<Vec<FindingEvent>> {
         sqlx::query_as::<_, FindingEvent>(
             "SELECT * FROM finding_events WHERE finding_id = $1 ORDER BY created_at ASC",
         )
@@ -1035,11 +1020,7 @@ impl DatabaseOperations {
         .context("Failed to list finding events")
     }
 
-    pub async fn update_finding_severity(
-        &self,
-        id: Uuid,
-        severity: &str,
-    ) -> HeimdallResult<bool> {
+    pub async fn update_finding_severity(&self, id: Uuid, severity: &str) -> HeimdallResult<bool> {
         let result = sqlx::query("UPDATE findings SET severity = $1 WHERE id = $2")
             .bind(severity)
             .bind(id)
@@ -1066,10 +1047,7 @@ impl DatabaseOperations {
         .context("Failed to list patches by scan")
     }
 
-    pub async fn get_patch_for_finding(
-        &self,
-        finding_id: Uuid,
-    ) -> HeimdallResult<Option<Patch>> {
+    pub async fn get_patch_for_finding(&self, finding_id: Uuid) -> HeimdallResult<Option<Patch>> {
         sqlx::query_as::<_, Patch>(
             "SELECT * FROM patches WHERE finding_id = $1 \
              ORDER BY created_at DESC LIMIT 1",
@@ -1268,6 +1246,21 @@ impl DatabaseOperations {
         .context("Failed to list API keys by user")
     }
 
+    pub async fn list_runtime_api_keys_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> HeimdallResult<Vec<ApiKey>> {
+        sqlx::query_as::<_, ApiKey>(
+            "SELECT * FROM api_keys \
+             WHERE user_id = $1 AND deleted_at IS NULL \
+             ORDER BY created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to list runtime API keys by user")
+    }
+
     pub async fn delete_api_key(&self, id: Uuid) -> HeimdallResult<bool> {
         let result = sqlx::query(
             "UPDATE api_keys SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
@@ -1329,9 +1322,15 @@ impl DatabaseOperations {
         // Only allow known fields to prevent SQL injection
         let query = match field {
             "summary" => "UPDATE threat_models SET summary = $1, updated_at = now() WHERE id = $2",
-            "boundaries_json" => "UPDATE threat_models SET boundaries_json = $1, updated_at = now() WHERE id = $2",
-            "surfaces_json" => "UPDATE threat_models SET surfaces_json = $1, updated_at = now() WHERE id = $2",
-            "data_flows_json" => "UPDATE threat_models SET data_flows_json = $1, updated_at = now() WHERE id = $2",
+            "boundaries_json" => {
+                "UPDATE threat_models SET boundaries_json = $1, updated_at = now() WHERE id = $2"
+            }
+            "surfaces_json" => {
+                "UPDATE threat_models SET surfaces_json = $1, updated_at = now() WHERE id = $2"
+            }
+            "data_flows_json" => {
+                "UPDATE threat_models SET data_flows_json = $1, updated_at = now() WHERE id = $2"
+            }
             _ => anyhow::bail!("Unknown threat model field: {field}"),
         };
 
@@ -1371,6 +1370,20 @@ impl DatabaseOperations {
         .context("Failed to fetch OAuth connection")
     }
 
+    /// Fetch a single OAuth connection by id.
+    pub async fn get_oauth_connection_by_id(
+        &self,
+        id: Uuid,
+    ) -> HeimdallResult<Option<OauthConnection>> {
+        sqlx::query_as::<_, OauthConnection>(
+            "SELECT * FROM oauth_connections WHERE id = $1 LIMIT 1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch OAuth connection by id")
+    }
+
     /// List all OAuth connections for a user.
     pub async fn list_oauth_connections_by_user(
         &self,
@@ -1385,4 +1398,36 @@ impl DatabaseOperations {
         .context("Failed to list OAuth connections")
     }
 
+    /// Remove a user's OAuth connection for a provider.
+    pub async fn delete_oauth_connection(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> HeimdallResult<u64> {
+        let result =
+            sqlx::query("DELETE FROM oauth_connections WHERE user_id = $1 AND provider = $2")
+                .bind(user_id)
+                .bind(provider)
+                .execute(&self.pool)
+                .await
+                .context("Failed to delete OAuth connection")?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Clear the OAuth connection link from repos that used it.
+    pub async fn clear_repo_oauth_connection(
+        &self,
+        oauth_connection_id: Uuid,
+    ) -> HeimdallResult<u64> {
+        let result = sqlx::query(
+            "UPDATE repos SET oauth_connection_id = NULL WHERE oauth_connection_id = $1",
+        )
+        .bind(oauth_connection_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to clear repo OAuth connection")?;
+
+        Ok(result.rows_affected())
+    }
 }

@@ -68,10 +68,8 @@ async fn github_webhook(
 
     if !verify_github_signature(&secret, &body, signature) {
         warn!("GitHub webhook signature verification failed");
-        return HttpResponse::Unauthorized().json(ApiResponse::<()>::error(
-            401,
-            "Invalid signature",
-        ));
+        return HttpResponse::Unauthorized()
+            .json(ApiResponse::<()>::error(401, "Invalid signature"));
     }
 
     // 3. Check event type
@@ -163,10 +161,7 @@ async fn gitlab_webhook(
 
     if token != secret {
         warn!("GitLab webhook token verification failed");
-        return HttpResponse::Unauthorized().json(ApiResponse::<()>::error(
-            401,
-            "Invalid token",
-        ));
+        return HttpResponse::Unauthorized().json(ApiResponse::<()>::error(401, "Invalid token"));
     }
 
     // 3. Parse payload
@@ -219,24 +214,11 @@ async fn trigger_scan_for_webhook(
     git_ref: &str,
     source: &str,
 ) -> HttpResponse {
-    // Check AI provider is configured
-    let ai = match &state.ai {
-        Some(ai) => Arc::clone(ai),
-        None => {
-            return HttpResponse::ServiceUnavailable().json(ApiResponse::<()>::error(
-                503,
-                "No AI provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL.",
-            ));
-        }
-    };
-
     // Find repo by remote URL
     let repo = match state.db.get_repo_by_remote_url(clone_url).await {
         Ok(Some(r)) => r,
         Ok(None) => {
-            info!(
-                "No matching repo found for {source} webhook: {repo_display_name} ({clone_url})"
-            );
+            info!("No matching repo found for {source} webhook: {repo_display_name} ({clone_url})");
             return HttpResponse::NotFound().json(ApiResponse::<()>::error(
                 404,
                 format!("No registered repo matches URL: {clone_url}"),
@@ -248,6 +230,14 @@ async fn trigger_scan_for_webhook(
                 500,
                 format!("Failed to look up repo: {e}"),
             ));
+        }
+    };
+
+    let runtime = match state.resolve_ai_for_user(repo.user_id).await {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            return HttpResponse::ServiceUnavailable()
+                .json(ApiResponse::<()>::error(503, error.to_string()));
         }
     };
 
@@ -267,33 +257,58 @@ async fn trigger_scan_for_webhook(
         }
     };
 
-    let _ = state.db.create_scan_job(scan.id).await;
-
     // Capture values before moving repo into the spawned task
     let repo_id = repo.id;
     let repo_name = repo.name.clone();
     let scan_id = scan.id;
 
-    // Run pipeline in background
-    let db = Arc::clone(&state.db);
-    let sse = Arc::clone(&state.sse);
-    let model = state.config.ai.default_model.clone();
-
-    tokio::spawn(async move {
-        let pipeline = ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone());
-        if let Err(e) = pipeline.run(&repo).await {
-            error!("Scan pipeline failed for {scan_id}: {e:#}");
-            sse.emit_error(scan_id, &format!("{e:#}"));
-            let _ = db
-                .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
+    if state.worker_enabled {
+        if let Err(e) = state.db.create_scan_job(scan.id).await {
+            let _ = state
+                .db
+                .update_scan_status(scan.id, "failed", Some(&format!("{e:#}")))
                 .await;
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to enqueue scan: {e}"),
+            ));
         }
-    });
 
-    info!(
-        "Scan {} triggered via {source} webhook for repo {} (ref: {git_ref}, commit: {commit_sha})",
-        scan_id, repo_name
-    );
+        info!(
+            "Queued scan {} via {source} webhook for repo {} (ref: {git_ref}, commit: {commit_sha}) using {} ({})",
+            scan_id,
+            repo_name,
+            runtime.provider_kind.as_str(),
+            runtime.source
+        );
+    } else {
+        // Local/dev fallback when the background worker is disabled.
+        let db = Arc::clone(&state.db);
+        let sse = Arc::clone(&state.sse);
+        let ai = Arc::clone(&runtime.provider);
+        let model = runtime.model;
+        let encryption_key = state.encryption_key;
+
+        tokio::spawn(async move {
+            let pipeline =
+                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key);
+            if let Err(e) = pipeline.run(&repo).await {
+                error!("Scan pipeline failed for {scan_id}: {e:#}");
+                sse.emit_error(scan_id, &format!("{e:#}"));
+                let _ = db
+                    .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
+                    .await;
+            }
+        });
+
+        info!(
+            "Started inline scan {} via {source} webhook for repo {} (ref: {git_ref}, commit: {commit_sha}) using {} ({})",
+            scan_id,
+            repo_name,
+            runtime.provider_kind.as_str(),
+            runtime.source
+        );
+    }
 
     HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
         "status": "scan_triggered",

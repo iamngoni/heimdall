@@ -34,6 +34,7 @@ pub struct ScanPipeline {
     pub ai: Arc<dyn ModelProvider>,
     pub default_model: String,
     pub sse: Arc<ScanBroadcaster>,
+    pub encryption_key: Option<[u8; 32]>,
 }
 
 impl ScanPipeline {
@@ -43,6 +44,7 @@ impl ScanPipeline {
         ai: Arc<dyn ModelProvider>,
         default_model: String,
         sse: Arc<ScanBroadcaster>,
+        encryption_key: Option<[u8; 32]>,
     ) -> Self {
         Self {
             scan_id,
@@ -50,6 +52,7 @@ impl ScanPipeline {
             ai,
             default_model,
             sse,
+            encryption_key,
         }
     }
 
@@ -61,48 +64,71 @@ impl ScanPipeline {
             .await?;
 
         // Stage 1: Ingest
-        let ingest_output = self.run_stage("ingest", "ingesting", "ingested", async {
-            let stage = ingest::IngestStage::new(self.scan_id, Arc::clone(&self.db));
-            stage.run(repo).await
-        }).await?;
+        let ingest_output = self
+            .run_stage("ingest", "ingesting", "ingested", async {
+                let stage = ingest::IngestStage::new(
+                    self.scan_id,
+                    Arc::clone(&self.db),
+                    self.encryption_key,
+                );
+                stage.run(repo).await
+            })
+            .await?;
 
         let code_index = Arc::new(ingest_output.code_index);
 
         // Stage 2: Tyr (Threat Model)
-        let threat_model = self.run_stage("tyr", "modeling", "modeled", async {
-            let stage = tyr::TyrStage::new(
-                self.scan_id,
-                repo.id,
-                Arc::clone(&self.db),
-                Arc::clone(&self.ai),
-            );
-            stage.run(&code_index).await
-        }).await?;
+        let threat_model = self
+            .run_stage("tyr", "modeling", "modeled", async {
+                let stage = tyr::TyrStage::new(
+                    self.scan_id,
+                    repo.id,
+                    Arc::clone(&self.db),
+                    Arc::clone(&self.ai),
+                );
+                stage.run(&code_index).await
+            })
+            .await?;
 
         // Stage 3: Static Analysis
-        let static_ctx = self.run_stage("static_analysis", "static_analysis", "static_analysis", async {
-            let stage = static_analysis::StaticAnalysisStage::new(
-                self.scan_id,
-                repo.id,
-                Arc::clone(&self.db),
-            );
-            stage.run(&code_index).await
-        }).await?;
+        let static_ctx = self
+            .run_stage(
+                "static_analysis",
+                "static_analysis",
+                "static_analysis",
+                async {
+                    let stage = static_analysis::StaticAnalysisStage::new(
+                        self.scan_id,
+                        repo.id,
+                        Arc::clone(&self.db),
+                    );
+                    stage.run(&code_index).await
+                },
+            )
+            .await?;
 
         // Stage 4: Hunt (Agentic Discovery)
-        let _hunt_findings = self.run_stage("hunt", "hunting", "hunted", async {
-            let stage = hunt::HuntStage::new(
-                self.scan_id,
-                repo.id,
-                Arc::clone(&self.db),
-                Arc::clone(&self.ai),
-                self.default_model.clone(),
-            );
-            stage.run(Arc::clone(&code_index), &threat_model, &static_ctx.summary).await
-        }).await?;
+        let _hunt_findings = self
+            .run_stage("hunt", "hunting", "hunted", async {
+                let stage = hunt::HuntStage::new(
+                    self.scan_id,
+                    repo.id,
+                    Arc::clone(&self.db),
+                    Arc::clone(&self.ai),
+                    self.default_model.clone(),
+                );
+                stage
+                    .run(Arc::clone(&code_index), &threat_model, &static_ctx.summary)
+                    .await
+            })
+            .await?;
 
         // Emit finding_added events for findings created during the hunt stage
-        if let Ok(findings) = self.db.list_findings_by_scan(self.scan_id, None, None).await {
+        if let Ok(findings) = self
+            .db
+            .list_findings_by_scan(self.scan_id, None, None)
+            .await
+        {
             for finding in &findings {
                 self.sse.emit_finding_added(
                     self.scan_id,
@@ -120,15 +146,17 @@ impl ScanPipeline {
             .await?;
 
         // Stage 5: Garmr (Sandbox Validation)
-        let _validated = self.run_stage("garmr", "validating", "validated", async {
-            let stage = garmr::GarmrStage::new(
-                self.scan_id,
-                Arc::clone(&self.db),
-                Arc::clone(&self.ai),
-                self.default_model.clone(),
-            );
-            stage.run(&findings, &ingest_output.work_dir).await
-        }).await?;
+        let _validated = self
+            .run_stage("garmr", "validating", "validated", async {
+                let stage = garmr::GarmrStage::new(
+                    self.scan_id,
+                    Arc::clone(&self.db),
+                    Arc::clone(&self.ai),
+                    self.default_model.clone(),
+                );
+                stage.run(&findings, &ingest_output.work_dir).await
+            })
+            .await?;
 
         // Stage 6: Report
         self.run_stage("report", "reporting", "completed", async {
@@ -139,7 +167,8 @@ impl ScanPipeline {
                 self.default_model.clone(),
             );
             stage.run(&findings, &code_index).await
-        }).await?;
+        })
+        .await?;
 
         // Mark scan as completed
         self.db
@@ -201,7 +230,8 @@ impl ScanPipeline {
             .await?;
 
         // Emit SSE events: stage starting + status change
-        self.sse.emit_stage_update(self.scan_id, stage_name, "running", None);
+        self.sse
+            .emit_stage_update(self.scan_id, stage_name, "running", None);
         self.sse.emit_status_change(self.scan_id, status_running);
 
         match future.await {
@@ -214,7 +244,8 @@ impl ScanPipeline {
                     .await?;
 
                 // Emit SSE events: stage completed + status change
-                self.sse.emit_stage_update(self.scan_id, stage_name, "completed", None);
+                self.sse
+                    .emit_stage_update(self.scan_id, stage_name, "completed", None);
                 self.sse.emit_status_change(self.scan_id, status_done);
 
                 info!("[{}] Stage {stage_name} completed", self.scan_id);
@@ -231,7 +262,8 @@ impl ScanPipeline {
                     .await?;
 
                 // Emit SSE events: stage failed + error
-                self.sse.emit_stage_update(self.scan_id, stage_name, "failed", Some(&err_msg));
+                self.sse
+                    .emit_stage_update(self.scan_id, stage_name, "failed", Some(&err_msg));
                 self.sse.emit_error(self.scan_id, &err_msg);
 
                 Err(e)

@@ -131,10 +131,7 @@ impl HuntAgent {
                     .as_deref()
                     .map(|f| format!(
                         "**File:** {f}{}",
-                        surface
-                            .line
-                            .map(|l| format!(":{l}"))
-                            .unwrap_or_default()
+                        surface.line.map(|l| format!(":{l}")).unwrap_or_default()
                     ))
                     .unwrap_or_default(),
             ),
@@ -219,19 +216,13 @@ impl HuntAgent {
                                     .as_str()
                                     .unwrap_or("medium")
                                     .to_string(),
-                                cwe_id: tc.arguments["cwe_id"]
-                                    .as_str()
-                                    .map(|s| s.to_string()),
+                                cwe_id: tc.arguments["cwe_id"].as_str().map(|s| s.to_string()),
                                 file_path: tc.arguments["file_path"]
                                     .as_str()
                                     .unwrap_or("")
                                     .to_string(),
-                                line_start: tc.arguments["line_start"]
-                                    .as_i64()
-                                    .unwrap_or(1) as i32,
-                                line_end: tc.arguments["line_end"]
-                                    .as_i64()
-                                    .map(|v| v as i32),
+                                line_start: tc.arguments["line_start"].as_i64().unwrap_or(1) as i32,
+                                line_end: tc.arguments["line_end"].as_i64().map(|v| v as i32),
                                 description: tc.arguments["description"]
                                     .as_str()
                                     .unwrap_or("")
@@ -292,8 +283,7 @@ impl HuntAgent {
                         } else {
                             // Execute code analysis tool
                             let start = std::time::Instant::now();
-                            let result =
-                                tools::execute_tool(&tc.name, &tc.arguments, index);
+                            let result = tools::execute_tool(&tc.name, &tc.arguments, index);
                             let tool_duration = start.elapsed();
 
                             // Log tool call
@@ -316,10 +306,7 @@ impl HuntAgent {
                             // Feed result back as user message (tool_result role)
                             self.messages.push(Message {
                                 role: "user".to_string(),
-                                content: format!(
-                                    "[Tool Result: {}]\n{}",
-                                    tc.name, result.output
-                                ),
+                                content: format!("[Tool Result: {}]\n{}", tc.name, result.output),
                             });
                         }
                     }

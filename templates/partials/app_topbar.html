@@ -1,0 +1,18 @@
+<header class="flex h-14 items-center border-b border-slate-200 bg-white px-7">
+    <div class="flex items-center gap-3 text-sm">
+        <span class="font-semibold text-slate-900">Heimdall</span>
+        <span class="text-slate-400">/</span>
+        <span class="text-slate-500">{{ breadcrumb_parent }}</span>
+        {% if breadcrumb_current %}
+        <span class="text-slate-400">/</span>
+        <span class="font-medium text-slate-900">{{ breadcrumb_current }}</span>
+        {% endif %}
+    </div>
+
+    <div class="ml-auto flex items-center gap-4">
+        <a href="/settings" class="text-sm font-medium text-slate-500 transition hover:text-slate-900">Settings</a>
+        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-xs font-semibold text-white">
+            {{ user_initial }}
+        </div>
+    </div>
+</header>

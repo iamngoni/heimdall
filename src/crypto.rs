@@ -19,8 +19,7 @@ pub fn encrypt(plaintext: &[u8], key: &[u8; 32]) -> Result<String> {
     use aes_gcm::AeadCore;
     use aes_gcm::aead::OsRng;
 
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| anyhow::anyhow!("Invalid key: {e}"))?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| anyhow::anyhow!("Invalid key: {e}"))?;
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
@@ -39,11 +38,34 @@ pub fn decrypt(encoded: &str, key: &[u8; 32]) -> Result<Vec<u8>> {
     }
     let (nonce_bytes, ciphertext) = combined.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|e| anyhow::anyhow!("Invalid key: {e}"))?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| anyhow::anyhow!("Invalid key: {e}"))?;
     cipher
         .decrypt(nonce, ciphertext)
         .map_err(|e| anyhow::anyhow!("Decryption failed: {e}"))
+}
+
+/// Decode a stored secret value.
+///
+/// Values are stored in one of three forms:
+/// - AES-256-GCM encrypted base64 when `ENCRYPTION_KEY` is configured
+/// - hex-encoded plaintext as a compatibility fallback
+/// - raw plaintext in older/local development setups
+pub fn decode_stored_secret(encoded: &str, key: Option<&[u8; 32]>) -> Result<String> {
+    if let Some(key) = key {
+        if let Ok(bytes) = decrypt(encoded, key) {
+            return String::from_utf8(bytes).context("Stored secret was not valid UTF-8");
+        }
+    }
+
+    if let Ok(bytes) = hex::decode(encoded) {
+        return String::from_utf8(bytes).context("Hex-decoded secret was not valid UTF-8");
+    }
+
+    if key.is_none() {
+        return Ok(encoded.to_string());
+    }
+
+    bail!("Stored secret could not be decrypted or decoded")
 }
 
 /// Parse a 64-char hex string into a 32-byte key.
@@ -144,5 +166,32 @@ mod tests {
         let encrypted = encrypt(&plaintext, &key).unwrap();
         let decrypted = decrypt(&encrypted, &key).unwrap();
         assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn decode_stored_secret_supports_hex_fallback() {
+        let encoded = hex::encode("secret-token");
+        assert_eq!(
+            decode_stored_secret(&encoded, None).unwrap(),
+            "secret-token"
+        );
+    }
+
+    #[test]
+    fn decode_stored_secret_supports_plaintext_without_key() {
+        assert_eq!(
+            decode_stored_secret("raw-dev-token", None).unwrap(),
+            "raw-dev-token"
+        );
+    }
+
+    #[test]
+    fn decode_stored_secret_supports_encrypted_values() {
+        let key = [0xABu8; 32];
+        let encrypted = encrypt(b"secret-token", &key).unwrap();
+        assert_eq!(
+            decode_stored_secret(&encrypted, Some(&key)).unwrap(),
+            "secret-token"
+        );
     }
 }

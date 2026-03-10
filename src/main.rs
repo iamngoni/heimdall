@@ -60,7 +60,7 @@ async fn main() -> std::io::Result<()> {
     if ai_provider.is_some() {
         info!("AI provider configured");
     } else {
-        warn!("No AI provider configured — scans will not be available until a key is set");
+        warn!("No environment AI provider configured — stored user keys will be used if available");
     }
 
     if config.security.encryption_key.is_some() {
@@ -76,48 +76,43 @@ async fn main() -> std::io::Result<()> {
 
     let db_ops = db::DatabaseOperations::new(db_pool);
     let broadcaster = sse::ScanBroadcaster::new();
+    let worker_enabled = std::env::var("WORKER_ENABLED")
+        .unwrap_or_else(|_| "true".to_string())
+        .parse::<bool>()
+        .unwrap_or(true);
     let app_state = web::Data::new(state::AppState::init(
         config.clone(),
         db_ops,
         ai_provider,
         broadcaster,
         template_engine,
+        worker_enabled,
     ));
 
     let port = config.app.port;
     let host = config.app.host.clone();
     let cors_origin = config.app.cors_allowed_origin.clone();
 
-    // Spawn background scan worker (if AI provider is configured and worker is enabled)
-    let worker_enabled = std::env::var("WORKER_ENABLED")
-        .unwrap_or_else(|_| "true".to_string())
-        .parse::<bool>()
-        .unwrap_or(true);
-
     if worker_enabled {
-        if let Some(ref ai) = app_state.get_ref().ai {
-            let poll_secs = std::env::var("WORKER_POLL_INTERVAL_SECS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(5u64);
-            let stale_mins = std::env::var("WORKER_STALE_TIMEOUT_MINS")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(10i32);
+        let poll_secs = std::env::var("WORKER_POLL_INTERVAL_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(5u64);
+        let stale_mins = std::env::var("WORKER_STALE_TIMEOUT_MINS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10i32);
 
-            let worker = Arc::new(heimdall::worker::ScanWorker::new(
-                Arc::clone(&app_state.get_ref().db),
-                Arc::clone(ai),
-                app_state.get_ref().config.ai.default_model.clone(),
-                Arc::clone(&app_state.get_ref().sse),
-                std::time::Duration::from_secs(poll_secs),
-                stale_mins,
-            ));
-            tokio::spawn(worker.run());
-            info!("Scan worker started (poll={}s, stale_timeout={}min)", poll_secs, stale_mins);
-        } else {
-            info!("Scan worker not started — no AI provider configured");
-        }
+        let worker = Arc::new(heimdall::worker::ScanWorker::new(
+            Arc::new(app_state.get_ref().clone()),
+            std::time::Duration::from_secs(poll_secs),
+            stale_mins,
+        ));
+        tokio::spawn(worker.run());
+        info!(
+            "Scan worker started (poll={}s, stale_timeout={}min)",
+            poll_secs, stale_mins
+        );
     } else {
         info!("Scan worker disabled via WORKER_ENABLED=false");
     }
@@ -159,8 +154,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .wrap(CsrfProtection)
             .wrap(actix_middleware::Logger::default())
-            .configure(routes::init)
             .service(actix_files::Files::new("/static", "static"))
+            .configure(routes::init)
     })
     .bind((host.as_str(), port))?
     .run()
