@@ -1,0 +1,25 @@
+<a href="/findings/{{ finding.id }}"
+   class="block rounded-lg border border-gray-800 bg-gray-800/50 p-4 hover:border-gray-700 hover:bg-gray-800 transition-colors"
+   hx-get="/findings/{{ finding.id }}" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
+    <div class="flex items-start justify-between">
+        <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-semibold text-gray-100 truncate">{{ finding.title }}</h3>
+            <p class="mt-1 text-xs text-gray-400 font-mono truncate">{{ finding.file_path }}:{{ finding.line_start }}</p>
+        </div>
+        <div class="ml-4 flex flex-shrink-0 items-center space-x-2">
+            {% with severity=finding.severity %}
+                {% include "partials/severity_badge.html" %}
+            {% endwith %}
+        </div>
+    </div>
+    <div class="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+        {% if finding.cwe_id %}
+        <span>{{ finding.cwe_id }}</span>
+        {% endif %}
+        {% if finding.cve_id %}
+        <span>{{ finding.cve_id }}</span>
+        {% endif %}
+        <span class="capitalize">{{ finding.confidence }} confidence</span>
+        <span class="capitalize">{{ finding.status }}</span>
+    </div>
+</a>

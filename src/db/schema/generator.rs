@@ -2,7 +2,7 @@
 //  heimdall
 //  src/db/schema/generator.rs
 //
-//  Created by Heimdall on 2026/03/09.
+//  Created by Ngonidzashe Mangudya on 2026/03/09.
 //  Copyright (c) 2026 Codecraft Solutions ZA. All rights reserved.
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
@@ -31,7 +31,7 @@ pub trait MigrationGenerator {
 pub struct PostgresGenerator;
 
 impl PostgresGenerator {
-    fn col_type(&self, ct: &ColumnType) -> &'static str {
+    pub fn col_type(&self, ct: &ColumnType) -> &'static str {
         match ct {
             ColumnType::Uuid => "UUID",
             ColumnType::Text => "TEXT",
@@ -42,7 +42,7 @@ impl PostgresGenerator {
         }
     }
 
-    fn default_value(&self, dv: &DefaultValue) -> String {
+    pub fn default_value(&self, dv: &DefaultValue) -> String {
         match dv {
             DefaultValue::UuidGenerate => "gen_random_uuid()".to_string(),
             DefaultValue::Now => "now()".to_string(),
@@ -60,7 +60,7 @@ impl PostgresGenerator {
         }
     }
 
-    fn generate_column(&self, col: &ColumnDef) -> String {
+    pub fn generate_column(&self, col: &ColumnDef) -> String {
         let mut parts = Vec::new();
         parts.push(col.name.clone());
         parts.push(self.col_type(&col.col_type).to_string());
@@ -93,7 +93,7 @@ impl PostgresGenerator {
         parts.join(" ")
     }
 
-    fn generate_table(&self, table: &TableDef) -> String {
+    pub fn generate_table(&self, table: &TableDef) -> String {
         let mut lines: Vec<String> = table
             .columns
             .iter()
@@ -111,15 +111,18 @@ impl PostgresGenerator {
         )
     }
 
-    fn generate_index(&self, idx: &StandaloneIndex) -> String {
+    pub fn generate_index(&self, idx: &StandaloneIndex) -> String {
         let unique = if idx.unique { "UNIQUE " } else { "" };
         format!(
             "CREATE {}INDEX IF NOT EXISTS {} ON {}({});",
-            unique, idx.name, idx.table, idx.columns.join(", ")
+            unique,
+            idx.name,
+            idx.table,
+            idx.columns.join(", ")
         )
     }
 
-    fn generate_trigger_function(&self) -> String {
+    pub fn generate_trigger_function(&self) -> String {
         "CREATE OR REPLACE FUNCTION update_updated_at_column()\n\
          RETURNS TRIGGER AS $$\n\
          BEGIN\n\
@@ -130,7 +133,7 @@ impl PostgresGenerator {
             .to_string()
     }
 
-    fn generate_trigger(&self, table_name: &str) -> String {
+    pub fn generate_trigger(&self, table_name: &str) -> String {
         format!(
             "CREATE TRIGGER update_{table_name}_updated_at BEFORE UPDATE ON {table_name} FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();"
         )
@@ -174,11 +177,8 @@ impl MigrationGenerator for PostgresGenerator {
         }
 
         // Trigger function + triggers for tables with updated_at
-        let tables_with_updated_at: Vec<&TableDef> = schema
-            .tables
-            .iter()
-            .filter(|t| t.has_updated_at)
-            .collect();
+        let tables_with_updated_at: Vec<&TableDef> =
+            schema.tables.iter().filter(|t| t.has_updated_at).collect();
 
         if !tables_with_updated_at.is_empty() {
             out.push("-- Auto-update updated_at triggers".to_string());
@@ -201,7 +201,7 @@ impl MigrationGenerator for PostgresGenerator {
 pub struct SqliteGenerator;
 
 impl SqliteGenerator {
-    fn col_type(&self, ct: &ColumnType) -> &'static str {
+    pub fn col_type(&self, ct: &ColumnType) -> &'static str {
         match ct {
             ColumnType::Uuid => "TEXT",
             ColumnType::Text => "TEXT",
@@ -231,7 +231,7 @@ impl SqliteGenerator {
         }
     }
 
-    fn generate_column(&self, col: &ColumnDef) -> String {
+    pub fn generate_column(&self, col: &ColumnDef) -> String {
         let mut parts = Vec::new();
         parts.push(col.name.clone());
         parts.push(self.col_type(&col.col_type).to_string());
@@ -266,7 +266,7 @@ impl SqliteGenerator {
         parts.join(" ")
     }
 
-    fn generate_table(&self, table: &TableDef) -> String {
+    pub fn generate_table(&self, table: &TableDef) -> String {
         let mut lines: Vec<String> = table
             .columns
             .iter()
@@ -284,11 +284,14 @@ impl SqliteGenerator {
         )
     }
 
-    fn generate_index(&self, idx: &StandaloneIndex) -> String {
+    pub fn generate_index(&self, idx: &StandaloneIndex) -> String {
         let unique = if idx.unique { "UNIQUE " } else { "" };
         format!(
             "CREATE {}INDEX IF NOT EXISTS {} ON {}({});",
-            unique, idx.name, idx.table, idx.columns.join(", ")
+            unique,
+            idx.name,
+            idx.table,
+            idx.columns.join(", ")
         )
     }
 }
@@ -336,7 +339,7 @@ impl MigrationGenerator for SqliteGenerator {
 pub struct MysqlGenerator;
 
 impl MysqlGenerator {
-    fn col_type(&self, ct: &ColumnType) -> &'static str {
+    pub fn col_type(&self, ct: &ColumnType) -> &'static str {
         match ct {
             ColumnType::Uuid => "CHAR(36)",
             ColumnType::Text => "TEXT",
@@ -347,7 +350,7 @@ impl MysqlGenerator {
         }
     }
 
-    fn default_value(&self, dv: &DefaultValue) -> Option<String> {
+    pub fn default_value(&self, dv: &DefaultValue) -> Option<String> {
         match dv {
             // MySQL 8+ supports UUID() but not as a column default — app layer handles it
             DefaultValue::UuidGenerate => None,
@@ -366,7 +369,7 @@ impl MysqlGenerator {
         }
     }
 
-    fn generate_column(&self, col: &ColumnDef) -> String {
+    pub fn generate_column(&self, col: &ColumnDef) -> String {
         let mut parts = Vec::new();
         parts.push(format!("`{}`", col.name));
         parts.push(self.col_type(&col.col_type).to_string());
@@ -388,7 +391,7 @@ impl MysqlGenerator {
         parts.join(" ")
     }
 
-    fn generate_table(&self, table: &TableDef) -> String {
+    pub fn generate_table(&self, table: &TableDef) -> String {
         let mut lines: Vec<String> = table
             .columns
             .iter()
@@ -415,7 +418,12 @@ impl MysqlGenerator {
 
         // Unique constraints
         for uc in &table.unique_constraints {
-            let cols = uc.columns.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+            let cols = uc
+                .columns
+                .iter()
+                .map(|c| format!("`{c}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
             lines.push(format!("    UNIQUE ({cols})"));
         }
 
@@ -426,16 +434,21 @@ impl MysqlGenerator {
         )
     }
 
-    fn generate_index(&self, idx: &StandaloneIndex) -> String {
+    pub fn generate_index(&self, idx: &StandaloneIndex) -> String {
         let unique = if idx.unique { "UNIQUE " } else { "" };
-        let cols = idx.columns.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+        let cols = idx
+            .columns
+            .iter()
+            .map(|c| format!("`{c}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
         format!(
             "CREATE {unique}INDEX `{}` ON `{}`({cols});",
             idx.name, idx.table
         )
     }
 
-    fn generate_trigger(&self, table_name: &str) -> String {
+    pub fn generate_trigger(&self, table_name: &str) -> String {
         format!(
             "CREATE TRIGGER `update_{table_name}_updated_at` BEFORE UPDATE ON `{table_name}`\n\
              FOR EACH ROW SET NEW.`updated_at` = CURRENT_TIMESTAMP;"
@@ -475,11 +488,8 @@ impl MigrationGenerator for MysqlGenerator {
         }
 
         // Triggers for updated_at
-        let tables_with_updated_at: Vec<&TableDef> = schema
-            .tables
-            .iter()
-            .filter(|t| t.has_updated_at)
-            .collect();
+        let tables_with_updated_at: Vec<&TableDef> =
+            schema.tables.iter().filter(|t| t.has_updated_at).collect();
 
         if !tables_with_updated_at.is_empty() {
             out.push("-- Auto-update updated_at triggers".to_string());
@@ -503,7 +513,7 @@ impl MigrationGenerator for MysqlGenerator {
 pub struct MongoGenerator;
 
 impl MongoGenerator {
-    fn bson_type(&self, ct: &ColumnType) -> &'static str {
+    pub fn bson_type(&self, ct: &ColumnType) -> &'static str {
         match ct {
             ColumnType::Uuid => "string",
             ColumnType::Text => "string",
@@ -514,7 +524,7 @@ impl MongoGenerator {
         }
     }
 
-    fn generate_collection(&self, table: &TableDef) -> String {
+    pub fn generate_collection(&self, table: &TableDef) -> String {
         let mut out = Vec::new();
 
         // Build JSON Schema properties
@@ -568,7 +578,7 @@ impl MongoGenerator {
         out.join("\n")
     }
 
-    fn generate_index(&self, collection: &str, idx: &StandaloneIndex) -> String {
+    pub fn generate_index(&self, collection: &str, idx: &StandaloneIndex) -> String {
         let fields: Vec<String> = idx.columns.iter().map(|c| format!("{c}: 1")).collect();
         let unique = if idx.unique { ", { unique: true }" } else { "" };
         format!(
@@ -577,7 +587,7 @@ impl MongoGenerator {
         )
     }
 
-    fn generate_unique_index(&self, collection: &str, columns: &[String]) -> String {
+    pub fn generate_unique_index(&self, collection: &str, columns: &[String]) -> String {
         let fields: Vec<String> = columns.iter().map(|c| format!("{c}: 1")).collect();
         format!(
             "db.{collection}.createIndex({{ {} }}, {{ unique: true }});",
@@ -740,8 +750,12 @@ mod tests {
             .build();
 
         let sql = PostgresGenerator.generate(&schema);
-        assert!(sql.contains("CREATE INDEX IF NOT EXISTS idx_findings_fingerprint ON findings(fingerprint)"));
-        assert!(sql.contains("CREATE INDEX IF NOT EXISTS idx_findings_scan_severity ON findings(scan_id, severity)"));
+        assert!(sql.contains(
+            "CREATE INDEX IF NOT EXISTS idx_findings_fingerprint ON findings(fingerprint)"
+        ));
+        assert!(sql.contains(
+            "CREATE INDEX IF NOT EXISTS idx_findings_scan_severity ON findings(scan_id, severity)"
+        ));
     }
 
     #[test]
@@ -785,7 +799,9 @@ mod tests {
 
         let sql = MysqlGenerator.generate(&schema);
         assert!(sql.contains("FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE"));
-        assert!(sql.contains("FOREIGN KEY (`org_id`) REFERENCES `organizations`(`id`) ON DELETE SET NULL"));
+        assert!(sql.contains(
+            "FOREIGN KEY (`org_id`) REFERENCES `organizations`(`id`) ON DELETE SET NULL"
+        ));
     }
 
     #[test]
@@ -853,6 +869,8 @@ mod tests {
             .build();
 
         let js = MongoGenerator.generate(&schema);
-        assert!(js.contains("db.org_members.createIndex({ org_id: 1, user_id: 1 }, { unique: true })"));
+        assert!(
+            js.contains("db.org_members.createIndex({ org_id: 1, user_id: 1 }, { unique: true })")
+        );
     }
 }

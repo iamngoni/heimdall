@@ -2,7 +2,7 @@
 //  heimdall
 //  src/db/schema/builder.rs
 //
-//  Created by Heimdall on 2026/03/09.
+//  Created by Ngonidzashe Mangudya on 2026/03/09.
 //  Copyright (c) 2026 Codecraft Solutions ZA. All rights reserved.
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
@@ -359,7 +359,10 @@ mod tests {
             .build();
 
         assert_eq!(schema.standalone_indexes.len(), 1);
-        assert_eq!(schema.standalone_indexes[0].name, "idx_findings_fingerprint");
+        assert_eq!(
+            schema.standalone_indexes[0].name,
+            "idx_findings_fingerprint"
+        );
         assert_eq!(schema.standalone_indexes[0].table, "findings");
     }
 }

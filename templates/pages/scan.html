@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Scan {{ scan.id|truncate(length=8, end="") }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumb -->
+    <nav class="flex text-sm text-gray-400">
+        <a href="/repos" class="hover:text-gray-200 transition-colors"
+           hx-get="/repos" hx-target="main" hx-swap="innerHTML" hx-push-url="true">Repos</a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-200">Scan {{ scan.id|truncate(length=8, end="") }}</span>
+    </nav>
+
+    <!-- Scan Header -->
+    <div class="flex items-start justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Scan Details</h1>
+            <div class="mt-2 flex items-center space-x-4 text-sm text-gray-400">
+                <span class="font-mono text-xs">{{ scan.id }}</span>
+                <span class="capitalize">{{ scan.scan_type }}</span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            {% with status=scan.status %}
+                {% include "partials/scan_status.html" %}
+            {% endwith %}
+        </div>
+    </div>
+
+    <!-- SSE Live Updates (shown when scan is in progress) -->
+    {% if scan.status != "completed" and scan.status != "failed" and scan.status != "cancelled" %}
+    <div hx-ext="sse" sse-connect="/api/scans/{{ scan.id }}/progress/stream" sse-swap="message"
+         class="rounded-lg border border-blue-800/50 bg-blue-900/20 p-4">
+        <div class="flex items-center space-x-2">
+            <div class="h-2 w-2 animate-pulse rounded-full bg-blue-400"></div>
+            <p class="text-sm text-blue-300">Scan in progress — live updates enabled</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Stage Progress -->
+    <div class="rounded-lg border border-gray-800 bg-gray-800/50 p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Pipeline Stages</h2>
+        <div class="space-y-3">
+            {% for stage in stages %}
+            <div class="flex items-center justify-between rounded-md bg-gray-900/50 px-4 py-3">
+                <div class="flex items-center space-x-3">
+                    {% if stage.status == "completed" %}
+                    <svg class="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {% elif stage.status == "running" %}
+                    <svg class="h-5 w-5 animate-spin text-blue-400" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {% elif stage.status == "failed" %}
+                    <svg class="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {% else %}
+                    <div class="h-5 w-5 rounded-full border-2 border-gray-600"></div>
+                    {% endif %}
+                    <span class="text-sm font-medium text-gray-200 capitalize">{{ stage.stage }}</span>
+                </div>
+                <div>
+                    {% with status=stage.status %}
+                        {% include "partials/scan_status.html" %}
+                    {% endwith %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Findings Summary -->
+    <div class="rounded-lg border border-gray-800 bg-gray-800/50 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-white">Findings Summary</h2>
+            {% if scan.finding_count > 0 %}
+            <a href="/scans/{{ scan.id }}/findings"
+               class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+               hx-get="/scans/{{ scan.id }}/findings" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
+                View all findings &rarr;
+            </a>
+            {% endif %}
+        </div>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div class="rounded-md bg-red-900/20 border border-red-800/30 p-4 text-center">
+                <p class="text-2xl font-bold text-red-400">{{ scan.critical_count }}</p>
+                <p class="text-xs text-red-400/70 mt-1">Critical</p>
+            </div>
+            <div class="rounded-md bg-orange-900/20 border border-orange-800/30 p-4 text-center">
+                <p class="text-2xl font-bold text-orange-400">{{ scan.high_count }}</p>
+                <p class="text-xs text-orange-400/70 mt-1">High</p>
+            </div>
+            <div class="rounded-md bg-yellow-900/20 border border-yellow-800/30 p-4 text-center">
+                <p class="text-2xl font-bold text-yellow-400">{{ scan.medium_count }}</p>
+                <p class="text-xs text-yellow-400/70 mt-1">Medium</p>
+            </div>
+            <div class="rounded-md bg-blue-900/20 border border-blue-800/30 p-4 text-center">
+                <p class="text-2xl font-bold text-blue-400">{{ scan.low_count }}</p>
+                <p class="text-xs text-blue-400/70 mt-1">Low</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center space-x-4">
+        <a href="/scans/{{ scan.id }}/threat-model"
+           class="rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 transition-colors"
+           hx-get="/scans/{{ scan.id }}/threat-model" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
+            View Threat Model
+        </a>
+        <a href="/scans/{{ scan.id }}/findings"
+           class="rounded-md border border-gray-700 px-4 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 transition-colors"
+           hx-get="/scans/{{ scan.id }}/findings" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
+            View Findings
+        </a>
+    </div>
+</div>
+{% endblock %}

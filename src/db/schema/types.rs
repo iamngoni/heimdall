@@ -2,13 +2,15 @@
 //  heimdall
 //  src/db/schema/types.rs
 //
-//  Created by Heimdall on 2026/03/09.
+//  Created by Ngonidzashe Mangudya on 2026/03/09.
 //  Copyright (c) 2026 Codecraft Solutions ZA. All rights reserved.
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
+use serde::{Deserialize, Serialize};
+
 /// Driver-agnostic column types
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ColumnType {
     Uuid,
     Text,
@@ -19,7 +21,7 @@ pub enum ColumnType {
 }
 
 /// Foreign key ON DELETE behavior
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OnDelete {
     Cascade,
     SetNull,
@@ -27,7 +29,7 @@ pub enum OnDelete {
 }
 
 /// Driver-agnostic default values
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DefaultValue {
     /// PG: gen_random_uuid(), SQLite: app-layer UUID generation
     UuidGenerate,
@@ -42,7 +44,7 @@ pub enum DefaultValue {
 }
 
 /// Foreign key reference
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForeignKey {
     pub table: String,
     pub column: String,
@@ -50,7 +52,7 @@ pub struct ForeignKey {
 }
 
 /// A single column definition
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ColumnDef {
     pub name: String,
     pub col_type: ColumnType,
@@ -76,7 +78,7 @@ impl ColumnDef {
 }
 
 /// An index on a table
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexDef {
     pub name: Option<String>,
     pub columns: Vec<String>,
@@ -84,13 +86,13 @@ pub struct IndexDef {
 }
 
 /// Composite unique constraint: UNIQUE(col_a, col_b)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UniqueConstraint {
     pub columns: Vec<String>,
 }
 
 /// A full table definition
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableDef {
     pub name: String,
     pub columns: Vec<ColumnDef>,
@@ -100,7 +102,7 @@ pub struct TableDef {
 }
 
 /// Standalone index (not inline in a table definition)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StandaloneIndex {
     pub name: String,
     pub table: String,
@@ -109,7 +111,7 @@ pub struct StandaloneIndex {
 }
 
 /// The complete schema definition
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SchemaDef {
     pub tables: Vec<TableDef>,
     pub standalone_indexes: Vec<StandaloneIndex>,

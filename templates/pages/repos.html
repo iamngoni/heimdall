@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Repositories{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-white">Repositories</h1>
+            <p class="mt-1 text-sm text-gray-400">Manage your connected code repositories</p>
+        </div>
+    </div>
+
+    <!-- Import from connected providers -->
+    <div class="rounded-lg border border-gray-800 bg-gray-800/50 p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Import Repository</h2>
+
+        {% if has_github or has_gitlab %}
+        <div class="flex flex-wrap gap-3 mb-6">
+            {% if has_github %}
+            <button id="btn-github-import"
+                    hx-get="/api/repos/github/list"
+                    hx-target="#import-results"
+                    hx-swap="innerHTML"
+                    hx-indicator="#import-spinner"
+                    class="inline-flex items-center gap-2 rounded-md bg-gray-900 border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 hover:border-gray-600 transition-colors">
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                Import from GitHub
+            </button>
+            {% endif %}
+            {% if has_gitlab %}
+            <button id="btn-gitlab-import"
+                    hx-get="/api/repos/gitlab/list"
+                    hx-target="#import-results"
+                    hx-swap="innerHTML"
+                    hx-indicator="#import-spinner"
+                    class="inline-flex items-center gap-2 rounded-md bg-gray-900 border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 hover:border-gray-600 transition-colors">
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/></svg>
+                Import from GitLab
+            </button>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="mb-6 rounded-md bg-gray-900/50 border border-gray-700 p-4">
+            <p class="text-sm text-gray-400">
+                Connect your GitHub or GitLab account in
+                <a href="/settings" class="text-indigo-400 hover:text-indigo-300 underline">Settings</a>
+                to import repositories directly.
+            </p>
+        </div>
+        {% endif %}
+
+        <!-- Loading spinner -->
+        <div id="import-spinner" class="htmx-indicator flex justify-center py-8">
+            <svg class="animate-spin h-6 w-6 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+        </div>
+
+        <!-- Import results (populated by HTMX) -->
+        <div id="import-results"></div>
+
+        <!-- Manual add (collapsed by default) -->
+        <details class="mt-4 group">
+            <summary class="cursor-pointer text-sm text-gray-500 hover:text-gray-300 transition-colors">
+                Or add a public Git URL manually...
+            </summary>
+            <form hx-post="/api/repos" hx-ext="json-enc" hx-target="#repo-list" hx-swap="afterbegin" hx-on::after-request="this.reset()" class="mt-4">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-300">Name</label>
+                        <input type="text" name="name" id="name" required
+                               class="mt-1 block w-full rounded-md border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder-gray-500"
+                               placeholder="my-project">
+                    </div>
+                    <div>
+                        <label for="remote_url" class="block text-sm font-medium text-gray-300">Git URL</label>
+                        <input type="url" name="remote_url" id="remote_url" required
+                               class="mt-1 block w-full rounded-md border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder-gray-500"
+                               placeholder="https://github.com/user/repo.git">
+                        <input type="hidden" name="source_type" value="git_url">
+                    </div>
+                    <div class="flex items-end">
+                        <button type="submit"
+                                class="w-full rounded-md bg-gray-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-600 transition-colors">
+                            Add
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </details>
+    </div>
+
+    <!-- Repo List -->
+    <div id="repo-list" class="space-y-3">
+        {% if repos|length > 0 %}
+        {% for repo in repos %}
+        <a href="/repos/{{ repo.id }}"
+           class="block rounded-lg border border-gray-800 bg-gray-800/50 p-5 hover:border-gray-700 hover:bg-gray-800 transition-colors">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="flex-shrink-0">
+                        {% if repo.source_type == "github" %}
+                        <svg class="h-7 w-7 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                        {% elif repo.source_type == "gitlab" %}
+                        <svg class="h-7 w-7 text-gray-400" fill="currentColor" viewBox="0 0 24 24"><path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 01-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 014.82 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0118.6 2a.43.43 0 01.58 0 .42.42 0 01.11.18l2.44 7.51L23 13.45a.84.84 0 01-.35.94z"/></svg>
+                        {% else %}
+                        <svg class="h-7 w-7 text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                        </svg>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-100">{{ repo.name }}</h3>
+                        <p class="text-xs text-gray-400 mt-0.5">
+                            {{ repo.source_type }}
+                            {% if repo.remote_url %} &middot; <span class="text-gray-500">{{ repo.remote_url }}</span>{% endif %}
+                        </p>
+                    </div>
+                </div>
+                <div class="text-right text-xs text-gray-500">
+                    <p>{{ repo.created_at }}</p>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+        {% else %}
+        <div class="rounded-lg border border-gray-800 bg-gray-800/30 p-12 text-center">
+            <svg class="mx-auto h-12 w-12 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+            </svg>
+            <h3 class="mt-4 text-sm font-semibold text-gray-300">No repositories yet</h3>
+            <p class="mt-2 text-sm text-gray-500">Import a repository from GitHub or GitLab above.</p>
+        </div>
+        {% endif %}
+
+        {% include "partials/pagination.html" %}
+    </div>
+</div>
+
+<script>
+// Handle import results — the API returns JSON, we render repo cards client-side
+document.body.addEventListener('htmx:beforeOnLoad', function(evt) {
+    if (!evt.detail.target || evt.detail.target.id !== 'import-results') return;
+
+    const xhr = evt.detail.xhr;
+    const contentType = xhr.getResponseHeader('Content-Type') || '';
+    if (!contentType.includes('application/json')) return;
+
+    evt.preventDefault();
+
+    try {
+        const json = JSON.parse(xhr.responseText);
+        if (!json.success || !json.data) {
+            evt.detail.target.innerHTML = '<p class="text-sm text-red-400 py-4">' + (json.error || 'Failed to load repositories') + '</p>';
+            return;
+        }
+
+        const repos = json.data;
+        if (repos.length === 0) {
+            evt.detail.target.innerHTML = '<p class="text-sm text-gray-400 py-4">No repositories found.</p>';
+            return;
+        }
+
+        const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+
+        let html = '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">';
+        repos.forEach(function(repo) {
+            const lockIcon = repo.private
+                ? '<svg class="h-3.5 w-3.5 text-yellow-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>'
+                : '';
+            html += '<div class="rounded-md border border-gray-700 bg-gray-900 p-3 flex flex-col justify-between">'
+                + '<div>'
+                + '<div class="flex items-center gap-1.5">'
+                + '<p class="text-sm font-medium text-gray-100 truncate">' + repo.full_name + '</p>'
+                + lockIcon
+                + '</div>'
+                + '<p class="text-xs text-gray-500 mt-1 truncate">' + (repo.description || 'No description') + '</p>'
+                + '<p class="text-xs text-gray-600 mt-0.5">' + repo.default_branch + '</p>'
+                + '</div>'
+                + '<button onclick="importRepo(this, \'' + repo.full_name.replace(/'/g, "\\'") + '\', \'' + repo.clone_url.replace(/'/g, "\\'") + '\')"'
+                + ' class="mt-3 w-full rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 transition-colors">'
+                + 'Import</button>'
+                + '</div>';
+        });
+        html += '</div>';
+        evt.detail.target.innerHTML = html;
+    } catch(e) {
+        evt.detail.target.innerHTML = '<p class="text-sm text-red-400 py-4">Failed to parse response.</p>';
+    }
+});
+
+function importRepo(btn, fullName, cloneUrl) {
+    btn.disabled = true;
+    btn.textContent = 'Importing...';
+    btn.classList.add('opacity-50');
+
+    const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+    const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+
+    // Detect provider from clone_url
+    const provider = cloneUrl.includes('gitlab') ? 'gitlab' : 'github';
+
+    fetch('/api/repos/import', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify({
+            provider: provider,
+            full_name: fullName,
+            clone_url: cloneUrl,
+            name: fullName,
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.data) {
+            btn.textContent = 'Imported';
+            btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
+            btn.classList.add('bg-green-700', 'cursor-default');
+            // Redirect to the repo page after a brief moment
+            setTimeout(() => { window.location.href = '/repos/' + data.data.id; }, 600);
+        } else {
+            btn.textContent = 'Failed';
+            btn.classList.remove('bg-indigo-600', 'opacity-50');
+            btn.classList.add('bg-red-700');
+            btn.disabled = false;
+            setTimeout(() => {
+                btn.textContent = 'Import';
+                btn.classList.remove('bg-red-700');
+                btn.classList.add('bg-indigo-600');
+            }, 2000);
+        }
+    })
+    .catch(() => {
+        btn.textContent = 'Error';
+        btn.disabled = false;
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,26 @@
+# Local development services for Heimdall
+# Usage: docker compose -f docker-compose.dev.yml up -d
+#
+# This starts only the backing services (Postgres) needed for local dev.
+# Run the Heimdall app itself via `cargo run` on the host.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: heimdall-dev-postgres
+    environment:
+      POSTGRES_USER: heimdall
+      POSTGRES_PASSWORD: heimdall
+      POSTGRES_DB: heimdall
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heimdall"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

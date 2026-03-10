@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Heimdall{% endblock %} — The All-Seeing Guardian</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script src="https://unpkg.com/htmx-ext-json-enc@2.0.3/json-enc.js"></script>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="h-full bg-gray-900 text-gray-100 antialiased" hx-boost="true">
+    <script>
+    document.body.addEventListener('htmx:configRequest', function(evt) {
+        const csrf = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        if (csrf) {
+            evt.detail.headers['X-CSRF-Token'] = csrf.split('=')[1];
+        }
+    });
+    </script>
+    {% block body %}
+    <div class="min-h-full">
+        {% include "partials/nav.html" %}
+
+        <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer class="border-t border-gray-800 mt-16">
+            <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+                <p class="text-center text-sm text-gray-500">
+                    Heimdall &mdash; Agentic Code Security Scanner &middot;
+                    <span class="text-gray-600">&copy; 2026 Codecraft Solutions ZA</span>
+                </p>
+            </div>
+        </footer>
+    </div>
+    {% endblock %}
+</body>
+</html>

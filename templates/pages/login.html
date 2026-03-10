@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In{% endblock %}
+
+{% block body %}
+<div class="flex min-h-full items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+    <div class="w-full max-w-sm space-y-8">
+        <!-- Logo -->
+        <div class="text-center">
+            <svg class="mx-auto h-12 w-12 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <h2 class="mt-4 text-2xl font-bold text-white">Sign in to Heimdall</h2>
+            <p class="mt-2 text-sm text-gray-400">The All-Seeing Guardian</p>
+        </div>
+
+        <!-- OAuth buttons -->
+        <div class="flex flex-col space-y-3">
+            <a href="/api/auth/github/authorize" hx-boost="false" class="w-full rounded-md border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 transition-colors text-center">
+                Sign in with GitHub
+            </a>
+            <a href="/api/auth/gitlab/authorize" hx-boost="false" class="w-full rounded-md border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 transition-colors text-center">
+                Sign in with GitLab
+            </a>
+        </div>
+        <div class="relative my-4"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="bg-gray-900 px-2 text-gray-500">or</span></div></div>
+
+        <!-- Error display -->
+        <div id="login-error" class="hidden rounded-md bg-red-900/30 border border-red-800/50 p-3">
+            <p class="text-sm text-red-400" id="login-error-text"></p>
+        </div>
+
+        <!-- Login Form -->
+        <form id="login-form" class="space-y-6">
+            <div>
+                <label for="email" class="block text-sm font-medium text-gray-300">Email address</label>
+                <input type="email" name="email" id="email" required autocomplete="email"
+                       class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder-gray-500"
+                       placeholder="you@example.com">
+            </div>
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-300">Password</label>
+                <input type="password" name="password" id="password" required autocomplete="current-password"
+                       class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder-gray-500"
+                       placeholder="Enter your password">
+            </div>
+            <div>
+                <button type="submit" id="login-btn"
+                        class="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 transition-colors">
+                    Sign In
+                </button>
+            </div>
+        </form>
+
+        <p class="text-center text-sm text-gray-400">
+            Don't have an account?
+            <a href="/register" class="font-medium text-indigo-400 hover:text-indigo-300 transition-colors">Register</a>
+        </p>
+    </div>
+</div>
+
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('login-error');
+    const errorText = document.getElementById('login-error-text');
+    const btn = document.getElementById('login-btn');
+    errorEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try {
+        const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify({
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+            }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            window.location.href = '/';
+        } else {
+            errorText.textContent = data.error || 'Login failed';
+            errorEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errorText.textContent = 'Network error. Please try again.';
+        errorEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+    }
+});
+</script>
+{% endblock %}

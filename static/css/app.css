@@ -1,0 +1,67 @@
+/* Heimdall — Custom Styles */
+
+/* Smooth transitions for HTMX swaps */
+.htmx-swapping {
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+}
+
+.htmx-settling {
+    opacity: 1;
+    transition: opacity 150ms ease-in;
+}
+
+/* Loading indicator */
+.htmx-request .htmx-indicator {
+    display: inline-block;
+}
+
+.htmx-indicator {
+    display: none;
+}
+
+/* Custom scrollbar for dark theme */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1a2e;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4b5563;
+}
+
+/* Code block styling */
+pre code {
+    tab-size: 4;
+    white-space: pre;
+}
+
+/* Pulse animation for running status */
+@keyframes heimdall-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.animate-heimdall-pulse {
+    animation: heimdall-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Form input focus states */
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+}
+
+/* Table row hover */
+tbody tr {
+    transition: background-color 150ms ease;
+}

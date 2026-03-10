@@ -2,19 +2,25 @@
 //  heimdall
 //  src/main.rs
 //
-//  Created by Heimdall on 2026/03/09.
+//  Created by Ngonidzashe Mangudya on 2026/03/09.
 //  Copyright (c) 2026 Codecraft Solutions ZA. All rights reserved.
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
-use actix_web::{web, App, HttpServer, middleware as actix_middleware};
-use log::info;
+use actix_cors::Cors;
+use actix_web::{App, HttpServer, middleware as actix_middleware, web};
+use log::{info, warn};
 use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
 
+use heimdall::ai;
 use heimdall::config;
 use heimdall::db;
+use heimdall::middleware::csrf::CsrfProtection;
 use heimdall::routes;
+use heimdall::sse;
 use heimdall::state;
+use heimdall::templates;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -41,31 +47,120 @@ async fn main() -> std::io::Result<()> {
 
     info!("Database connected");
 
-    sqlx::migrate!("./migrations/postgres")
+    sqlx::migrate!("./migrations/active")
         .run(&db_pool)
         .await
         .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Migration failed: {e}"),
-            )
+            std::io::Error::new(std::io::ErrorKind::Other, format!("Migration failed: {e}"))
         })?;
 
     info!("Migrations applied");
 
+    let ai_provider = ai::build_provider(&config.ai);
+    if ai_provider.is_some() {
+        info!("AI provider configured");
+    } else {
+        warn!("No AI provider configured — scans will not be available until a key is set");
+    }
+
+    if config.security.encryption_key.is_some() {
+        info!("ENCRYPTION_KEY configured — API keys will be encrypted with AES-256-GCM");
+    } else {
+        warn!(
+            "ENCRYPTION_KEY not set — API keys will be stored with hex encoding only. \
+             Set ENCRYPTION_KEY (64 hex chars) for production use."
+        );
+    }
+
+    let template_engine = templates::init_templates("templates");
+
     let db_ops = db::DatabaseOperations::new(db_pool);
-    let app_state = web::Data::new(state::AppState::init(config.clone(), db_ops));
+    let broadcaster = sse::ScanBroadcaster::new();
+    let app_state = web::Data::new(state::AppState::init(
+        config.clone(),
+        db_ops,
+        ai_provider,
+        broadcaster,
+        template_engine,
+    ));
 
     let port = config.app.port;
     let host = config.app.host.clone();
+    let cors_origin = config.app.cors_allowed_origin.clone();
+
+    // Spawn background scan worker (if AI provider is configured and worker is enabled)
+    let worker_enabled = std::env::var("WORKER_ENABLED")
+        .unwrap_or_else(|_| "true".to_string())
+        .parse::<bool>()
+        .unwrap_or(true);
+
+    if worker_enabled {
+        if let Some(ref ai) = app_state.get_ref().ai {
+            let poll_secs = std::env::var("WORKER_POLL_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5u64);
+            let stale_mins = std::env::var("WORKER_STALE_TIMEOUT_MINS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10i32);
+
+            let worker = Arc::new(heimdall::worker::ScanWorker::new(
+                Arc::clone(&app_state.get_ref().db),
+                Arc::clone(ai),
+                app_state.get_ref().config.ai.default_model.clone(),
+                Arc::clone(&app_state.get_ref().sse),
+                std::time::Duration::from_secs(poll_secs),
+                stale_mins,
+            ));
+            tokio::spawn(worker.run());
+            info!("Scan worker started (poll={}s, stale_timeout={}min)", poll_secs, stale_mins);
+        } else {
+            info!("Scan worker not started — no AI provider configured");
+        }
+    } else {
+        info!("Scan worker disabled via WORKER_ENABLED=false");
+    }
+
+    // Spawn background session cleanup task
+    let cleanup_db = Arc::clone(&app_state.get_ref().db);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+        loop {
+            interval.tick().await;
+            match cleanup_db.delete_expired_sessions().await {
+                Ok(count) => {
+                    if count > 0 {
+                        info!("Cleaned up {count} expired sessions");
+                    }
+                }
+                Err(e) => warn!("Session cleanup failed: {e:#}"),
+            }
+        }
+    });
 
     info!("Starting HTTP server on {}:{}", host, port);
 
     HttpServer::new(move || {
+        let cors = Cors::default()
+            .allowed_origin(&cors_origin)
+            .allowed_methods(vec!["GET", "POST", "PATCH", "DELETE"])
+            .allowed_headers(vec![
+                "Content-Type",
+                "Authorization",
+                "HX-Request",
+                "X-CSRF-Token",
+            ])
+            .supports_credentials()
+            .max_age(3600);
+
         App::new()
             .app_data(app_state.clone())
+            .wrap(cors)
+            .wrap(CsrfProtection)
             .wrap(actix_middleware::Logger::default())
             .configure(routes::init)
+            .service(actix_files::Files::new("/static", "static"))
     })
     .bind((host.as_str(), port))?
     .run()

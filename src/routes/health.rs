@@ -2,12 +2,12 @@
 //  heimdall
 //  src/routes/health.rs
 //
-//  Created by Heimdall on 2026/03/09.
+//  Created by Ngonidzashe Mangudya on 2026/03/09.
 //  Copyright (c) 2026 Codecraft Solutions ZA. All rights reserved.
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 
 use crate::models::ApiResponse;
 use crate::state::AppState;
@@ -22,9 +22,7 @@ async fn health_check(state: web::Data<AppState>) -> HttpResponse {
             "status": "healthy",
             "version": env!("CARGO_PKG_VERSION"),
         }))),
-        Err(e) => HttpResponse::ServiceUnavailable().json(ApiResponse::<()>::error(
-            503,
-            format!("Unhealthy: {e}"),
-        )),
+        Err(e) => HttpResponse::ServiceUnavailable()
+            .json(ApiResponse::<()>::error(503, format!("Unhealthy: {e}"))),
     }
 }

@@ -2,7 +2,7 @@
 //  heimdall
 //  src/db/schema/definition.rs
 //
-//  Created by Heimdall on 2026/03/09.
+//  Created by Ngonidzashe Mangudya on 2026/03/09.
 //  Copyright (c) 2026 Codecraft Solutions ZA. All rights reserved.
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
@@ -16,7 +16,6 @@ use crate::db::schema::types::*;
 pub fn heimdall_schema() -> SchemaDef {
     Schema::new()
         .extension("pgcrypto")
-
         // ---------------------------------------------------------------
         // 1. users
         // ---------------------------------------------------------------
@@ -30,7 +29,6 @@ pub fn heimdall_schema() -> SchemaDef {
             t.timestamps();
             t.soft_delete();
         })
-
         // ---------------------------------------------------------------
         // 2. organizations
         // ---------------------------------------------------------------
@@ -42,7 +40,6 @@ pub fn heimdall_schema() -> SchemaDef {
             t.timestamps();
             t.soft_delete();
         })
-
         // ---------------------------------------------------------------
         // 3. org_members
         // ---------------------------------------------------------------
@@ -57,10 +54,11 @@ pub fn heimdall_schema() -> SchemaDef {
                 .references("users", "id")
                 .on_delete(OnDelete::Cascade);
             t.text("role").not_null().default_str("'member'");
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
             t.unique_together(&["org_id", "user_id"]);
         })
-
         // ---------------------------------------------------------------
         // 4. sessions
         // ---------------------------------------------------------------
@@ -74,9 +72,10 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("ip_address");
             t.text("user_agent");
             t.timestamp("expires_at").not_null();
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
         })
-
         // ---------------------------------------------------------------
         // 5. oauth_connections
         // ---------------------------------------------------------------
@@ -95,7 +94,6 @@ pub fn heimdall_schema() -> SchemaDef {
             t.timestamps();
             t.unique_together(&["user_id", "provider"]);
         })
-
         // ---------------------------------------------------------------
         // 6. api_keys
         // ---------------------------------------------------------------
@@ -114,10 +112,11 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("key_hash").not_null();
             t.text("encrypted_key").not_null();
             t.timestamp("last_used_at");
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
             t.soft_delete();
         })
-
         // ---------------------------------------------------------------
         // 7. repos
         // ---------------------------------------------------------------
@@ -141,7 +140,6 @@ pub fn heimdall_schema() -> SchemaDef {
             t.timestamps();
             t.soft_delete();
         })
-
         // ---------------------------------------------------------------
         // 8. scans
         // ---------------------------------------------------------------
@@ -171,7 +169,6 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("error_message");
             t.timestamps();
         })
-
         // ---------------------------------------------------------------
         // 9. scan_stages
         // ---------------------------------------------------------------
@@ -188,9 +185,10 @@ pub fn heimdall_schema() -> SchemaDef {
             t.timestamp("completed_at");
             t.text("error_message");
             t.jsonb("metadata_json");
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
         })
-
         // ---------------------------------------------------------------
         // 10. scan_jobs
         // ---------------------------------------------------------------
@@ -213,7 +211,6 @@ pub fn heimdall_schema() -> SchemaDef {
             t.timestamp("completed_at");
             t.timestamps();
         })
-
         // ---------------------------------------------------------------
         // 11. file_snapshots
         // ---------------------------------------------------------------
@@ -233,9 +230,10 @@ pub fn heimdall_schema() -> SchemaDef {
             t.int("line_count");
             t.int("byte_size");
             t.jsonb("ast_summary_json");
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
         })
-
         // ---------------------------------------------------------------
         // 12. findings
         // ---------------------------------------------------------------
@@ -268,7 +266,6 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("agent_reasoning");
             t.timestamps();
         })
-
         // ---------------------------------------------------------------
         // 13. finding_events
         // ---------------------------------------------------------------
@@ -285,9 +282,10 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("old_value");
             t.text("new_value");
             t.text("comment");
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
         })
-
         // ---------------------------------------------------------------
         // 14. patches
         // ---------------------------------------------------------------
@@ -309,9 +307,10 @@ pub fn heimdall_schema() -> SchemaDef {
                 .references("users", "id")
                 .on_delete(OnDelete::SetNull);
             t.timestamp("applied_at");
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
         })
-
         // ---------------------------------------------------------------
         // 15. agent_tool_calls
         // ---------------------------------------------------------------
@@ -330,9 +329,10 @@ pub fn heimdall_schema() -> SchemaDef {
             t.int("total_tokens");
             t.int("duration_ms");
             t.text("error");
-            t.timestamp("created_at").not_null().default(DefaultValue::Now);
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
         })
-
         // ---------------------------------------------------------------
         // 16. threat_models
         // ---------------------------------------------------------------
@@ -357,16 +357,26 @@ pub fn heimdall_schema() -> SchemaDef {
                 .on_delete(OnDelete::SetNull);
             t.timestamps();
         })
-
         // ---------------------------------------------------------------
         // Spec indexes
         // ---------------------------------------------------------------
-        .index("idx_file_snapshots_dedup", "file_snapshots", &["repo_id", "file_path", "content_hash"])
+        .index(
+            "idx_file_snapshots_dedup",
+            "file_snapshots",
+            &["repo_id", "file_path", "content_hash"],
+        )
         .index("idx_findings_fingerprint", "findings", &["fingerprint"])
-        .index("idx_findings_scan_severity", "findings", &["scan_id", "severity"])
-        .index("idx_scan_jobs_polling", "scan_jobs", &["status", "run_after", "priority"])
+        .index(
+            "idx_findings_scan_severity",
+            "findings",
+            &["scan_id", "severity"],
+        )
+        .index(
+            "idx_scan_jobs_polling",
+            "scan_jobs",
+            &["status", "run_after", "priority"],
+        )
         .index("idx_scans_repo_commit", "scans", &["repo_id", "commit_sha"])
-
         // ---------------------------------------------------------------
         // Practical indexes
         // ---------------------------------------------------------------
@@ -376,6 +386,5 @@ pub fn heimdall_schema() -> SchemaDef {
         .index("idx_findings_scan", "findings", &["scan_id"])
         .index("idx_sessions_user", "sessions", &["user_id"])
         .index("idx_sessions_token", "sessions", &["token_hash"])
-
         .build()
 }

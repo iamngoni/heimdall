@@ -1,0 +1,48 @@
+<nav class="border-b border-gray-800 bg-gray-950">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="flex h-16 items-center justify-between">
+            <div class="flex items-center space-x-8">
+                <a href="/" class="flex items-center space-x-2">
+                    <svg class="h-8 w-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span class="text-lg font-bold text-white">Heimdall</span>
+                </a>
+                {% if user %}
+                <div class="flex space-x-4">
+                    <a href="/"
+                       class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                       hx-get="/" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
+                        Dashboard
+                    </a>
+                    <a href="/repos"
+                       class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                       hx-get="/repos" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
+                        Repos
+                    </a>
+                    <a href="/settings"
+                       class="rounded-md px-3 py-2 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+                       hx-get="/settings" hx-target="main" hx-swap="innerHTML" hx-push-url="true">
+                        Settings
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+            <div class="flex items-center space-x-4">
+                {% if user %}
+                <span class="text-sm text-gray-400">{{ user.display_name or user.email }}</span>
+                <button hx-post="/api/auth/logout" hx-redirect="/"
+                        class="rounded-md px-3 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors">
+                    Sign Out
+                </button>
+                {% else %}
+                <a href="/login"
+                   class="rounded-md px-3 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors">
+                    Sign In
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</nav>

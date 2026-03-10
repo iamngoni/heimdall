@@ -1,0 +1,271 @@
+//
+//  heimdall
+//  src/routes/threat_models.rs
+//
+
+use actix_web::{HttpResponse, web};
+use serde::Deserialize;
+use uuid::Uuid;
+
+use crate::models::ApiResponse;
+use crate::state::AppState;
+
+pub fn init(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/threat-models")
+            .route("/{id}", web::get().to(get_threat_model))
+            .route("/{id}", web::patch().to(update_threat_model))
+            .route("/{id}/surfaces", web::post().to(add_surface))
+            .route("/{id}/surfaces/{index}", web::delete().to(remove_surface))
+            .route("/{id}/boundaries", web::post().to(add_boundary))
+            .route("/{id}/boundaries/{index}", web::delete().to(remove_boundary))
+            .route("/{id}/data-flows", web::post().to(add_data_flow))
+            .route("/{id}/data-flows/{index}", web::delete().to(remove_data_flow)),
+    );
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateThreatModelRequest {
+    summary: Option<String>,
+    boundaries: Option<serde_json::Value>,
+    surfaces: Option<serde_json::Value>,
+    data_flows: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddSurfaceRequest {
+    name: String,
+    risk: Option<String>,
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddBoundaryRequest {
+    name: String,
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddDataFlowRequest {
+    name: String,
+    from: String,
+    to: String,
+    description: Option<String>,
+}
+
+async fn get_threat_model(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+    let id = path.into_inner();
+    match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => HttpResponse::Ok().json(ApiResponse::ok(tm)),
+        Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}
+
+async fn update_threat_model(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<UpdateThreatModelRequest>,
+) -> HttpResponse {
+    let id = path.into_inner();
+
+    // Verify exists
+    match state.db.get_threat_model_by_id(id).await {
+        Ok(None) => return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+        _ => {}
+    }
+
+    if let Some(ref summary) = body.summary {
+        if let Err(e) = state.db.update_threat_model_field(id, "summary", &serde_json::json!(summary)).await {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")));
+        }
+    }
+    if let Some(ref boundaries) = body.boundaries {
+        if let Err(e) = state.db.update_threat_model_field(id, "boundaries_json", boundaries).await {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")));
+        }
+    }
+    if let Some(ref surfaces) = body.surfaces {
+        if let Err(e) = state.db.update_threat_model_field(id, "surfaces_json", surfaces).await {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")));
+        }
+    }
+    if let Some(ref data_flows) = body.data_flows {
+        if let Err(e) = state.db.update_threat_model_field(id, "data_flows_json", data_flows).await {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")));
+        }
+    }
+
+    // Return updated model
+    match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => HttpResponse::Ok().json(ApiResponse::ok(tm)),
+        Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}
+
+async fn add_surface(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<AddSurfaceRequest>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    let tm = match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => tm,
+        Ok(None) => return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    };
+
+    let mut surfaces = tm.surfaces_json
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    surfaces.push(serde_json::json!({
+        "name": body.name,
+        "risk": body.risk.as_deref().unwrap_or("medium"),
+        "description": body.description.as_deref().unwrap_or(""),
+    }));
+
+    match state.db.update_threat_model_field(id, "surfaces_json", &serde_json::Value::Array(surfaces.clone())).await {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::ok(surfaces)),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}
+
+async fn remove_surface(
+    state: web::Data<AppState>,
+    path: web::Path<(Uuid, usize)>,
+) -> HttpResponse {
+    let (id, index) = path.into_inner();
+    let tm = match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => tm,
+        Ok(None) => return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    };
+
+    let mut surfaces = tm.surfaces_json
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    if index >= surfaces.len() {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, "Index out of bounds"));
+    }
+
+    surfaces.remove(index);
+
+    match state.db.update_threat_model_field(id, "surfaces_json", &serde_json::Value::Array(surfaces.clone())).await {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::ok(surfaces)),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}
+
+async fn add_boundary(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<AddBoundaryRequest>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    let tm = match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => tm,
+        Ok(None) => return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    };
+
+    let mut boundaries = tm.boundaries_json
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    boundaries.push(serde_json::json!({
+        "name": body.name,
+        "description": body.description.as_deref().unwrap_or(""),
+    }));
+
+    match state.db.update_threat_model_field(id, "boundaries_json", &serde_json::Value::Array(boundaries.clone())).await {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::ok(boundaries)),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}
+
+async fn remove_boundary(
+    state: web::Data<AppState>,
+    path: web::Path<(Uuid, usize)>,
+) -> HttpResponse {
+    let (id, index) = path.into_inner();
+    let tm = match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => tm,
+        Ok(None) => return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    };
+
+    let mut boundaries = tm.boundaries_json
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    if index >= boundaries.len() {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, "Index out of bounds"));
+    }
+
+    boundaries.remove(index);
+
+    match state.db.update_threat_model_field(id, "boundaries_json", &serde_json::Value::Array(boundaries.clone())).await {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::ok(boundaries)),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}
+
+async fn add_data_flow(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: web::Json<AddDataFlowRequest>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    let tm = match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => tm,
+        Ok(None) => return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    };
+
+    let mut flows = tm.data_flows_json
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    flows.push(serde_json::json!({
+        "name": body.name,
+        "from": body.from,
+        "to": body.to,
+        "description": body.description.as_deref().unwrap_or(""),
+    }));
+
+    match state.db.update_threat_model_field(id, "data_flows_json", &serde_json::Value::Array(flows.clone())).await {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::ok(flows)),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}
+
+async fn remove_data_flow(
+    state: web::Data<AppState>,
+    path: web::Path<(Uuid, usize)>,
+) -> HttpResponse {
+    let (id, index) = path.into_inner();
+    let tm = match state.db.get_threat_model_by_id(id).await {
+        Ok(Some(tm)) => tm,
+        Ok(None) => return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found")),
+        Err(e) => return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    };
+
+    let mut flows = tm.data_flows_json
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+
+    if index >= flows.len() {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, "Index out of bounds"));
+    }
+
+    flows.remove(index);
+
+    match state.db.update_threat_model_field(id, "data_flows_json", &serde_json::Value::Array(flows.clone())).await {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse::ok(flows)),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}"))),
+    }
+}

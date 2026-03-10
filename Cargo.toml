@@ -16,6 +16,8 @@ path = "src/bin/schema_gen.rs"
 actix-web = "4"
 actix-rt = "2"
 actix-files = "0.6"
+actix-cors = "0.7"
+actix-governor = "0.8"
 
 # Templates
 minijinja = { version = "2", features = ["loader"] }
@@ -52,6 +54,7 @@ dotenvy = "0.15"
 
 # Docker (Garmr)
 bollard = "0.18"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # AI HTTP clients
 reqwest = { version = "0.12", features = ["json"] }
@@ -64,6 +67,46 @@ argon2 = "0.5"
 
 # Crypto
 sha2 = "0.10"
+hmac = "0.12"
+aes-gcm = "0.10"
+base64 = "0.22"
 
-# Tree-sitter
-tree-sitter = "0.24"
+# Tree-sitter (AST parsing)
+tree-sitter = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-go = "0.25"
+tree-sitter-java = "0.23"
+tree-sitter-typescript = "0.23"
+
+# File uploads
+actix-multipart = "0.7"
+zip = "2"
+tempfile = "3"
+futures-util = "0.3"
+
+# File system
+walkdir = "2"
+
+# Regex
+regex = "1"
+
+# Hex encoding (for content hashes)
+hex = "0.4"
+
+# Glob pattern matching
+glob = "0.3"
+
+# Streams (for SSE)
+futures = "0.3"
+
+# Random (for session tokens)
+rand = "0.9"
+
+# OAuth
+oauth2 = "4.4"
+
+[dev-dependencies]
+actix-rt = "2"
+actix-test = "0.1"

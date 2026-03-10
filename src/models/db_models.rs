@@ -2,7 +2,7 @@
 //  heimdall
 //  src/models/db_models.rs
 //
-//  Created by Heimdall on 2026/03/09.
+//  Created by Ngonidzashe Mangudya on 2026/03/09.
 //  Copyright (c) 2026 Codecraft Solutions ZA. All rights reserved.
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
@@ -327,6 +327,7 @@ pub struct FindingEvent {
     pub old_value: Option<String>,
     pub new_value: Option<String>,
     pub comment: Option<String>,
+    pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -341,6 +342,17 @@ pub struct Patch {
     pub applied: bool,
     pub applied_by: Option<Uuid>,
     pub applied_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Flattened patch view that includes the file_path from the associated finding.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct PatchWithFilePath {
+    pub id: Uuid,
+    pub finding_id: Uuid,
+    pub file_path: String,
+    pub diff_content: String,
+    pub applied: bool,
     pub created_at: DateTime<Utc>,
 }
 
