@@ -229,10 +229,11 @@ For GitHub/GitLab login and repository import:
 |----------|-------------|
 | `GITHUB_CLIENT_ID` | GitHub OAuth app client ID |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth app client secret |
-| `GITHUB_REDIRECT_URI` | Callback URL (default: `http://localhost:8080/auth/github/callback`) |
+| `GITHUB_REDIRECT_URI` | Callback URL (default: `http://localhost:8080/api/auth/github/callback`) |
 | `GITLAB_CLIENT_ID` | GitLab OAuth app client ID |
 | `GITLAB_CLIENT_SECRET` | GitLab OAuth app client secret |
-| `GITLAB_REDIRECT_URI` | Callback URL (default: `http://localhost:8080/auth/gitlab/callback`) |
+| `GITLAB_REDIRECT_URI` | Callback URL (default: `http://localhost:8080/api/auth/gitlab/callback`) |
+| `GITLAB_BASE_URL` | GitLab base URL (default: `https://gitlab.com`) |
 
 ### Security
 

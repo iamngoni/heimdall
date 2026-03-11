@@ -3,3 +3,4 @@
 migrations/
 node_modules/
 .playwright-cli/
+.env
