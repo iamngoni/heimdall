@@ -1,0 +1,10 @@
+.git
+.gitignore
+target
+node_modules
+.playwright-cli
+output
+.DS_Store
+tmp
+dist
+coverage
