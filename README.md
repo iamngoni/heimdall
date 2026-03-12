@@ -803,7 +803,15 @@ pub trait ModelProvider: Send + Sync {
 
 ## License
 
-[Functional Source License (FSL)](https://fsl.software/) — open and readable. Self-host with your own AI keys. Converts to fully open-source after a defined period. Commercial use requires a commercial license.
+Heimdall is licensed under the [Functional Source License, Version 1.1, MIT Future License (FSL-1.1-MIT)](LICENSE).
+
+**What this means:**
+
+- **Read, use, modify, self-host** — you can freely use Heimdall to scan your own codebases, self-host it for your organization, and modify it however you like.
+- **No competing use** — you may not offer Heimdall (or a substantially similar derivative) as a commercial product or hosted service to others.
+- **Converts to MIT** — two years after each version is released, that version automatically converts to the fully permissive MIT license with no restrictions.
+
+See [LICENSE](LICENSE) for the full terms, or visit [fsl.software](https://fsl.software/) for more about the FSL.
 
 ---
 
