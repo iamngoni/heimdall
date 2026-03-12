@@ -1,4 +1,4 @@
-<header class="flex h-14 items-center overflow-visible border-b border-slate-200 bg-white px-7">
+<header class="flex h-14 items-center border-b border-slate-200 bg-white px-7">
     <div class="flex items-center gap-3 text-sm">
         <span class="font-semibold text-slate-900">Heimdall</span>
         <span class="text-slate-400">/</span>
@@ -9,8 +9,8 @@
         {% endif %}
     </div>
 
-    <div class="ml-auto">
-        <details class="relative">
+    <div class="relative ml-auto">
+        <details>
             <summary class="app-menu-summary flex list-none cursor-pointer items-center gap-2 rounded-full border border-transparent p-1 transition hover:border-slate-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100">
                 <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-xs font-semibold text-white shadow-sm">
                     {{ user_initial }}
@@ -20,7 +20,7 @@
                 </svg>
             </summary>
 
-            <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.14)]">
+            <div style="width: 18rem;" class="absolute right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.14)]">
                 <div class="border-b border-slate-100 px-3 py-3">
                     <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Account</p>
                     <p class="mt-1 text-sm font-medium text-slate-900">Workspace controls</p>
