@@ -3,173 +3,124 @@
 {% block title %}Sign In{% endblock %}
 
 {% block body %}
-<div class="relative min-h-screen overflow-hidden bg-[#eef2f7] text-slate-900">
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-        <div class="absolute -left-16 top-0 h-72 w-72 rounded-full bg-blue-200/45 blur-3xl"></div>
-        <div class="absolute right-0 top-24 h-80 w-80 rounded-full bg-cyan-200/35 blur-3xl"></div>
-        <div class="absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-amber-100/50 blur-3xl"></div>
-        <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-300/80 to-transparent"></div>
-    </div>
+<div class="min-h-screen bg-[#e9eef5] p-3 text-slate-900 sm:p-4">
+    <div class="relative mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-[1580px] overflow-hidden rounded-[36px] bg-[#08111d] text-white shadow-[0_36px_110px_rgba(15,23,42,0.22)] sm:min-h-[calc(100vh-2rem)]">
+        <div class="pointer-events-none absolute inset-0">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,_rgba(59,130,246,0.18),_transparent_26%),radial-gradient(circle_at_78%_18%,_rgba(34,211,238,0.10),_transparent_22%),linear-gradient(90deg,_rgba(8,17,29,0.88),_rgba(8,17,29,0.64)_56%,_rgba(8,17,29,0.92))]"></div>
+            <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+        </div>
 
-    <div class="relative mx-auto flex min-h-screen w-full max-w-[1520px] flex-col px-4 pb-4 pt-4 sm:px-5 lg:px-6">
-        <header class="flex items-center justify-between">
-            <a href="/login" class="inline-flex items-center gap-3 text-slate-900">
-                <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.18)]">
-                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                </span>
-                <span>
-                    <span class="block text-lg font-semibold tracking-tight">Heimdall</span>
-                    <span class="block text-sm text-slate-500">Agentic code security review</span>
-                </span>
-            </a>
+        <div class="relative grid flex-1 min-h-0 lg:grid-cols-[minmax(0,1.35fr)_430px]">
+            <section class="flex min-h-0 flex-col px-6 py-5 lg:px-10 lg:py-7 xl:px-12">
+                <header class="flex items-center justify-between border-b border-white/10 pb-4">
+                    <a href="/login" class="inline-flex items-center gap-3 text-white">
+                        <span class="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/12 bg-white/8 shadow-[0_14px_32px_rgba(2,6,23,0.24)]">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </span>
+                        <span>
+                            <span class="block text-lg font-semibold tracking-tight">Heimdall</span>
+                            <span class="block text-sm text-slate-400">Agentic code security review</span>
+                        </span>
+                    </a>
 
-            <div class="flex items-center gap-3 text-sm">
-                <span class="hidden text-slate-500 sm:inline">New workspace?</span>
-                <a href="/register"
-                   class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
-                    Create account
-                </a>
-            </div>
-        </header>
-
-        <main class="mt-4 grid flex-1 gap-4 lg:min-h-0 lg:grid-cols-[minmax(0,1.42fr)_430px] lg:items-stretch">
-            <section class="relative overflow-hidden rounded-[36px] bg-[#091224] px-6 py-7 text-white shadow-[0_30px_80px_rgba(15,23,42,0.28)] lg:-ml-2 lg:px-10 lg:py-8 xl:px-12">
-                <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(96,165,250,0.18),_transparent_34%),radial-gradient(circle_at_80%_20%,_rgba(45,212,191,0.14),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0))]"></div>
-                <div class="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(9,18,36,0),rgba(9,18,36,0.9))]"></div>
-
-                <div class="relative flex h-full flex-col">
-                    <div class="inline-flex w-fit items-center gap-2 rounded-full border border-white/12 bg-white/8 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-blue-100">
-                        Landing + Login
+                    <div class="flex items-center gap-3 text-sm">
+                        <span class="hidden text-slate-400 sm:inline">New workspace?</span>
+                        <a href="/register"
+                           class="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/8 px-4 py-2 font-semibold text-white transition hover:border-white/20 hover:bg-white/12">
+                            Create account
+                        </a>
                     </div>
+                </header>
 
-                    <div class="mt-6 max-w-4xl">
-                        <p class="text-sm font-medium uppercase tracking-[0.28em] text-blue-200/80">Security review that shows its work</p>
-                        <h1 class="mt-4 text-4xl leading-[0.95] tracking-[-0.03em] text-white sm:text-5xl xl:text-[4.6rem]"
+                <div class="flex flex-1 min-h-0 flex-col justify-between py-5 lg:py-6">
+                    <div class="max-w-4xl">
+                        <div class="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/8 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-blue-100">
+                            Landing + Login
+                        </div>
+                        <p class="mt-6 text-[11px] font-semibold uppercase tracking-[0.34em] text-blue-200/75">Security review that shows its work</p>
+                        <h1 class="mt-4 max-w-4xl text-[clamp(2.9rem,5vw,5.25rem)] leading-[0.9] tracking-[-0.045em] text-white"
                             style="font-family: Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, serif;">
-                            Investigate repos with a scanner that behaves like an operator, not a black box.
+                            Investigate repositories with visible execution and evidence you can trust.
                         </h1>
-                        <p class="mt-5 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                            Heimdall brings deterministic checks, model-driven review, sandbox validation, and issue follow-through into one control surface.
-                            Connect a repository, watch each stage execute, and decide what is real before engineering gets noise.
+                        <p class="mt-5 max-w-2xl text-[15px] leading-7 text-slate-300">
+                            Heimdall brings deterministic checks, model-driven review, validation, and issue follow-through into one deliberate workspace.
                         </p>
                     </div>
 
-                    <div class="mt-6 grid gap-3 sm:grid-cols-3">
-                        <article class="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Grounded analysis</p>
-                            <p class="mt-2 text-sm leading-6 text-slate-200">Static checks, AI review, and validation artifacts tied back to real source context.</p>
-                        </article>
-                        <article class="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Live execution</p>
-                            <p class="mt-2 text-sm leading-6 text-slate-200">See ingest, threat modeling, hunt, validation, and reporting progress without guessing.</p>
-                        </article>
-                        <article class="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Repo workflow</p>
-                            <p class="mt-2 text-sm leading-6 text-slate-200">Review findings, verify them, generate patches, and sync into the repository issue tracker.</p>
-                        </article>
-                    </div>
-
-                    <div class="mt-6 grid gap-3 xl:grid-cols-[1.08fr_0.92fr]">
-                        <article class="rounded-[28px] border border-white/12 bg-white/[0.07] p-5 backdrop-blur-md">
+                    <div class="mt-8 grid gap-3 xl:max-w-5xl xl:grid-cols-[1.05fr_0.95fr]">
+                        <article class="rounded-[26px] border border-white/10 bg-white/[0.055] p-5 backdrop-blur-sm">
                             <div class="flex items-center justify-between gap-4">
                                 <div>
-                                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Execution sequence</p>
+                                    <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Execution sequence</p>
                                     <p class="mt-2 text-sm text-slate-300">A scan should feel inspectable from the first second.</p>
                                 </div>
-                                <span class="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">
-                                    Live-first
+                                <span class="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                                    Inspectable
                                 </span>
                             </div>
 
-                            <div class="mt-4 space-y-2.5">
-                                <div class="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                                    <div>
-                                        <p class="text-sm font-semibold text-white">Ingest</p>
-                                        <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">Clone, index, snapshot</p>
-                                    </div>
-                                    <span class="rounded-full bg-emerald-400/12 px-3 py-1 text-xs font-semibold text-emerald-200">Ready</span>
+                            <div class="mt-4 grid gap-2.5 sm:grid-cols-2">
+                                <div class="rounded-2xl border border-white/8 bg-slate-950/32 px-4 py-3">
+                                    <p class="text-sm font-semibold text-white">Ingest</p>
+                                    <p class="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">Clone, index, snapshot</p>
                                 </div>
-                                <div class="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                                    <div>
-                                        <p class="text-sm font-semibold text-white">Tyr</p>
-                                        <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">Threat model and attack surfaces</p>
-                                    </div>
-                                    <span class="rounded-full bg-blue-400/12 px-3 py-1 text-xs font-semibold text-blue-200">Context</span>
+                                <div class="rounded-2xl border border-white/8 bg-slate-950/32 px-4 py-3">
+                                    <p class="text-sm font-semibold text-white">Tyr</p>
+                                    <p class="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">Threat model and surfaces</p>
                                 </div>
-                                <div class="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                                    <div>
-                                        <p class="text-sm font-semibold text-white">Static + Hunt</p>
-                                        <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">Deterministic rules with AI investigation</p>
-                                    </div>
-                                    <span class="rounded-full bg-amber-400/12 px-3 py-1 text-xs font-semibold text-amber-100">Triage</span>
+                                <div class="rounded-2xl border border-white/8 bg-slate-950/32 px-4 py-3">
+                                    <p class="text-sm font-semibold text-white">Static + Hunt</p>
+                                    <p class="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">Rules plus AI investigation</p>
                                 </div>
-                                <div class="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
-                                    <div>
-                                        <p class="text-sm font-semibold text-white">Garmr + Report</p>
-                                        <p class="mt-1 text-xs uppercase tracking-[0.14em] text-slate-400">Validation, patches, issue sync</p>
-                                    </div>
-                                    <span class="rounded-full bg-fuchsia-400/12 px-3 py-1 text-xs font-semibold text-fuchsia-100">Action</span>
+                                <div class="rounded-2xl border border-white/8 bg-slate-950/32 px-4 py-3">
+                                    <p class="text-sm font-semibold text-white">Garmr + Report</p>
+                                    <p class="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">Validation, patches, issue sync</p>
                                 </div>
                             </div>
                         </article>
 
-                        <article class="rounded-[28px] border border-white/12 bg-gradient-to-br from-white/10 to-white/[0.03] p-5 backdrop-blur-md">
-                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Control surface</p>
-                            <div class="mt-4 grid gap-3 text-sm leading-6 text-slate-200">
-                                <div class="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3.5">
-                                    <p class="font-semibold text-white">Explain and verify findings</p>
-                                    <p class="mt-1 text-sm text-slate-300">Operators can challenge weak alerts before engineering ever sees them.</p>
+                        <article class="rounded-[26px] border border-white/10 bg-white/[0.04] p-5 backdrop-blur-sm">
+                            <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">What operators get</p>
+                            <div class="mt-4 grid gap-3">
+                                <div class="rounded-2xl border border-white/8 bg-slate-950/30 px-4 py-3.5 text-sm leading-6 text-slate-200">
+                                    Explain and verify findings before they become engineering noise.
                                 </div>
-                                <div class="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3.5">
-                                    <p class="font-semibold text-white">Ground issue creation in evidence</p>
-                                    <p class="mt-1 text-sm text-slate-300">Only findings with real source context and stable fingerprints should turn into backlog.</p>
+                                <div class="rounded-2xl border border-white/8 bg-slate-950/30 px-4 py-3.5 text-sm leading-6 text-slate-200">
+                                    Ground issue creation in real source context and stable finding fingerprints.
                                 </div>
-                                <div class="grid gap-3 sm:grid-cols-2">
-                                    <div class="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
-                                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Source modes</p>
-                                        <p class="mt-2 text-sm text-white">Static, Hunt, Tyr, Garmr</p>
-                                    </div>
-                                    <div class="rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
-                                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Repo intake</p>
-                                        <p class="mt-2 text-sm text-white">GitHub, GitLab, Git URL, ZIP</p>
-                                    </div>
+                                <div class="flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                    <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">GitHub</span>
+                                    <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">GitLab</span>
+                                    <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">Git URL</span>
+                                    <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">ZIP</span>
                                 </div>
                             </div>
                         </article>
-                    </div>
-
-                    <div class="mt-auto pt-6">
-                        <div class="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">GitHub</span>
-                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">GitLab</span>
-                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">Public Git URLs</span>
-                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">ZIP snapshots</span>
-                        </div>
                     </div>
                 </div>
             </section>
 
-            <section class="flex items-center">
-                <div class="w-full rounded-[32px] border border-white/80 bg-white/90 p-7 shadow-[0_28px_90px_rgba(15,23,42,0.14)] backdrop-blur-sm sm:p-8">
-                    <div class="flex items-center justify-between gap-4">
+            <aside class="flex items-center justify-center p-4 pt-0 lg:p-5 xl:pr-6">
+                <div class="w-full max-w-[400px] rounded-[28px] border border-white/12 bg-white/95 p-6 text-slate-900 shadow-[0_26px_80px_rgba(15,23,42,0.16)] backdrop-blur-md sm:p-7">
+                    <div class="flex items-start justify-between gap-4">
                         <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Access Heimdall</p>
-                            <h2 class="mt-2.5 text-3xl font-semibold tracking-tight text-slate-900">Sign in to your workspace</h2>
-                            <p class="mt-2.5 max-w-sm text-sm leading-6 text-slate-500">
-                                Use provider auth for repository access or sign in with your workspace credentials to continue reviewing findings and scans.
+                            <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Access Heimdall</p>
+                            <h2 class="mt-3 text-[2rem] font-semibold leading-tight tracking-tight text-slate-900">Sign in to your workspace</h2>
+                            <p class="mt-3 max-w-sm text-sm leading-6 text-slate-500">
+                                Continue with provider auth for repository access or sign in with your workspace credentials.
                             </p>
                         </div>
-                        <div class="hidden h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 sm:flex">
-                            <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true">
+                        <div class="hidden h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 sm:flex">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A3.75 3.75 0 008.25 5.25V9m-1.5 0h10.5A1.5 1.5 0 0118.75 10.5v7.25a1.5 1.5 0 01-1.5 1.5H6.75a1.5 1.5 0 01-1.5-1.5V10.5A1.5 1.5 0 016.75 9z" />
                             </svg>
                         </div>
                     </div>
 
-                    <div class="mt-7 grid gap-3">
+                    <div class="mt-6 grid gap-3">
                         <a href="/api/auth/github/authorize"
                            hx-boost="false"
                            class="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900">
@@ -177,7 +128,7 @@
                                 <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">G</span>
                                 <span>Continue with GitHub</span>
                             </span>
-                            <span class="text-xs uppercase tracking-[0.16em] text-slate-400">OAuth</span>
+                            <span class="text-[11px] uppercase tracking-[0.16em] text-slate-400">OAuth</span>
                         </a>
 
                         <a href="/api/auth/gitlab/authorize"
@@ -187,7 +138,7 @@
                                 <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500 text-white">L</span>
                                 <span>Continue with GitLab</span>
                             </span>
-                            <span class="text-xs uppercase tracking-[0.16em] text-slate-400">OAuth</span>
+                            <span class="text-[11px] uppercase tracking-[0.16em] text-slate-400">OAuth</span>
                         </a>
                     </div>
 
@@ -196,7 +147,7 @@
                             <div class="w-full border-t border-slate-200"></div>
                         </div>
                         <div class="relative flex justify-center">
-                            <span class="bg-white px-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Or sign in with email</span>
+                            <span class="bg-white px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Or sign in with email</span>
                         </div>
                     </div>
 
@@ -204,7 +155,7 @@
                         <p class="text-sm text-rose-700" id="login-error-text"></p>
                     </div>
 
-                    <form id="login-form" class="mt-5 space-y-4.5">
+                    <form id="login-form" class="mt-5 space-y-4">
                         <label class="block">
                             <span class="mb-2 block text-sm font-medium text-slate-700">Email address</span>
                             <input type="email"
@@ -235,9 +186,9 @@
                     </form>
 
                     <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                        <p class="text-sm font-semibold text-slate-900">Why sign in here?</p>
+                        <p class="text-sm font-semibold text-slate-900">Why this page exists</p>
                         <p class="mt-2 text-sm leading-6 text-slate-600">
-                            Because this page is also the product introduction. New users should understand what Heimdall does before they ever touch a repository.
+                            It should explain the product and get you into the workspace without the first impression feeling blank.
                         </p>
                     </div>
 
@@ -246,8 +197,8 @@
                         <a href="/register" class="font-semibold text-blue-600 transition hover:text-blue-700">Create one</a>
                     </p>
                 </div>
-            </section>
-        </main>
+            </aside>
+        </div>
     </div>
 </div>
 
