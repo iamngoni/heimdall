@@ -28,11 +28,14 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=builder /app/target/release/heimdall /app/heimdall
+COPY --from=builder /app/templates /app/templates
+COPY --from=builder /app/static /app/static
 
 ENV APP_HOST=0.0.0.0
 ENV APP_PORT=8080

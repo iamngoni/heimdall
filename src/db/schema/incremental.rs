@@ -61,7 +61,7 @@ impl IncrementalGenerator for PostgresIncremental {
                 }
                 SchemaChange::AddColumn { table, column } => {
                     out.push(format!(
-                        "ALTER TABLE {table} ADD COLUMN {};",
+                        "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {};",
                         pg.generate_column(column)
                     ));
                 }

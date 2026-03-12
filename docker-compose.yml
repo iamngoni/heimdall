@@ -8,15 +8,18 @@ services:
     container_name: heimdall
     ports:
       - "${APP_PORT:-8080}:8080"
-    environment:
-      - APP_HOST=0.0.0.0
-      - APP_PORT=8080
-      - DATABASE_URL=${DATABASE_URL:-postgres://heimdall:heimdall@postgres:5432/heimdall}
-      - RUST_LOG=info,heimdall=debug
-      # AI Provider keys (BYOK - uncomment and set your keys)
-      # - ANTHROPIC_API_KEY=
-      # - OPENAI_API_KEY=
-      # - OLLAMA_URL=http://ollama:11434
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      mysql:
+        condition: service_healthy
+        required: false
+      mongo:
+        condition: service_healthy
+        required: false
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # Required for Garmr sandbox
     healthcheck:
