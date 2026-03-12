@@ -13,6 +13,7 @@ pub mod garmr;
 pub mod hunt;
 pub mod ingest;
 pub mod report;
+pub mod vidarr;
 pub mod static_analysis;
 pub mod taint;
 pub mod tyr;
@@ -29,7 +30,7 @@ use crate::models::db_models::{Finding, Repo};
 use crate::sse::ScanBroadcaster;
 
 /// Orchestrates the full scan pipeline:
-/// Ingest -> Tyr (threat model) -> Static Analysis -> Taint Analysis -> Config Scan -> Hunt (agentic) -> Garmr (sandbox) -> Report
+/// Ingest -> Tyr (threat model) -> Static Analysis -> Taint Analysis -> Config Scan -> Hunt (agentic) -> Víðarr (adversarial verification) -> Garmr (sandbox) -> Report
 pub struct ScanPipeline {
     pub scan_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
@@ -188,11 +189,33 @@ impl ScanPipeline {
             }
         }
 
-        // Fetch all findings for Garmr and Report stages
+        // Fetch all findings for Skeptic, Garmr, and Report stages
         let findings = self
             .db
             .list_findings_by_scan(self.scan_id, None, None)
             .await?;
+
+        // Stage 4b: Víðarr (Adversarial Verification)
+        let _vidarr_ctx = self
+            .run_stage("vidarr", "verifying", "verified", async {
+                let stage = vidarr::VidarrStage::new(
+                    self.scan_id,
+                    Arc::clone(&self.db),
+                    Arc::clone(&self.ai),
+                    self.default_model.clone(),
+                );
+                stage.run(&findings, &code_index).await
+            })
+            .await?;
+
+        // Re-fetch findings after Víðarr — some may have been marked false_positive
+        let findings: Vec<Finding> = self
+            .db
+            .list_findings_by_scan(self.scan_id, None, None)
+            .await?
+            .into_iter()
+            .filter(|f| f.status != "false_positive")
+            .collect();
 
         // Stage 5: Garmr (Sandbox Validation)
         let _validated = self
@@ -595,6 +618,7 @@ fn humanize_stage_name(stage_name: &str) -> &'static str {
         "taint_analysis" => "Taint analysis",
         "config_scan" => "Config scan",
         "hunt" => "Hunt",
+        "vidarr" => "Víðarr",
         "garmr" => "Garmr",
         "report" => "Report",
         _ => "Stage",

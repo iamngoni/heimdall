@@ -639,6 +639,12 @@ impl DatabaseOperations {
             "INSERT INTO threat_models \
              (scan_id, repo_id, summary, boundaries_json, surfaces_json, data_flows_json) \
              VALUES ($1, $2, $3, $4, $5, $6) \
+             ON CONFLICT (scan_id) DO UPDATE SET \
+             summary = EXCLUDED.summary, \
+             boundaries_json = EXCLUDED.boundaries_json, \
+             surfaces_json = EXCLUDED.surfaces_json, \
+             data_flows_json = EXCLUDED.data_flows_json, \
+             updated_at = NOW() \
              RETURNING *",
         )
         .bind(scan_id)
@@ -1144,6 +1150,39 @@ impl DatabaseOperations {
             .execute(&self.pool)
             .await
             .context("Failed to update finding severity")?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn update_finding_confidence(
+        &self,
+        id: Uuid,
+        confidence: &str,
+    ) -> HeimdallResult<bool> {
+        let result = sqlx::query("UPDATE findings SET confidence = $1 WHERE id = $2")
+            .bind(confidence)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to update finding confidence")?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn append_finding_vidarr_reasoning(
+        &self,
+        id: Uuid,
+        skeptic_reasoning: &str,
+    ) -> HeimdallResult<bool> {
+        let result = sqlx::query(
+            "UPDATE findings SET agent_reasoning = \
+             CASE WHEN agent_reasoning IS NULL THEN $1 \
+             ELSE agent_reasoning || E'\\n\\n--- Víðarr Review ---\\n' || $1 END \
+             WHERE id = $2",
+        )
+        .bind(skeptic_reasoning)
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to append skeptic reasoning")?;
         Ok(result.rows_affected() > 0)
     }
 

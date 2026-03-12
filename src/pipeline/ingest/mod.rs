@@ -237,11 +237,77 @@ impl IngestStage {
                 }
             }
             "zip" => {
-                // For zip uploads, the file would already be extracted to a temp dir
-                // For now, we expect work_dir to exist
-                if !work_dir.exists() {
-                    anyhow::bail!("Zip source directory not found at {:?}", work_dir);
+                // remote_url holds the path to the uploaded .zip file
+                let zip_path = repo
+                    .remote_url
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("Zip repo has no file path stored"))?;
+
+                let zip_file = std::path::Path::new(zip_path);
+                if !zip_file.exists() {
+                    anyhow::bail!("Uploaded zip file not found at {:?}", zip_path);
                 }
+
+                if work_dir.exists() {
+                    std::fs::remove_dir_all(&work_dir)?;
+                }
+                std::fs::create_dir_all(&work_dir)?;
+
+                info!(
+                    "[{}] Extracting zip {:?} into {:?}",
+                    self.scan_id, zip_path, work_dir
+                );
+
+                // Extract zip into work_dir
+                let file = std::fs::File::open(zip_file)?;
+                let mut archive = zip::ZipArchive::new(file)
+                    .map_err(|e| anyhow::anyhow!("Failed to open zip archive: {e}"))?;
+
+                for i in 0..archive.len() {
+                    let mut entry = archive
+                        .by_index(i)
+                        .map_err(|e| anyhow::anyhow!("Failed to read zip entry: {e}"))?;
+
+                    let entry_path = match entry.enclosed_name() {
+                        Some(p) => p.to_owned(),
+                        None => continue, // skip unsafe paths
+                    };
+
+                    let dest = work_dir.join(&entry_path);
+
+                    if entry.is_dir() {
+                        std::fs::create_dir_all(&dest)?;
+                    } else {
+                        if let Some(parent) = dest.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        let mut out = std::fs::File::create(&dest)?;
+                        std::io::copy(&mut entry, &mut out)?;
+                    }
+                }
+
+                // If the zip contained a single top-level directory, move its
+                // contents up so the work_dir is the repo root.
+                let entries: Vec<_> = std::fs::read_dir(&work_dir)?
+                    .filter_map(|e| e.ok())
+                    .collect();
+                if entries.len() == 1 && entries[0].file_type().map(|t| t.is_dir()).unwrap_or(false)
+                {
+                    let inner = entries[0].path();
+                    let tmp_name = work_dir.with_file_name(format!(
+                        "{}-inner",
+                        self.scan_id
+                    ));
+                    std::fs::rename(&inner, &tmp_name)?;
+                    std::fs::remove_dir_all(&work_dir)?;
+                    std::fs::rename(&tmp_name, &work_dir)?;
+                }
+
+                info!(
+                    "[{}] Zip extracted ({} entries)",
+                    self.scan_id,
+                    archive.len()
+                );
             }
             other => {
                 anyhow::bail!("Unknown source type: {other}");

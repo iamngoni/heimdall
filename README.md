@@ -301,16 +301,18 @@ flowchart TD
         T["2. Tyr\n<i>Threat modeling</i>"]
         S["3. Static Analysis\n<i>Pattern matching + secrets + deps</i>"]
         H["4. Hunt\n<i>Agentic discovery</i>"]
-        G["5. Garmr\n<i>Sandbox validation</i>"]
-        R["6. Report\n<i>Rank + patch + explain</i>"]
+        V["5. Víðarr\n<i>Adversarial verification</i>"]
+        G["6. Garmr\n<i>Sandbox validation</i>"]
+        R["7. Report\n<i>Rank + patch + explain</i>"]
     end
 
-    I --> T --> S --> H --> G --> R
+    I --> T --> S --> H --> V --> G --> R
 
     I -.- i1["tree-sitter AST\nSymbol table\nCall graph\nData flows"]
     T -.- t1["Trust boundaries\nAttack surfaces\nSensitive data flows"]
     S -.- s1["Semgrep-style patterns\nSecret detection\nDependency audit\nTaint analysis"]
-    H -.- h1["Per-threat AI agents\nMax 25 iterations\nTool-assisted reasoning"]
+    H -.- h1["Per-threat AI agents\nMax 25 iterations\nSecurity + logic flaws"]
+    V -.- v1["Adversarial challenge\nFalse positive filtering\nSeverity adjustment"]
     G -.- g1["Docker sandbox\nPoC execution\nNo network, 30s timeout"]
     R -.- r1["Severity ranking\nCWE/CVE classification\nUnified diff patches"]
 ```
@@ -320,7 +322,8 @@ flowchart TD
 | **Ingest** | tree-sitter | Clone repo, build code index (AST, symbols, call graph, data flows) | Seconds |
 | **Tyr** | LLM | Generate structured threat model (boundaries, surfaces, data flows) | ~30s |
 | **Static Analysis** | tree-sitter + regex | Deterministic pattern matching, secret detection, dependency audit | Seconds |
-| **Hunt** | LLM Agent | Reason about code per-threat, discover real vulnerabilities | Minutes |
+| **Hunt** | LLM Agent | Reason about code per-threat, discover security vulns + logic flaws | Minutes |
+| **Víðarr** | LLM | Adversarial challenge — tries to disprove each finding, filters false positives | ~15s/finding |
 | **Garmr** | Docker + LLM | Execute PoC exploits in sandboxed containers to confirm findings | ~30s/finding |
 | **Report** | LLM | Rank findings, generate patches as unified diffs, explain in plain English | ~30s |
 
@@ -339,7 +342,7 @@ Tree-sitter AST parsing (full symbol extraction, call graphs):
 | Ruby | regex fallback | Basic |
 | PHP | regex fallback | Basic |
 
-Static analysis rules cover: SQL injection, command injection, XSS, hardcoded secrets, path traversal, unsafe deserialization, weak crypto, CSRF, open redirects, and more.
+Static analysis rules cover: SQL injection, command injection, XSS, hardcoded secrets, path traversal, unsafe deserialization, weak crypto, CSRF, open redirects, and more. The Hunt agent also investigates logic flaws: race conditions, off-by-one errors, state machine violations, business logic bypasses, and concurrency bugs.
 
 ## Architecture
 
@@ -600,8 +603,9 @@ heimdall/
 │   │   ├── tyr/                # Stage 2: Threat modeling
 │   │   ├── static_analysis/    # Stage 3: Pattern rules
 │   │   ├── hunt/               # Stage 4: Agentic discovery
-│   │   ├── garmr/              # Stage 5: Sandbox validation
-│   │   └── report/             # Stage 6: Patches + ranking
+│   │   ├── vidarr/             # Stage 5: Adversarial verification
+│   │   ├── garmr/              # Stage 6: Sandbox validation
+│   │   └── report/             # Stage 7: Patches + ranking
 │   ├── worker.rs               # Background scan worker (poll + execute)
 │   ├── integrations/
 │   │   ├── mod.rs              # Integration hub
@@ -794,6 +798,7 @@ pub trait ModelProvider: Send + Sync {
 |------|------|
 | **Heimdall** | The product. The all-seeing guardian. |
 | **Tyr** | Threat model engine. Norse god of justice. |
+| **Víðarr** | Adversarial verification. The silent god who judges with deliberation. |
 | **Garmr** | Sandbox validator. Hound guarding the gates of Hel. |
 
 ## License
