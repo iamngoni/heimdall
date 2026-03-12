@@ -93,6 +93,24 @@ impl HuntAgent {
             "[{}] Hunt agent investigating: {}",
             self.scan_id, surface.name
         );
+        let surface_key = format!("surface-{}", slugify(&surface.name));
+        self.record_event(
+            Some(&surface_key),
+            "running",
+            format!("Investigating {}", surface.name).as_str(),
+            Some(&format!(
+                "Risk {}. {}",
+                surface.risk_level, surface.description
+            )),
+            Some(&serde_json::json!({
+                "surface": surface.name,
+                "risk_level": surface.risk_level,
+                "endpoint": surface.endpoint,
+                "file": surface.file,
+                "line": surface.line,
+            })),
+        )
+        .await;
 
         // Build initial prompt
         let code_summary = index.summary_for_llm(8000);
@@ -164,6 +182,17 @@ impl HuntAgent {
                         "[{}] Hunt agent LLM error at iteration {}: {e}",
                         self.scan_id, self.iteration
                     );
+                    self.record_event(
+                        Some(&surface_key),
+                        "failed",
+                        format!("Investigation stalled for {}", surface.name).as_str(),
+                        Some(&format!(
+                            "LLM request failed during iteration {}: {e}",
+                            self.iteration
+                        )),
+                        None,
+                    )
+                    .await;
                     break;
                 }
             };
@@ -269,6 +298,21 @@ impl HuntAgent {
                                     finding.reasoning.as_deref(),
                                 )
                                 .await;
+                            self.record_event(
+                                Some(&surface_key),
+                                "completed",
+                                format!("Finding reported on {}", surface.name).as_str(),
+                                Some(&format!(
+                                    "{} at {}:{}",
+                                    finding.title, finding.file_path, finding.line_start
+                                )),
+                                Some(&serde_json::json!({
+                                    "severity": finding.severity,
+                                    "file_path": finding.file_path,
+                                    "line_start": finding.line_start,
+                                })),
+                            )
+                            .await;
 
                             self.findings.push(finding);
 
@@ -282,6 +326,22 @@ impl HuntAgent {
                             });
                         } else {
                             // Execute code analysis tool
+                            let tool_task_key =
+                                format!("{surface_key}:{}:{}", tc.name, self.iteration);
+                            self.record_event(
+                                Some(&tool_task_key),
+                                "running",
+                                format!("{} for {}", humanize_tool_name(&tc.name), surface.name)
+                                    .as_str(),
+                                Some(&tool_detail(&tc.name, &tc.arguments)),
+                                Some(&serde_json::json!({
+                                    "surface": surface.name,
+                                    "tool": tc.name,
+                                    "arguments": tc.arguments,
+                                    "iteration": self.iteration,
+                                })),
+                            )
+                            .await;
                             let start = std::time::Instant::now();
                             let result = tools::execute_tool(&tc.name, &tc.arguments, index);
                             let tool_duration = start.elapsed();
@@ -302,6 +362,33 @@ impl HuntAgent {
                                     if result.success { None } else { Some(&result.output) },
                                 )
                                 .await;
+                            let tool_title =
+                                format!("{} for {}", humanize_tool_name(&tc.name), surface.name);
+                            let tool_detail_text = if result.success {
+                                format!(
+                                    "{} completed in {} ms.",
+                                    humanize_tool_name(&tc.name),
+                                    tool_duration.as_millis()
+                                )
+                            } else {
+                                result.output.clone()
+                            };
+                            self.record_event(
+                                Some(&tool_task_key),
+                                if result.success {
+                                    "completed"
+                                } else {
+                                    "failed"
+                                },
+                                &tool_title,
+                                Some(&tool_detail_text),
+                                Some(&serde_json::json!({
+                                    "surface": surface.name,
+                                    "tool": tc.name,
+                                    "duration_ms": tool_duration.as_millis() as i32,
+                                })),
+                            )
+                            .await;
 
                             // Feed result back as user message (tool_result role)
                             self.messages.push(Message {
@@ -333,6 +420,22 @@ impl HuntAgent {
             );
         }
 
+        self.record_event(
+            Some(&surface_key),
+            "completed",
+            format!("Investigation finished for {}", surface.name).as_str(),
+            Some(&format!(
+                "{} findings recorded after {} iterations.",
+                self.findings.len(),
+                self.iteration
+            )),
+            Some(&serde_json::json!({
+                "findings": self.findings.len(),
+                "iterations": self.iteration,
+            })),
+        )
+        .await;
+
         info!(
             "[{}] Hunt agent completed: {} findings in {} iterations",
             self.scan_id,
@@ -342,6 +445,30 @@ impl HuntAgent {
 
         Ok(self.findings.clone())
     }
+
+    async fn record_event(
+        &self,
+        task_key: Option<&str>,
+        status: &str,
+        title: &str,
+        detail: Option<&str>,
+        metadata_json: Option<&serde_json::Value>,
+    ) {
+        let _ = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                Some("hunt"),
+                task_key,
+                "task",
+                Some(status),
+                title,
+                detail,
+                None,
+                metadata_json,
+            )
+            .await;
+    }
 }
 
 fn make_fingerprint(title: &str, file: &str, line: i32) -> String {
@@ -349,6 +476,68 @@ fn make_fingerprint(title: &str, file: &str, line: i32) -> String {
     let mut hasher = Sha256::new();
     hasher.update(input.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+fn slugify(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn humanize_tool_name(tool_name: &str) -> &'static str {
+    match tool_name {
+        "read_file" => "Reading file",
+        "search_code" => "Searching code",
+        "get_callers" => "Tracing callers",
+        "get_dependencies" => "Tracing dependencies",
+        "report_finding" => "Reporting finding",
+        _ => "Running tool",
+    }
+}
+
+fn tool_detail(tool_name: &str, arguments: &serde_json::Value) -> String {
+    match tool_name {
+        "read_file" => format!(
+            "Reading {}.",
+            arguments["file_path"]
+                .as_str()
+                .unwrap_or("the requested file")
+        ),
+        "search_code" => format!(
+            "Searching for `{}`{}.",
+            arguments["query"]
+                .as_str()
+                .unwrap_or("the requested pattern"),
+            arguments["file_glob"]
+                .as_str()
+                .map(|glob| format!(" within {glob}"))
+                .unwrap_or_default()
+        ),
+        "get_callers" => format!(
+            "Tracing call sites for {}.",
+            arguments["symbol"]
+                .as_str()
+                .unwrap_or("the requested symbol")
+        ),
+        "get_dependencies" => format!(
+            "Inspecting dependency edges for {}.",
+            arguments["file_path"]
+                .as_str()
+                .unwrap_or("the requested file")
+        ),
+        _ => "Running investigation tool.".to_string(),
+    }
 }
 
 const HUNT_SYSTEM_PROMPT: &str = "\

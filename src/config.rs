@@ -10,6 +10,17 @@
 use anyhow::{Context, Result};
 use std::env;
 
+fn env_nonempty(name: &str) -> Option<String> {
+    env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn env_nonempty_or(name: &str, default: &str) -> String {
+    env_nonempty(name).unwrap_or_else(|| default.to_string())
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub app: AppConfig,
@@ -89,7 +100,7 @@ impl Config {
 impl WebhookConfig {
     fn from_env() -> Self {
         WebhookConfig {
-            webhook_secret: env::var("WEBHOOK_SECRET").ok().filter(|s| !s.is_empty()),
+            webhook_secret: env_nonempty("WEBHOOK_SECRET"),
         }
     }
 
@@ -129,11 +140,10 @@ impl DatabaseConfig {
 impl AiConfig {
     fn from_env() -> Self {
         AiConfig {
-            anthropic_api_key: env::var("ANTHROPIC_API_KEY").ok().filter(|s| !s.is_empty()),
-            openai_api_key: env::var("OPENAI_API_KEY").ok().filter(|s| !s.is_empty()),
-            ollama_url: env::var("OLLAMA_URL").ok().filter(|s| !s.is_empty()),
-            default_model: env::var("DEFAULT_AI_MODEL")
-                .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string()),
+            anthropic_api_key: env_nonempty("ANTHROPIC_API_KEY"),
+            openai_api_key: env_nonempty("OPENAI_API_KEY"),
+            ollama_url: env_nonempty("OLLAMA_URL"),
+            default_model: env_nonempty_or("DEFAULT_AI_MODEL", "claude-sonnet-4-20250514"),
         }
     }
 
@@ -148,7 +158,7 @@ impl AiConfig {
 impl SecurityConfig {
     fn from_env() -> Self {
         SecurityConfig {
-            encryption_key: env::var("ENCRYPTION_KEY").ok().filter(|s| !s.is_empty()),
+            encryption_key: env_nonempty("ENCRYPTION_KEY"),
         }
     }
 }
@@ -156,12 +166,12 @@ impl SecurityConfig {
 impl GithubOAuthConfig {
     fn from_env() -> Self {
         GithubOAuthConfig {
-            client_id: env::var("GITHUB_CLIENT_ID").ok().filter(|s| !s.is_empty()),
-            client_secret: env::var("GITHUB_CLIENT_SECRET")
-                .ok()
-                .filter(|s| !s.is_empty()),
-            redirect_uri: env::var("GITHUB_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:8080/api/auth/github/callback".to_string()),
+            client_id: env_nonempty("GITHUB_CLIENT_ID"),
+            client_secret: env_nonempty("GITHUB_CLIENT_SECRET"),
+            redirect_uri: env_nonempty_or(
+                "GITHUB_REDIRECT_URI",
+                "http://localhost:8080/api/auth/github/callback",
+            ),
         }
     }
 
@@ -174,14 +184,13 @@ impl GithubOAuthConfig {
 impl GitlabOAuthConfig {
     fn from_env() -> Self {
         GitlabOAuthConfig {
-            client_id: env::var("GITLAB_CLIENT_ID").ok().filter(|s| !s.is_empty()),
-            client_secret: env::var("GITLAB_CLIENT_SECRET")
-                .ok()
-                .filter(|s| !s.is_empty()),
-            redirect_uri: env::var("GITLAB_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:8080/api/auth/gitlab/callback".to_string()),
-            base_url: env::var("GITLAB_BASE_URL")
-                .unwrap_or_else(|_| "https://gitlab.com".to_string()),
+            client_id: env_nonempty("GITLAB_CLIENT_ID"),
+            client_secret: env_nonempty("GITLAB_CLIENT_SECRET"),
+            redirect_uri: env_nonempty_or(
+                "GITLAB_REDIRECT_URI",
+                "http://localhost:8080/api/auth/gitlab/callback",
+            ),
+            base_url: env_nonempty_or("GITLAB_BASE_URL", "https://gitlab.com"),
         }
     }
 

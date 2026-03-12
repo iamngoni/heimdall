@@ -90,6 +90,15 @@ impl GarmrStage {
             self.scan_id,
             findings.len()
         );
+        self.record_event(
+            Some("sandbox-check"),
+            "running",
+            "Preparing sandbox validation",
+            Some("Checking Docker availability before executing proof-of-concept validation."),
+            None,
+            None,
+        )
+        .await;
 
         let docker = match Docker::connect_with_local_defaults() {
             Ok(d) => d,
@@ -98,9 +107,27 @@ impl GarmrStage {
                     "[{}] Docker not available, skipping Garmr validation: {e}",
                     self.scan_id
                 );
+                self.record_event(
+                    Some("sandbox-check"),
+                    "skipped",
+                    "Sandbox validation unavailable",
+                    Some("Docker is not available in this environment, so exploit validation was skipped."),
+                    None,
+                    None,
+                )
+                .await;
                 return Ok(0);
             }
         };
+        self.record_event(
+            Some("sandbox-check"),
+            "completed",
+            "Sandbox ready",
+            Some("Docker is available and Garmr can validate exploitability."),
+            Some(10),
+            None,
+        )
+        .await;
 
         let mut validated_count = 0usize;
 
@@ -133,6 +160,20 @@ impl GarmrStage {
         finding: &Finding,
         repo_work_dir: &Path,
     ) -> HeimdallResult<bool> {
+        let task_key = format!("finding-{}", finding.id);
+        let start_title = format!("Validating {}", finding.title);
+        self.record_event(
+            Some(&task_key),
+            "running",
+            &start_title,
+            Some("Generating a proof of concept and executing it inside the sandbox."),
+            None,
+            Some(&serde_json::json!({
+                "finding_id": finding.id,
+                "severity": finding.severity,
+            })),
+        )
+        .await;
         // Step 1: Generate PoC script via LLM
         let poc_script = self.generate_poc(finding).await?;
 
@@ -170,7 +211,51 @@ impl GarmrStage {
             );
         }
 
+        let finished_title = format!("Validation finished for {}", finding.title);
+        self.record_event(
+            Some(&task_key),
+            "completed",
+            &finished_title,
+            Some(if confirmed {
+                "Exploitability was confirmed inside the sandbox."
+            } else {
+                "No conclusive exploit confirmation was produced."
+            }),
+            None,
+            Some(&serde_json::json!({
+                "finding_id": finding.id,
+                "confirmed": confirmed,
+                "verdict": poc_result.verdict,
+            })),
+        )
+        .await;
+
         Ok(confirmed)
+    }
+
+    async fn record_event(
+        &self,
+        task_key: Option<&str>,
+        status: &str,
+        title: &str,
+        detail: Option<&str>,
+        progress_pct: Option<i32>,
+        metadata_json: Option<&serde_json::Value>,
+    ) {
+        let _ = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                Some("garmr"),
+                task_key,
+                "task",
+                Some(status),
+                title,
+                detail,
+                progress_pct,
+                metadata_json,
+            )
+            .await;
     }
 
     /// Ask LLM to generate a PoC exploit script.

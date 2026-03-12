@@ -11,8 +11,10 @@ use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
 use log::error;
 use uuid::Uuid;
 
+use crate::integrations::issues;
 use crate::middleware::auth::AuthenticatedUser;
 use crate::models::PaginationParams;
+use crate::routes::scans::build_scan_live_snapshot;
 use crate::state::AppState;
 
 /// Public pages — no auth required.
@@ -116,6 +118,29 @@ fn source_type_label(source_type: &str) -> &'static str {
         "zip" => "ZIP Upload",
         _ => "Source",
     }
+}
+
+fn humanize_slug(value: &str) -> String {
+    value
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => {
+                    let mut label = first.to_uppercase().collect::<String>();
+                    label.push_str(chars.as_str());
+                    label
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn is_terminal_scan_status(status: &str) -> bool {
+    matches!(status, "completed" | "failed" | "cancelled")
 }
 
 async fn oauth_connections_ctx(state: &AppState, user_id: Uuid) -> minijinja::Value {
@@ -411,6 +436,22 @@ async fn repo_detail_page(
             "reason": error.to_string(),
         }),
     };
+    let issue_provider = issues::issue_provider(&repo);
+    let issue_support = serde_json::json!({
+        "supported": issues::supports_issue_creation(&repo),
+        "provider": issue_provider,
+        "provider_label": issue_provider.map(str::to_uppercase),
+        "message": if issues::supports_issue_creation(&repo) {
+            format!(
+                "New findings can create or sync {} issues automatically.",
+                issue_provider.unwrap_or("repository").to_uppercase()
+            )
+        } else if matches!(repo.source_type.as_str(), "github" | "gitlab") {
+            "Issue creation becomes available once this repository is connected through the provider integration.".to_string()
+        } else {
+            "Issue creation is currently available for provider-backed GitHub and GitLab repositories.".to_string()
+        }
+    });
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
@@ -422,6 +463,8 @@ async fn repo_detail_page(
             "source_label": source_type_label(&repo.source_type),
             "remote_url": repo.remote_url,
             "default_branch": repo.default_branch,
+            "issue_auto_create_enabled": repo.issue_auto_create_enabled,
+            "issue_auto_create_min_severity": repo.issue_auto_create_min_severity,
             "host": match repo.source_type.as_str() {
                 "github" | "gitlab" | "git_url" => repo
                     .remote_url
@@ -441,6 +484,7 @@ async fn repo_detail_page(
             "finding_count": latest_scan.as_ref().map(|scan| scan.finding_count).unwrap_or(0),
         })),
         scan_capability => minijinja::Value::from_serialize(&scan_capability),
+        issue_support => minijinja::Value::from_serialize(&issue_support),
         page => page,
         per_page => per_page,
         total => total,
@@ -467,22 +511,59 @@ async fn scan_detail_page(
             return server_error_html(&state);
         }
     };
-
-    let stages = state.db.list_scan_stages(scan_id).await.unwrap_or_default();
-
-    let stage_values: Vec<minijinja::Value> = stages
-        .iter()
-        .map(|s| {
-            minijinja::Value::from_serialize(&serde_json::json!({
-                "stage": s.stage,
-                "status": s.status,
-            }))
-        })
-        .collect();
+    let repo = match state.db.get_repo_by_id(scan.repo_id).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!(
+                "Failed to fetch repo {} for scan {scan_id}: {e}",
+                scan.repo_id
+            );
+            return server_error_html(&state);
+        }
+    };
+    let live_snapshot = match build_scan_live_snapshot(state.db.as_ref(), scan_id).await {
+        Ok(Some(snapshot)) => snapshot,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!("Failed to build scan live snapshot for {scan_id}: {e:#}");
+            return server_error_html(&state);
+        }
+    };
+    let stage_values = live_snapshot
+        .get("stages")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+    let activity_values = live_snapshot
+        .get("activity")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+    let current_task = live_snapshot
+        .get("current_task")
+        .cloned()
+        .unwrap_or_else(|| {
+            serde_json::json!({
+                "stage": serde_json::Value::Null,
+                "title": "Waiting for activity",
+                "detail": "No execution activity has been recorded yet.",
+                "progress_pct": serde_json::Value::Null,
+                "timestamp": scan.updated_at.to_rfc3339(),
+            })
+        });
+    let agent_calls = live_snapshot
+        .get("agent_calls")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
+        repo => minijinja::Value::from_serialize(&serde_json::json!({
+            "id": repo.id,
+            "name": repo.name,
+            "issue_auto_create_enabled": repo.issue_auto_create_enabled,
+            "issue_auto_create_min_severity": repo.issue_auto_create_min_severity,
+        })),
         scan => minijinja::Value::from_serialize(&serde_json::json!({
             "id": scan.id,
             "short_id": scan.id.to_string().chars().take(8).collect::<String>(),
@@ -494,8 +575,16 @@ async fn scan_detail_page(
             "high_count": scan.high_count,
             "medium_count": scan.medium_count,
             "low_count": scan.low_count,
+            "status_label": humanize_slug(&scan.status),
+            "is_live": !is_terminal_scan_status(&scan.status),
+            "created_at": scan.created_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            "updated_at": scan.updated_at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            "error_message": scan.error_message,
         })),
-        stages => stage_values,
+        stages => minijinja::Value::from_serialize(&stage_values),
+        activities => minijinja::Value::from_serialize(&activity_values),
+        current_task => minijinja::Value::from_serialize(&current_task),
+        agent_calls => minijinja::Value::from_serialize(&agent_calls),
     };
 
     render_html(&state, "pages/scan.html", ctx)
@@ -643,19 +732,22 @@ async fn finding_detail_page(
         .list_finding_events(finding_id)
         .await
         .unwrap_or_default();
+    let explain_review = latest_finding_review_value(&events, "ai_explanation");
+    let verify_review = latest_finding_review_value(&events, "ai_verification");
+    let issue_provider = issues::issue_provider(&repo);
+    let repo_issue = match issue_provider {
+        Some(provider) => state
+            .db
+            .get_repo_issue_by_fingerprint(repo.id, provider, &finding.fingerprint)
+            .await
+            .unwrap_or_default(),
+        None => None,
+    };
     let event_values: Vec<minijinja::Value> = events
         .iter()
         .rev()
         .take(6)
-        .map(|event| {
-            minijinja::Value::from_serialize(&serde_json::json!({
-                "event_type": event.event_type,
-                "old_value": event.old_value,
-                "new_value": event.new_value,
-                "comment": event.comment,
-                "created_at": event.created_at.format("%Y-%m-%d %H:%M").to_string(),
-            }))
-        })
+        .map(serialize_finding_event)
         .collect();
 
     let ctx = minijinja::context! {
@@ -694,6 +786,16 @@ async fn finding_detail_page(
                 .map(|patch| patch.created_at.format("%Y-%m-%d %H:%M").to_string()),
         })),
         events => event_values,
+        explain_review => explain_review,
+        verify_review => verify_review,
+        issue => minijinja::Value::from_serialize(&serde_json::json!({
+            "supported": issues::supports_issue_creation(&repo),
+            "provider": issue_provider,
+            "url": repo_issue.as_ref().map(|issue| issue.issue_url.clone()),
+            "number": repo_issue.as_ref().and_then(|issue| issue.external_issue_number.clone()),
+            "state": repo_issue.as_ref().map(|issue| issue.state.clone()),
+            "auto_created": repo_issue.as_ref().map(|issue| issue.auto_created).unwrap_or(false),
+        })),
     };
 
     render_html(&state, "pages/finding_detail.html", ctx)
@@ -841,4 +943,154 @@ struct FindingsQuery {
     status: Option<String>,
     page: Option<u32>,
     per_page: Option<u32>,
+}
+
+fn latest_finding_review_value(
+    events: &[crate::models::db_models::FindingEvent],
+    event_type: &str,
+) -> minijinja::Value {
+    events
+        .iter()
+        .rev()
+        .find(|event| event.event_type == event_type)
+        .map(|event| {
+            minijinja::Value::from_serialize(&serde_json::json!({
+                "created_at": event.created_at.format("%Y-%m-%d %H:%M").to_string(),
+                "comment": event.comment,
+                "metadata": event.metadata,
+            }))
+        })
+        .unwrap_or_else(|| minijinja::Value::from(()))
+}
+
+fn serialize_finding_event(event: &crate::models::db_models::FindingEvent) -> minijinja::Value {
+    let metadata = event.metadata.clone().unwrap_or(serde_json::Value::Null);
+    let (title, detail, tone) = match event.event_type.as_str() {
+        "status_change" => (
+            "Status updated".to_string(),
+            match (event.old_value.as_deref(), event.new_value.as_deref()) {
+                (Some(old), Some(new)) => {
+                    format!(
+                        "Triage moved from {} to {}.",
+                        humanize_slug(old),
+                        humanize_slug(new)
+                    )
+                }
+                (_, Some(new)) => format!("Triage moved to {}.", humanize_slug(new)),
+                _ => event
+                    .comment
+                    .clone()
+                    .unwrap_or_else(|| "The finding status was updated.".to_string()),
+            },
+            match event.new_value.as_deref() {
+                Some("confirmed") | Some("fixed") => "success",
+                Some("false_positive") => "warning",
+                Some("dismissed") => "neutral",
+                _ => "active",
+            },
+        ),
+        "ai_explanation" => (
+            "AI explanation generated".to_string(),
+            metadata
+                .get("summary")
+                .and_then(|value| value.as_str())
+                .or_else(|| event.comment.as_deref())
+                .unwrap_or("Plain-language clarification is now available for this alert.")
+                .to_string(),
+            "active",
+        ),
+        "ai_verification" => {
+            let verdict = metadata
+                .get("verdict")
+                .and_then(|value| value.as_str())
+                .map(humanize_slug)
+                .unwrap_or_else(|| "Needs Review".to_string());
+            (
+                format!("AI verification: {verdict}"),
+                metadata
+                    .get("rationale")
+                    .and_then(|value| value.as_str())
+                    .or_else(|| event.comment.as_deref())
+                    .unwrap_or("A second-pass verification review was recorded.")
+                    .to_string(),
+                match metadata.get("verdict").and_then(|value| value.as_str()) {
+                    Some("confirmed") => "success",
+                    Some("false_positive_likely") => "warning",
+                    _ => "active",
+                },
+            )
+        }
+        "issue_linked" => (
+            "Repository issue linked".to_string(),
+            match (
+                metadata.get("provider").and_then(|value| value.as_str()),
+                metadata
+                    .get("external_issue_number")
+                    .and_then(|value| value.as_str()),
+                metadata.get("created").and_then(|value| value.as_bool()),
+            ) {
+                (Some(provider), Some(number), Some(true)) => format!(
+                    "{} issue #{} was created for this finding.",
+                    provider.to_uppercase(),
+                    number
+                ),
+                (Some(provider), Some(number), _) => format!(
+                    "Linked to existing {} issue #{} for this finding.",
+                    provider.to_uppercase(),
+                    number
+                ),
+                _ => event
+                    .comment
+                    .clone()
+                    .unwrap_or_else(|| "Repository issue linkage changed.".to_string()),
+            },
+            "success",
+        ),
+        "patch_applied" => (
+            "Patch applied".to_string(),
+            event
+                .comment
+                .clone()
+                .unwrap_or_else(|| "The generated patch was marked as applied.".to_string()),
+            "success",
+        ),
+        "comment" => (
+            "Comment added".to_string(),
+            event
+                .comment
+                .clone()
+                .unwrap_or_else(|| "A review comment was added.".to_string()),
+            "neutral",
+        ),
+        "severity_change" => (
+            "Severity updated".to_string(),
+            match (event.old_value.as_deref(), event.new_value.as_deref()) {
+                (Some(old), Some(new)) => format!(
+                    "Severity changed from {} to {}.",
+                    humanize_slug(old),
+                    humanize_slug(new)
+                ),
+                (_, Some(new)) => format!("Severity changed to {}.", humanize_slug(new)),
+                _ => "Severity changed.".to_string(),
+            },
+            "active",
+        ),
+        _ => (
+            humanize_slug(&event.event_type),
+            event
+                .comment
+                .clone()
+                .or_else(|| event.new_value.clone())
+                .or_else(|| event.old_value.clone())
+                .unwrap_or_else(|| "Review activity was recorded.".to_string()),
+            "neutral",
+        ),
+    };
+
+    minijinja::Value::from_serialize(&serde_json::json!({
+        "title": title,
+        "detail": detail,
+        "tone": tone,
+        "created_at": event.created_at.format("%Y-%m-%d %H:%M").to_string(),
+    }))
 }

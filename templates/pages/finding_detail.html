@@ -54,6 +54,8 @@
 
                     <div class="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_340px]">
                         <div class="space-y-6">
+                            {% include "partials/finding_ai_review.html" %}
+
                             {% if finding.description %}
                             <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                                 <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Explanation</h2>
@@ -117,6 +119,8 @@
                         </div>
 
                         <aside class="space-y-6">
+                            {% include "partials/finding_issue_panel.html" %}
+
                             <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                                 <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Metadata</h2>
                                 <dl class="mt-4 space-y-4">
@@ -152,29 +156,7 @@
                                 </dl>
                             </section>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Recent Activity</h2>
-                                {% if events|length > 0 %}
-                                <div class="mt-4 space-y-3">
-                                    {% for event in events %}
-                                    <div class="rounded-xl bg-slate-50 px-4 py-3">
-                                        <p class="text-sm font-semibold capitalize text-slate-900">{{ event.event_type|replace("_", " ") }}</p>
-                                        {% if event.old_value or event.new_value %}
-                                        <p class="mt-1 text-sm text-slate-500">
-                                            {{ event.old_value or "unset" }} -> {{ event.new_value or "unset" }}
-                                        </p>
-                                        {% endif %}
-                                        {% if event.comment %}
-                                        <p class="mt-1 text-sm text-slate-500">{{ event.comment }}</p>
-                                        {% endif %}
-                                        <p class="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-slate-400">{{ event.created_at }}</p>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                                {% else %}
-                                <p class="mt-4 text-sm text-slate-500">No review events have been recorded for this finding yet.</p>
-                                {% endif %}
-                            </section>
+                            {% include "partials/finding_recent_activity.html" %}
                         </aside>
                     </div>
                 </div>

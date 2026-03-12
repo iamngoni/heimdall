@@ -28,6 +28,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("", web::post().to(create_repo))
             .route("/{id}", web::get().to(get_repo))
             .route("/{id}/scan", web::post().to(trigger_scan))
+            .route(
+                "/{id}/issue-automation",
+                web::patch().to(update_repo_issue_automation),
+            )
             .route("/upload", web::post().to(upload_zip))
             .route("/github/list", web::get().to(list_github_repos))
             .route("/gitlab/list", web::get().to(list_gitlab_repos))
@@ -41,6 +45,12 @@ pub struct CreateRepoRequest {
     pub remote_url: Option<String>,
     pub source_type: Option<String>,
     pub default_branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateIssueAutomationRequest {
+    pub enabled: bool,
+    pub min_severity: String,
 }
 
 async fn get_repo(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
@@ -207,6 +217,74 @@ async fn trigger_scan(
     }
 
     response.json(ApiResponse::ok(scan))
+}
+
+async fn update_repo_issue_automation(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+    body: Either<web::Json<UpdateIssueAutomationRequest>, web::Form<UpdateIssueAutomationRequest>>,
+) -> HttpResponse {
+    let repo_id = path.into_inner();
+    let body = match body {
+        Either::Left(json) => json.into_inner(),
+        Either::Right(form) => form.into_inner(),
+    };
+    let min_severity = body.min_severity.trim().to_ascii_lowercase();
+    if !["critical", "high", "medium", "low"].contains(&min_severity.as_str()) {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            format!("Unsupported severity threshold: {}", body.min_severity),
+        ));
+    }
+
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+    let repo = match state.db.get_repo_by_id(repo_id).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
+                404,
+                format!("Repo '{repo_id}' not found"),
+            ));
+        }
+        Err(error) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch repo: {error}"),
+            ));
+        }
+    };
+
+    if repo.user_id != user.id {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(
+            403,
+            "You do not have access to this repository",
+        ));
+    }
+
+    match state
+        .db
+        .update_repo_issue_settings(repo_id, body.enabled, &min_severity)
+        .await
+    {
+        Ok(Some(repo)) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+            "id": repo.id,
+            "issue_auto_create_enabled": repo.issue_auto_create_enabled,
+            "issue_auto_create_min_severity": repo.issue_auto_create_min_severity,
+        }))),
+        Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
+            404,
+            format!("Repo '{repo_id}' not found"),
+        )),
+        Err(error) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            format!("Failed to update repository issue automation: {error}"),
+        )),
+    }
 }
 
 /// Handle zip file upload: saves the file and creates a repo record.

@@ -18,12 +18,13 @@ pub mod tyr;
 
 use std::sync::Arc;
 
-use log::{error, info};
+use log::{error, info, warn};
 
 use crate::ai::ModelProvider;
 use crate::db::DatabaseOperations;
+use crate::integrations::issues;
 use crate::models::HeimdallResult;
-use crate::models::db_models::Repo;
+use crate::models::db_models::{Finding, Repo};
 use crate::sse::ScanBroadcaster;
 
 /// Orchestrates the full scan pipeline:
@@ -58,6 +59,17 @@ impl ScanPipeline {
 
     pub async fn run(&self, repo: &Repo) -> HeimdallResult<()> {
         info!("Starting scan pipeline for scan_id={}", self.scan_id);
+        self.record_scan_event(
+            None,
+            Some("scan-start"),
+            "system",
+            Some("running"),
+            "Scan execution started",
+            Some("Pipeline booted and is preparing the working copy."),
+            None,
+            None,
+        )
+        .await;
 
         self.db
             .update_scan_timestamps(self.scan_id, true, false)
@@ -85,6 +97,7 @@ impl ScanPipeline {
                     repo.id,
                     Arc::clone(&self.db),
                     Arc::clone(&self.ai),
+                    self.default_model.clone(),
                 );
                 stage.run(&code_index).await
             })
@@ -177,6 +190,7 @@ impl ScanPipeline {
 
         // Update finding counts and emit scan_complete
         let _ = self.db.update_scan_counts(self.scan_id).await;
+        self.auto_create_repo_issues(repo).await;
         if let Ok(Some(scan)) = self.db.get_scan_by_id(self.scan_id).await {
             self.sse.emit_scan_complete(
                 self.scan_id,
@@ -192,6 +206,18 @@ impl ScanPipeline {
         if ingest_output.work_dir.exists() {
             let _ = std::fs::remove_dir_all(&ingest_output.work_dir);
         }
+
+        self.record_scan_event(
+            None,
+            Some("scan-finished"),
+            "system",
+            Some("completed"),
+            "Scan execution finished",
+            Some("All configured analysis stages completed and final outputs were stored."),
+            Some(100),
+            None,
+        )
+        .await;
 
         // Cleanup SSE channel after a short delay to let clients receive final events
         let sse = Arc::clone(&self.sse);
@@ -233,6 +259,17 @@ impl ScanPipeline {
         self.sse
             .emit_stage_update(self.scan_id, stage_name, "running", None);
         self.sse.emit_status_change(self.scan_id, status_running);
+        self.record_scan_event(
+            Some(stage_name),
+            Some(stage_name),
+            "stage",
+            Some("running"),
+            format!("{} started", humanize_stage_name(stage_name)).as_str(),
+            Some("Stage entered active execution."),
+            None,
+            None,
+        )
+        .await;
 
         match future.await {
             Ok(result) => {
@@ -247,6 +284,17 @@ impl ScanPipeline {
                 self.sse
                     .emit_stage_update(self.scan_id, stage_name, "completed", None);
                 self.sse.emit_status_change(self.scan_id, status_done);
+                self.record_scan_event(
+                    Some(stage_name),
+                    Some(stage_name),
+                    "stage",
+                    Some("completed"),
+                    format!("{} completed", humanize_stage_name(stage_name)).as_str(),
+                    Some("Stage work finished successfully."),
+                    Some(100),
+                    None,
+                )
+                .await;
 
                 info!("[{}] Stage {stage_name} completed", self.scan_id);
                 Ok(result)
@@ -265,9 +313,234 @@ impl ScanPipeline {
                 self.sse
                     .emit_stage_update(self.scan_id, stage_name, "failed", Some(&err_msg));
                 self.sse.emit_error(self.scan_id, &err_msg);
+                self.record_scan_event(
+                    Some(stage_name),
+                    Some(stage_name),
+                    "stage",
+                    Some("failed"),
+                    format!("{} failed", humanize_stage_name(stage_name)).as_str(),
+                    Some(&err_msg),
+                    None,
+                    None,
+                )
+                .await;
 
                 Err(e)
             }
         }
+    }
+
+    pub(crate) async fn record_scan_event(
+        &self,
+        stage: Option<&str>,
+        task_key: Option<&str>,
+        event_type: &str,
+        status: Option<&str>,
+        title: &str,
+        detail: Option<&str>,
+        progress_pct: Option<i32>,
+        metadata_json: Option<&serde_json::Value>,
+    ) {
+        if let Err(error) = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                stage,
+                task_key,
+                event_type,
+                status,
+                title,
+                detail,
+                progress_pct,
+                metadata_json,
+            )
+            .await
+        {
+            warn!(
+                "[{}] Failed to record scan event `{title}`: {error:#}",
+                self.scan_id
+            );
+        }
+    }
+
+    async fn auto_create_repo_issues(&self, repo: &Repo) {
+        if !repo.issue_auto_create_enabled {
+            self.record_scan_event(
+                Some("report"),
+                Some("issue-automation"),
+                "issue",
+                Some("skipped"),
+                "Issue automation skipped",
+                Some("Automatic issue creation is disabled for this repository."),
+                None,
+                None,
+            )
+            .await;
+            return;
+        }
+
+        if !issues::supports_issue_creation(repo) {
+            self.record_scan_event(
+                Some("report"),
+                Some("issue-automation"),
+                "issue",
+                Some("skipped"),
+                "Issue automation unavailable",
+                Some("This repository does not currently support provider-backed issue creation."),
+                None,
+                None,
+            )
+            .await;
+            return;
+        }
+
+        let Ok(findings) = self
+            .db
+            .list_findings_by_scan(self.scan_id, None, None)
+            .await
+        else {
+            return;
+        };
+
+        let qualifying_findings = findings
+            .iter()
+            .filter(|finding| {
+                issues::finding_qualifies_for_auto_issue(
+                    finding,
+                    &repo.issue_auto_create_min_severity,
+                )
+            })
+            .cloned()
+            .collect::<Vec<Finding>>();
+
+        if qualifying_findings.is_empty() {
+            self.record_scan_event(
+                Some("report"),
+                Some("issue-automation"),
+                "issue",
+                Some("completed"),
+                "Issue automation completed",
+                Some("No findings met the configured severity and confidence requirements for issue creation."),
+                None,
+                None,
+            )
+            .await;
+            return;
+        }
+
+        self.record_scan_event(
+            Some("report"),
+            Some("issue-automation"),
+            "issue",
+            Some("running"),
+            "Creating repository issues",
+            Some("Qualifying findings are being synchronized to the connected repository."),
+            None,
+            Some(&serde_json::json!({
+                "threshold": repo.issue_auto_create_min_severity,
+                "requires_high_confidence_or_validation": true,
+                "count": qualifying_findings.len(),
+            })),
+        )
+        .await;
+
+        let mut created = 0usize;
+        let mut linked = 0usize;
+        let mut failures = 0usize;
+
+        for finding in qualifying_findings {
+            match issues::create_or_link_issue(
+                &self.db,
+                self.encryption_key.as_ref(),
+                repo,
+                &finding,
+                true,
+            )
+            .await
+            {
+                Ok((repo_issue, was_created)) => {
+                    if was_created {
+                        created += 1;
+                    } else {
+                        linked += 1;
+                    }
+
+                    let metadata = serde_json::json!({
+                        "provider": repo_issue.provider,
+                        "issue_url": repo_issue.issue_url,
+                        "external_issue_number": repo_issue.external_issue_number,
+                        "auto_created": true,
+                    });
+                    let _ = self
+                        .db
+                        .create_finding_event_with_metadata(
+                            finding.id,
+                            None,
+                            "issue_linked",
+                            None,
+                            repo_issue.external_issue_number.as_deref(),
+                            Some(if was_created {
+                                "Repository issue created automatically from this finding."
+                            } else {
+                                "Existing repository issue matched this finding fingerprint."
+                            }),
+                            Some(&metadata),
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    failures += 1;
+                    self.record_scan_event(
+                        Some("report"),
+                        Some("issue-automation"),
+                        "issue",
+                        Some("failed"),
+                        format!("Issue creation failed for {}", finding.title).as_str(),
+                        Some(&error.to_string()),
+                        None,
+                        Some(&serde_json::json!({
+                            "finding_id": finding.id,
+                            "severity": finding.severity,
+                        })),
+                    )
+                    .await;
+                }
+            }
+        }
+
+        let status = if failures > 0 {
+            "completed_with_errors"
+        } else {
+            "completed"
+        };
+        self.record_scan_event(
+            Some("report"),
+            Some("issue-automation"),
+            "issue",
+            Some(status),
+            "Repository issue sync finished",
+            Some(&format!(
+                "{created} created, {linked} linked, {failures} failed."
+            )),
+            Some(100),
+            Some(&serde_json::json!({
+                "created": created,
+                "linked": linked,
+                "failed": failures,
+            })),
+        )
+        .await;
+    }
+}
+
+fn humanize_stage_name(stage_name: &str) -> &'static str {
+    match stage_name {
+        "ingest" => "Ingest",
+        "tyr" => "Tyr",
+        "static_analysis" => "Static analysis",
+        "hunt" => "Hunt",
+        "garmr" => "Garmr",
+        "report" => "Report",
+        _ => "Stage",
     }
 }

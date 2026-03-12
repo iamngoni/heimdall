@@ -95,7 +95,9 @@ pub fn configured_provider_kind(config: &AiConfig) -> Option<ProviderKind> {
 }
 
 pub fn model_for_provider(provider: ProviderKind, configured_model: &str) -> String {
-    if provider.matches_model(configured_model) {
+    let configured_model = configured_model.trim();
+
+    if !configured_model.is_empty() && provider.matches_model(configured_model) {
         configured_model.to_string()
     } else {
         provider.fallback_model().to_string()
@@ -177,6 +179,18 @@ mod tests {
         assert_eq!(
             model_for_provider(ProviderKind::Anthropic, "claude-sonnet-4-20250514"),
             "claude-sonnet-4-20250514"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_provider_safe_model_when_default_model_is_blank() {
+        assert_eq!(
+            model_for_provider(ProviderKind::Anthropic, ""),
+            "claude-sonnet-4-20250514"
+        );
+        assert_eq!(
+            model_for_provider(ProviderKind::OpenAi, "   "),
+            "gpt-4o-mini"
         );
     }
 

@@ -137,6 +137,12 @@ pub fn heimdall_schema() -> SchemaDef {
             t.uuid("oauth_connection_id")
                 .references("oauth_connections", "id")
                 .on_delete(OnDelete::SetNull);
+            t.boolean("issue_auto_create_enabled")
+                .not_null()
+                .default_bool(true);
+            t.text("issue_auto_create_min_severity")
+                .not_null()
+                .default_str("'high'");
             t.timestamps();
             t.soft_delete();
         })
@@ -226,6 +232,7 @@ pub fn heimdall_schema() -> SchemaDef {
                 .on_delete(OnDelete::Cascade);
             t.text("file_path").not_null();
             t.text("content_hash").not_null();
+            t.text("content_text");
             t.text("language");
             t.int("line_count");
             t.int("byte_size");
@@ -334,7 +341,51 @@ pub fn heimdall_schema() -> SchemaDef {
                 .default(DefaultValue::Now);
         })
         // ---------------------------------------------------------------
-        // 16. threat_models
+        // 16. scan_events
+        // ---------------------------------------------------------------
+        .table("scan_events", |t| {
+            t.uuid_pk("id");
+            t.uuid("scan_id")
+                .not_null()
+                .references("scans", "id")
+                .on_delete(OnDelete::Cascade);
+            t.text("stage");
+            t.text("task_key");
+            t.text("event_type").not_null();
+            t.text("status");
+            t.text("title").not_null();
+            t.text("detail");
+            t.int("progress_pct");
+            t.jsonb("metadata_json");
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
+        })
+        // ---------------------------------------------------------------
+        // 17. repo_issues
+        // ---------------------------------------------------------------
+        .table("repo_issues", |t| {
+            t.uuid_pk("id");
+            t.uuid("repo_id")
+                .not_null()
+                .references("repos", "id")
+                .on_delete(OnDelete::Cascade);
+            t.uuid("finding_id")
+                .references("findings", "id")
+                .on_delete(OnDelete::SetNull);
+            t.text("provider").not_null();
+            t.text("external_issue_id").not_null();
+            t.text("external_issue_number");
+            t.text("issue_url").not_null();
+            t.text("title").not_null();
+            t.text("fingerprint").not_null();
+            t.text("severity").not_null();
+            t.text("state").not_null().default_str("'open'");
+            t.boolean("auto_created").not_null().default_bool(false);
+            t.timestamps();
+        })
+        // ---------------------------------------------------------------
+        // 18. threat_models
         // ---------------------------------------------------------------
         .table("threat_models", |t| {
             t.uuid_pk("id");
@@ -376,6 +427,17 @@ pub fn heimdall_schema() -> SchemaDef {
             "scan_jobs",
             &["status", "run_after", "priority"],
         )
+        .index(
+            "idx_scan_events_scan_created",
+            "scan_events",
+            &["scan_id", "created_at"],
+        )
+        .index(
+            "idx_repo_issues_repo_state",
+            "repo_issues",
+            &["repo_id", "state"],
+        )
+        .index("idx_repo_issues_finding", "repo_issues", &["finding_id"])
         .index("idx_scans_repo_commit", "scans", &["repo_id", "commit_sha"])
         // ---------------------------------------------------------------
         // Practical indexes

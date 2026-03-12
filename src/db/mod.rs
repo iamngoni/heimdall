@@ -266,6 +266,24 @@ impl DatabaseOperations {
         .context("Failed to list repos by user (paginated)")
     }
 
+    pub async fn update_repo_issue_settings(
+        &self,
+        repo_id: Uuid,
+        enabled: bool,
+        min_severity: &str,
+    ) -> HeimdallResult<Option<Repo>> {
+        sqlx::query_as::<_, Repo>(
+            "UPDATE repos SET issue_auto_create_enabled = $1, issue_auto_create_min_severity = $2, updated_at = now() \
+             WHERE id = $3 AND deleted_at IS NULL RETURNING *",
+        )
+        .bind(enabled)
+        .bind(min_severity)
+        .bind(repo_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to update repo issue settings")
+    }
+
     pub async fn count_repos_by_user(&self, user_id: Uuid) -> HeimdallResult<i64> {
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM repos WHERE user_id = $1 AND deleted_at IS NULL",
@@ -841,26 +859,43 @@ impl DatabaseOperations {
         scan_id: Uuid,
         file_path: &str,
         content_hash: &str,
+        content_text: &str,
         language: Option<&str>,
         line_count: i32,
         byte_size: i32,
     ) -> HeimdallResult<FileSnapshot> {
         sqlx::query_as::<_, FileSnapshot>(
             "INSERT INTO file_snapshots \
-             (repo_id, scan_id, file_path, content_hash, language, line_count, byte_size) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             (repo_id, scan_id, file_path, content_hash, content_text, language, line_count, byte_size) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
              RETURNING *",
         )
         .bind(repo_id)
         .bind(scan_id)
         .bind(file_path)
         .bind(content_hash)
+        .bind(content_text)
         .bind(language)
         .bind(line_count)
         .bind(byte_size)
         .fetch_one(&self.pool)
         .await
         .context("Failed to create file snapshot")
+    }
+
+    pub async fn get_file_snapshot_by_scan_and_path(
+        &self,
+        scan_id: Uuid,
+        file_path: &str,
+    ) -> HeimdallResult<Option<FileSnapshot>> {
+        sqlx::query_as::<_, FileSnapshot>(
+            "SELECT * FROM file_snapshots WHERE scan_id = $1 AND file_path = $2 LIMIT 1",
+        )
+        .bind(scan_id)
+        .bind(file_path)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch file snapshot by scan and path")
     }
 
     // -----------------------------------------------------------------------
@@ -899,6 +934,68 @@ impl DatabaseOperations {
         .fetch_one(&self.pool)
         .await
         .context("Failed to create agent tool call")
+    }
+
+    pub async fn list_agent_tool_calls_by_scan(
+        &self,
+        scan_id: Uuid,
+        limit: i64,
+    ) -> HeimdallResult<Vec<AgentToolCall>> {
+        sqlx::query_as::<_, AgentToolCall>(
+            "SELECT * FROM agent_tool_calls WHERE scan_id = $1 ORDER BY created_at DESC LIMIT $2",
+        )
+        .bind(scan_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to list agent tool calls by scan")
+    }
+
+    pub async fn create_scan_event(
+        &self,
+        scan_id: Uuid,
+        stage: Option<&str>,
+        task_key: Option<&str>,
+        event_type: &str,
+        status: Option<&str>,
+        title: &str,
+        detail: Option<&str>,
+        progress_pct: Option<i32>,
+        metadata_json: Option<&serde_json::Value>,
+    ) -> HeimdallResult<ScanEventRecord> {
+        sqlx::query_as::<_, ScanEventRecord>(
+            "INSERT INTO scan_events \
+             (scan_id, stage, task_key, event_type, status, title, detail, progress_pct, metadata_json) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+             RETURNING *",
+        )
+        .bind(scan_id)
+        .bind(stage)
+        .bind(task_key)
+        .bind(event_type)
+        .bind(status)
+        .bind(title)
+        .bind(detail)
+        .bind(progress_pct)
+        .bind(metadata_json)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to create scan event")
+    }
+
+    pub async fn list_scan_events(
+        &self,
+        scan_id: Uuid,
+        limit: i64,
+    ) -> HeimdallResult<Vec<ScanEventRecord>> {
+        sqlx::query_as::<_, ScanEventRecord>(
+            "SELECT * FROM scan_events WHERE scan_id = $1 ORDER BY created_at DESC LIMIT $2",
+        )
+        .bind(scan_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to list scan events")
     }
 
     // -----------------------------------------------------------------------
@@ -993,10 +1090,26 @@ impl DatabaseOperations {
         new_value: Option<&str>,
         comment: Option<&str>,
     ) -> HeimdallResult<FindingEvent> {
+        self.create_finding_event_with_metadata(
+            finding_id, user_id, event_type, old_value, new_value, comment, None,
+        )
+        .await
+    }
+
+    pub async fn create_finding_event_with_metadata(
+        &self,
+        finding_id: Uuid,
+        user_id: Option<Uuid>,
+        event_type: &str,
+        old_value: Option<&str>,
+        new_value: Option<&str>,
+        comment: Option<&str>,
+        metadata: Option<&serde_json::Value>,
+    ) -> HeimdallResult<FindingEvent> {
         sqlx::query_as::<_, FindingEvent>(
             "INSERT INTO finding_events \
-             (finding_id, user_id, event_type, old_value, new_value, comment) \
-             VALUES ($1, $2, $3, $4, $5, $6) \
+             (finding_id, user_id, event_type, old_value, new_value, comment, metadata) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
              RETURNING *",
         )
         .bind(finding_id)
@@ -1005,6 +1118,7 @@ impl DatabaseOperations {
         .bind(old_value)
         .bind(new_value)
         .bind(comment)
+        .bind(metadata)
         .fetch_one(&self.pool)
         .await
         .context("Failed to create finding event")
@@ -1101,6 +1215,69 @@ impl DatabaseOperations {
         .fetch_one(&self.pool)
         .await
         .context("Failed to create patch")
+    }
+
+    pub async fn get_repo_issue_by_fingerprint(
+        &self,
+        repo_id: Uuid,
+        provider: &str,
+        fingerprint: &str,
+    ) -> HeimdallResult<Option<RepoIssue>> {
+        sqlx::query_as::<_, RepoIssue>(
+            "SELECT * FROM repo_issues WHERE repo_id = $1 AND provider = $2 AND fingerprint = $3 LIMIT 1",
+        )
+        .bind(repo_id)
+        .bind(provider)
+        .bind(fingerprint)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch repo issue by fingerprint")
+    }
+
+    pub async fn upsert_repo_issue(
+        &self,
+        repo_id: Uuid,
+        finding_id: Option<Uuid>,
+        provider: &str,
+        external_issue_id: &str,
+        external_issue_number: Option<&str>,
+        issue_url: &str,
+        title: &str,
+        fingerprint: &str,
+        severity: &str,
+        state: &str,
+        auto_created: bool,
+    ) -> HeimdallResult<RepoIssue> {
+        sqlx::query_as::<_, RepoIssue>(
+            "INSERT INTO repo_issues \
+             (repo_id, finding_id, provider, external_issue_id, external_issue_number, issue_url, title, fingerprint, severity, state, auto_created) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
+             ON CONFLICT (repo_id, provider, fingerprint) DO UPDATE SET \
+                 finding_id = COALESCE(EXCLUDED.finding_id, repo_issues.finding_id), \
+                 external_issue_id = EXCLUDED.external_issue_id, \
+                 external_issue_number = EXCLUDED.external_issue_number, \
+                 issue_url = EXCLUDED.issue_url, \
+                 title = EXCLUDED.title, \
+                 severity = EXCLUDED.severity, \
+                 state = EXCLUDED.state, \
+                 auto_created = EXCLUDED.auto_created, \
+                 updated_at = now() \
+             RETURNING *",
+        )
+        .bind(repo_id)
+        .bind(finding_id)
+        .bind(provider)
+        .bind(external_issue_id)
+        .bind(external_issue_number)
+        .bind(issue_url)
+        .bind(title)
+        .bind(fingerprint)
+        .bind(severity)
+        .bind(state)
+        .bind(auto_created)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to upsert repo issue")
     }
 
     // -----------------------------------------------------------------------

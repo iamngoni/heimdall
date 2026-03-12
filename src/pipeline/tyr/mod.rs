@@ -25,6 +25,7 @@ pub struct TyrStage {
     pub repo_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
     pub ai: Arc<dyn ModelProvider>,
+    pub default_model: String,
 }
 
 /// The structured threat model produced by Tyr.
@@ -69,19 +70,41 @@ impl TyrStage {
         repo_id: uuid::Uuid,
         db: Arc<DatabaseOperations>,
         ai: Arc<dyn ModelProvider>,
+        default_model: String,
     ) -> Self {
         Self {
             scan_id,
             repo_id,
             db,
             ai,
+            default_model,
         }
     }
 
     pub async fn run(&self, index: &CodeIndex) -> HeimdallResult<ThreatModelOutput> {
         info!("[{}] Starting Tyr threat model generation", self.scan_id);
+        self.record_event(
+            Some("repo-summary"),
+            "running",
+            "Summarizing repository structure",
+            Some("Collecting enough codebase context to identify trust boundaries and attack surfaces."),
+            None,
+            None,
+        )
+        .await;
 
         let code_summary = index.summary_for_llm(12000);
+        self.record_event(
+            Some("repo-summary"),
+            "completed",
+            "Repository summary ready",
+            Some("Codebase context prepared for the threat-model request."),
+            Some(25),
+            Some(&serde_json::json!({
+                "summary_bytes": code_summary.len(),
+            })),
+        )
+        .await;
 
         let system_prompt = TYR_SYSTEM_PROMPT;
         let user_prompt = format!(
@@ -98,7 +121,7 @@ impl TyrStage {
         );
 
         let request = CompletionRequest {
-            model: String::new(), // filled by config default
+            model: self.default_model.clone(),
             messages: vec![
                 Message {
                     role: "system".to_string(),
@@ -114,6 +137,17 @@ impl TyrStage {
             temperature: Some(0.2),
         };
 
+        self.record_event(
+            Some("threat-model-request"),
+            "running",
+            "Generating threat model",
+            Some("Tyr is reasoning about trust boundaries, attack surfaces, and sensitive data flows."),
+            None,
+            Some(&serde_json::json!({
+                "model": self.default_model,
+            })),
+        )
+        .await;
         let start = std::time::Instant::now();
         let response = self.ai.complete(request).await?;
         let duration = start.elapsed();
@@ -151,11 +185,35 @@ impl TyrStage {
         let threat_model: ThreatModelOutput = serde_json::from_str(json_str).map_err(|e| {
             anyhow::anyhow!("Failed to parse Tyr threat model response: {e}\nRaw: {json_str}")
         })?;
+        self.record_event(
+            Some("threat-model-request"),
+            "completed",
+            "Threat model generated",
+            Some("Tyr returned a structured threat model ready to store."),
+            Some(80),
+            Some(&serde_json::json!({
+                "surfaces": threat_model.surfaces.len(),
+                "boundaries": threat_model.boundaries.len(),
+                "data_flows": threat_model.data_flows.len(),
+                "duration_ms": duration.as_millis() as i32,
+            })),
+        )
+        .await;
 
         // Store in DB
         let boundaries_json = serde_json::to_value(&threat_model.boundaries)?;
         let surfaces_json = serde_json::to_value(&threat_model.surfaces)?;
         let data_flows_json = serde_json::to_value(&threat_model.data_flows)?;
+
+        self.record_event(
+            Some("threat-model-store"),
+            "running",
+            "Persisting threat model",
+            Some("Writing structured threat-model artifacts to the database."),
+            None,
+            None,
+        )
+        .await;
 
         self.db
             .create_threat_model(
@@ -167,6 +225,15 @@ impl TyrStage {
                 Some(&data_flows_json),
             )
             .await?;
+        self.record_event(
+            Some("threat-model-store"),
+            "completed",
+            "Threat model stored",
+            Some("Threat-model artifacts are available for downstream stages and review."),
+            Some(100),
+            None,
+        )
+        .await;
 
         info!(
             "[{}] Tyr complete: {} boundaries, {} surfaces, {} data flows",
@@ -177,6 +244,31 @@ impl TyrStage {
         );
 
         Ok(threat_model)
+    }
+
+    async fn record_event(
+        &self,
+        task_key: Option<&str>,
+        status: &str,
+        title: &str,
+        detail: Option<&str>,
+        progress_pct: Option<i32>,
+        metadata_json: Option<&serde_json::Value>,
+    ) {
+        let _ = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                Some("tyr"),
+                task_key,
+                "task",
+                Some(status),
+                title,
+                detail,
+                progress_pct,
+                metadata_json,
+            )
+            .await;
     }
 }
 

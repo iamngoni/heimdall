@@ -1,0 +1,26 @@
+<section id="finding-recent-activity" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Recent Activity</h2>
+    {% if events|length > 0 %}
+    <div class="mt-4 space-y-3">
+        {% for event in events %}
+        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div class="flex items-start gap-3">
+                <span class="mt-1 h-2.5 w-2.5 rounded-full
+                    {{ 'bg-emerald-500' if event.tone == 'success' else
+                       'bg-amber-500' if event.tone == 'warning' else
+                       'bg-blue-500' if event.tone == 'active' else
+                       'bg-slate-400' }}">
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold text-slate-900">{{ event.title }}</p>
+                    <p class="mt-1 text-sm leading-6 text-slate-500">{{ event.detail }}</p>
+                </div>
+            </div>
+            <p class="mt-2 text-xs font-medium uppercase tracking-[0.12em] text-slate-400">{{ event.created_at }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="mt-4 text-sm text-slate-500">No review events have been recorded for this finding yet.</p>
+    {% endif %}
+</section>

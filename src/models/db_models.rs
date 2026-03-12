@@ -219,6 +219,8 @@ pub struct Repo {
     pub default_branch: Option<String>,
     pub last_commit_sha: Option<String>,
     pub oauth_connection_id: Option<Uuid>,
+    pub issue_auto_create_enabled: bool,
+    pub issue_auto_create_min_severity: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -285,6 +287,7 @@ pub struct FileSnapshot {
     pub scan_id: Uuid,
     pub file_path: String,
     pub content_hash: String,
+    pub content_text: Option<String>,
     pub language: Option<String>,
     pub line_count: Option<i32>,
     pub byte_size: Option<i32>,
@@ -370,6 +373,39 @@ pub struct AgentToolCall {
     pub duration_ms: Option<i32>,
     pub error: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ScanEventRecord {
+    pub id: Uuid,
+    pub scan_id: Uuid,
+    pub stage: Option<String>,
+    pub task_key: Option<String>,
+    pub event_type: String,
+    pub status: Option<String>,
+    pub title: String,
+    pub detail: Option<String>,
+    pub progress_pct: Option<i32>,
+    pub metadata_json: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct RepoIssue {
+    pub id: Uuid,
+    pub repo_id: Uuid,
+    pub finding_id: Option<Uuid>,
+    pub provider: String,
+    pub external_issue_id: String,
+    pub external_issue_number: Option<String>,
+    pub issue_url: String,
+    pub title: String,
+    pub fingerprint: String,
+    pub severity: String,
+    pub state: String,
+    pub auto_created: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

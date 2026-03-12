@@ -20,8 +20,38 @@
     display: inline-block;
 }
 
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
 .htmx-indicator {
     display: none;
+}
+
+.htmx-indicator-inline {
+    display: none;
+}
+
+.htmx-request .htmx-indicator-inline,
+.htmx-request.htmx-indicator-inline {
+    display: inline-flex;
+}
+
+.htmx-indicator-flex {
+    display: none;
+}
+
+.htmx-request .htmx-indicator-flex,
+.htmx-request.htmx-indicator-flex {
+    display: flex;
+}
+
+.app-menu-summary::-webkit-details-marker {
+    display: none;
+}
+
+.app-menu-summary {
+    list-style: none;
 }
 
 /* Custom scrollbar for app shell */

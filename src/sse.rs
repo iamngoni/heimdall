@@ -169,6 +169,7 @@ impl ScanBroadcaster {
                     "high": high,
                     "medium": medium,
                     "low": low,
+                    "timestamp": Utc::now().to_rfc3339(),
                 }),
                 timestamp: Utc::now().to_rfc3339(),
             },

@@ -14,6 +14,7 @@ pub mod crypto;
 pub mod db;
 pub mod errors;
 pub mod index;
+pub mod integrations;
 pub mod middleware;
 pub mod models;
 pub mod pipeline;

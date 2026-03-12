@@ -338,11 +338,14 @@ async fn logout(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     removal_cookie.set_path("/");
     removal_cookie.make_removal();
 
-    HttpResponse::Ok()
-        .cookie(removal_cookie)
-        .json(ApiResponse::ok(serde_json::json!({
-            "message": "Logged out"
-        })))
+    let mut response = HttpResponse::Ok();
+    response.cookie(removal_cookie);
+    if req.headers().contains_key("HX-Request") {
+        response.insert_header(("HX-Redirect", "/login"));
+    }
+    response.json(ApiResponse::ok(serde_json::json!({
+        "message": "Logged out"
+    })))
 }
 
 /// GET /auth/me

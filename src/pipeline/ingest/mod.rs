@@ -72,19 +72,89 @@ impl IngestStage {
     /// Run the ingest stage for a given repo.
     pub async fn run(&self, repo: &Repo) -> HeimdallResult<IngestOutput> {
         info!("[{}] Starting ingest for repo {}", self.scan_id, repo.name);
+        self.record_event(
+            Some("source-acquisition"),
+            "running",
+            "Fetching repository source",
+            Some("Preparing a clean working directory and acquiring the repository contents."),
+            None,
+            None,
+        )
+        .await;
 
         // Step 1: Acquire the source code
         let work_dir = self.acquire_source(repo).await?;
+        self.record_event(
+            Some("source-acquisition"),
+            "completed",
+            "Repository source ready",
+            Some("Working copy is ready for commit detection and indexing."),
+            Some(20),
+            Some(&serde_json::json!({
+                "source_type": repo.source_type,
+                "work_dir": work_dir,
+            })),
+        )
+        .await;
 
         // Step 2: Detect commit SHA
+        self.record_event(
+            Some("commit-detection"),
+            "running",
+            "Detecting repository commit",
+            Some("Resolving the current commit SHA from the working copy."),
+            None,
+            None,
+        )
+        .await;
         let commit_sha = detect_commit_sha(&work_dir);
         if let Some(ref sha) = commit_sha {
             info!("[{}] Detected commit SHA: {}", self.scan_id, sha);
             self.db.update_scan_commit_sha(self.scan_id, sha).await?;
         }
+        self.record_event(
+            Some("commit-detection"),
+            "completed",
+            "Commit resolved",
+            Some(
+                commit_sha
+                    .as_deref()
+                    .unwrap_or("Commit SHA could not be resolved from the working copy."),
+            ),
+            Some(35),
+            Some(&serde_json::json!({
+                "commit_sha": commit_sha,
+            })),
+        )
+        .await;
 
         // Step 3: Walk files and build code index
+        self.record_event(
+            Some("index-build"),
+            "running",
+            "Indexing repository contents",
+            Some("Enumerating files, extracting symbols, and building the code index."),
+            None,
+            None,
+        )
+        .await;
         let code_index = self.build_index(&work_dir, repo).await?;
+        self.record_event(
+            Some("index-build"),
+            "completed",
+            "Repository index built",
+            Some(&format!(
+                "{} files indexed and {} symbols extracted.",
+                code_index.files.len(),
+                code_index.symbols.all_count()
+            )),
+            Some(100),
+            Some(&serde_json::json!({
+                "files_indexed": code_index.files.len(),
+                "symbols": code_index.symbols.all_count(),
+            })),
+        )
+        .await;
 
         info!(
             "[{}] Ingest complete: {} files indexed, {} symbols",
@@ -100,6 +170,31 @@ impl IngestStage {
         })
     }
 
+    async fn record_event(
+        &self,
+        task_key: Option<&str>,
+        status: &str,
+        title: &str,
+        detail: Option<&str>,
+        progress_pct: Option<i32>,
+        metadata_json: Option<&serde_json::Value>,
+    ) {
+        let _ = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                Some("ingest"),
+                task_key,
+                "task",
+                Some(status),
+                title,
+                detail,
+                progress_pct,
+                metadata_json,
+            )
+            .await;
+    }
+
     /// Clone or locate the repo source.
     async fn acquire_source(&self, repo: &Repo) -> HeimdallResult<PathBuf> {
         let work_base = std::env::temp_dir().join("heimdall").join("scans");
@@ -108,6 +203,14 @@ impl IngestStage {
 
         match repo.source_type.as_str() {
             "github" | "gitlab" | "git_url" => {
+                if work_dir.exists() {
+                    info!(
+                        "[{}] Removing stale scan work directory {:?} before clone",
+                        self.scan_id, work_dir
+                    );
+                    std::fs::remove_dir_all(&work_dir)?;
+                }
+
                 let url = repo
                     .remote_url
                     .as_deref()
@@ -230,6 +333,7 @@ impl IngestStage {
                     self.scan_id,
                     &relative,
                     &content_hash,
+                    &content,
                     language.as_deref(),
                     line_count as i32,
                     byte_size as i32,

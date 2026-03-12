@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use log::info;
@@ -17,6 +18,7 @@ use std::sync::LazyLock;
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
+use crate::pipeline::deps_audit::DepsAuditStage;
 
 /// Static analysis stage using pattern matching for deterministic vulnerability detection.
 /// Catches low-hanging fruit before the AI Hunt agent.
@@ -188,7 +190,17 @@ impl StaticAnalysisStage {
 
         let mut total_findings = 0usize;
         let mut summary_parts = Vec::new();
+        let mut pattern_findings = 0usize;
 
+        self.record_event(
+            Some("pattern-scan"),
+            "running",
+            "Running deterministic code pattern checks",
+            Some("Inspecting the codebase for known vulnerable patterns and dangerous APIs."),
+            None,
+            None,
+        )
+        .await;
         for rule in RULES {
             let re = match Regex::new(rule.pattern) {
                 Ok(r) => r,
@@ -234,14 +246,93 @@ impl StaticAnalysisStage {
                             .await;
 
                         total_findings += 1;
+                        pattern_findings += 1;
                     }
                 }
             }
         }
+        self.record_event(
+            Some("pattern-scan"),
+            "completed",
+            "Deterministic pattern checks finished",
+            Some(&format!(
+                "{pattern_findings} findings recorded from regex and rule-based checks."
+            )),
+            Some(45),
+            Some(&serde_json::json!({
+                "findings": pattern_findings,
+            })),
+        )
+        .await;
 
         // Secret detection via entropy analysis
+        self.record_event(
+            Some("secret-scan"),
+            "running",
+            "Scanning for embedded secrets",
+            Some("Checking source files for high-entropy tokens and secret-like literals."),
+            None,
+            None,
+        )
+        .await;
         let secret_count = self.detect_secrets(index).await?;
         total_findings += secret_count;
+        self.record_event(
+            Some("secret-scan"),
+            "completed",
+            "Secret scan finished",
+            Some(&format!(
+                "{secret_count} potential secret findings recorded."
+            )),
+            Some(70),
+            Some(&serde_json::json!({
+                "findings": secret_count,
+            })),
+        )
+        .await;
+
+        self.record_event(
+            Some("dependency-audit"),
+            "running",
+            "Auditing dependencies",
+            Some("Reviewing manifest files against OSV for known vulnerable packages."),
+            None,
+            None,
+        )
+        .await;
+        let deps_count = match DepsAuditStage::new(self.scan_id, self.repo_id, Arc::clone(&self.db))
+            .run(index)
+            .await
+        {
+            Ok(vulns) => {
+                let count = vulns.len();
+                self.record_event(
+                    Some("dependency-audit"),
+                    "completed",
+                    "Dependency audit finished",
+                    Some(&format!("{count} vulnerable dependency findings recorded.")),
+                    Some(100),
+                    Some(&serde_json::json!({
+                        "findings": count,
+                    })),
+                )
+                .await;
+                count
+            }
+            Err(error) => {
+                self.record_event(
+                    Some("dependency-audit"),
+                    "failed",
+                    "Dependency audit failed",
+                    Some(&error.to_string()),
+                    None,
+                    None,
+                )
+                .await;
+                0
+            }
+        };
+        total_findings += deps_count;
 
         if total_findings > 0 {
             summary_parts.push(format!("{total_findings} static analysis findings"));
@@ -264,14 +355,33 @@ impl StaticAnalysisStage {
         })
     }
 
+    async fn record_event(
+        &self,
+        task_key: Option<&str>,
+        status: &str,
+        title: &str,
+        detail: Option<&str>,
+        progress_pct: Option<i32>,
+        metadata_json: Option<&serde_json::Value>,
+    ) {
+        let _ = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                Some("static_analysis"),
+                task_key,
+                "task",
+                Some(status),
+                title,
+                detail,
+                progress_pct,
+                metadata_json,
+            )
+            .await;
+    }
+
     /// Detect high-entropy strings that might be secrets.
     async fn detect_secrets(&self, index: &CodeIndex) -> HeimdallResult<usize> {
-        static HIGH_ENTROPY_RE: LazyLock<Regex> =
-            LazyLock::new(|| Regex::new(r#"["'][A-Za-z0-9+/=_-]{32,}["']"#).unwrap());
-        static SECRET_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
-            Regex::new(r"(?i)(?:secret|key|token|password|auth|credential|api)").unwrap()
-        });
-
         let mut count = 0usize;
 
         for (file_path, file) in &index.files {
@@ -281,9 +391,13 @@ impl StaticAnalysisStage {
             }
 
             for (line_idx, line) in file.content.lines().enumerate() {
-                if HIGH_ENTROPY_RE.is_match(line) && SECRET_CONTEXT.is_match(line) {
+                if let Some(secret_literal) = find_secret_candidate(line) {
                     let line_num = (line_idx + 1) as i32;
                     let fingerprint = make_fingerprint("high-entropy-secret", file_path, line_num);
+                    let detail = format!(
+                        "Potential hardcoded secret-like literal detected: `{secret_literal}`"
+                    );
+                    let snippet = extract_snippet(&file.content, line_idx, 2);
 
                     let _ = self
                         .db
@@ -299,9 +413,9 @@ impl StaticAnalysisStage {
                             file_path,
                             line_num,
                             Some(line_num),
-                            Some(line.trim()),
+                            Some(&snippet),
                             &fingerprint,
-                            None,
+                            Some(&detail),
                         )
                         .await;
 
@@ -312,6 +426,109 @@ impl StaticAnalysisStage {
 
         Ok(count)
     }
+}
+
+fn find_secret_candidate(line: &str) -> Option<String> {
+    static QUOTED_LITERAL_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"["']([^"'\\\n]{20,})["']"#).unwrap());
+    static SECRET_CONTEXT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r#"(?ix)
+                (?:api(?:_|-)?key|secret|secret(?:_|-)?key|token|access(?:_|-)?token|
+                   refresh(?:_|-)?token|password|passwd|private(?:_|-)?key|
+                   access(?:_|-)?key|client(?:_|-)?secret|encryption(?:_|-)?(?:key|iv)|
+                   credential|bearer|session(?:_|-)?secret)
+                \s*[:=]
+            "#,
+        )
+        .unwrap()
+    });
+
+    if !SECRET_CONTEXT.is_match(line) {
+        return None;
+    }
+
+    QUOTED_LITERAL_RE
+        .captures_iter(line)
+        .filter_map(|captures| captures.get(1).map(|matched| matched.as_str()))
+        .find(|literal| looks_like_secret_literal(literal))
+        .map(ToString::to_string)
+}
+
+fn looks_like_secret_literal(literal: &str) -> bool {
+    if literal.len() < 24 || looks_like_structured_path(literal) || looks_like_uuid(literal) {
+        return false;
+    }
+
+    let classes = char_classes(literal);
+    let entropy = shannon_entropy(literal);
+
+    (classes >= 3 || (is_hex_like(literal) && literal.len() >= 32)) && entropy >= 3.5
+}
+
+fn looks_like_structured_path(literal: &str) -> bool {
+    let slash_count = literal.matches('/').count();
+
+    literal.starts_with('/')
+        || literal.starts_with("./")
+        || literal.starts_with("../")
+        || literal.contains("://")
+        || literal.contains('?')
+        || literal.contains('&')
+        || literal.contains('\\')
+        || literal.contains(' ')
+        || literal.contains('\t')
+        || slash_count >= 2
+}
+
+fn looks_like_uuid(literal: &str) -> bool {
+    static UUID_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+            .unwrap()
+    });
+
+    UUID_RE.is_match(literal)
+}
+
+fn is_hex_like(literal: &str) -> bool {
+    literal
+        .chars()
+        .all(|character| character.is_ascii_hexdigit())
+}
+
+fn char_classes(literal: &str) -> usize {
+    let mut classes = HashSet::new();
+
+    for character in literal.chars() {
+        if character.is_ascii_lowercase() {
+            classes.insert("lower");
+        } else if character.is_ascii_uppercase() {
+            classes.insert("upper");
+        } else if character.is_ascii_digit() {
+            classes.insert("digit");
+        } else if matches!(character, '+' | '/' | '=' | '_' | '-') {
+            classes.insert("symbol");
+        }
+    }
+
+    classes.len()
+}
+
+fn shannon_entropy(literal: &str) -> f64 {
+    let mut frequencies = std::collections::HashMap::new();
+    let total = literal.chars().count() as f64;
+
+    for character in literal.chars() {
+        *frequencies.entry(character).or_insert(0usize) += 1;
+    }
+
+    frequencies
+        .values()
+        .map(|count| {
+            let probability = *count as f64 / total;
+            -probability * probability.log2()
+        })
+        .sum()
 }
 
 fn extract_snippet(content: &str, center_line: usize, context: usize) -> String {
@@ -412,6 +629,28 @@ mod tests {
             "private-key",
             r#"-----BEGIN PRIVATE KEY-----"#,
         ));
+    }
+
+    #[test]
+    fn test_find_secret_candidate_detects_encryption_key_literal() {
+        let line =
+            r#"private static readonly ENCRYPTION_KEY = "6uRGxB8V6kshhuXI2BedlQqkW8WGCcgg";"#;
+        assert_eq!(
+            find_secret_candidate(line).as_deref(),
+            Some("6uRGxB8V6kshhuXI2BedlQqkW8WGCcgg")
+        );
+    }
+
+    #[test]
+    fn test_find_secret_candidate_ignores_api_route_string() {
+        let line = r#"app.get("/api/applications/failed-authorization", async (req, res) => {"#;
+        assert!(find_secret_candidate(line).is_none());
+    }
+
+    #[test]
+    fn test_find_secret_candidate_ignores_fetch_endpoint() {
+        let line = r#"const response = await fetch("/api/automations/available-tables");"#;
+        assert!(find_secret_candidate(line).is_none());
     }
 
     // -----------------------------------------------------------------------
