@@ -51,7 +51,7 @@ The fastest way to get running locally:
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/modestnerd/heimdall.git
+git clone https://github.com/iamngoni/heimdall.git
 cd heimdall
 
 # 2. Start Postgres
@@ -143,7 +143,7 @@ sudo usermod -aG docker $USER
 
 ```bash
 # Clone
-git clone https://github.com/modestnerd/heimdall.git
+git clone https://github.com/iamngoni/heimdall.git
 cd heimdall
 
 # Start Postgres (pick one)

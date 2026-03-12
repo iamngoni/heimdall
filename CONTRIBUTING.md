@@ -20,7 +20,7 @@ The standard filename is `CONTRIBUTING.md`, and this repository uses that conven
 ## Local Setup
 
 ```bash
-git clone https://github.com/modestnerd/heimdall.git
+git clone https://github.com/iamngoni/heimdall.git
 cd heimdall
 
 # Start Postgres for local development
