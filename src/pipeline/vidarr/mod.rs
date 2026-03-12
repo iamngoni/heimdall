@@ -85,28 +85,63 @@ impl VidarrStage {
             });
         }
 
+        let total = findings.len();
         info!(
-            "[{}] Vidarr: challenging {} findings",
-            self.scan_id,
-            findings.len()
+            "[{}] Víðarr: challenging {} findings",
+            self.scan_id, total
         );
+
+        self.record_event(
+            Some("challenge-start"),
+            "running",
+            &format!("Challenging {} findings", total),
+            Some("Víðarr is adversarially reviewing each finding to filter false positives."),
+            Some(0),
+            Some(&serde_json::json!({ "finding_count": total })),
+        )
+        .await;
 
         let mut confirmed = 0usize;
         let mut plausible = 0usize;
         let mut dismissed = 0usize;
 
-        for finding in findings {
+        for (i, finding) in findings.iter().enumerate() {
+            let progress = ((i as f64 / total as f64) * 100.0) as i32;
+
+            self.record_event(
+                Some("challenge-finding"),
+                "running",
+                &format!("Challenging: {}", finding.title),
+                Some(&format!(
+                    "Reviewing finding {}/{} — {} in {}:{}",
+                    i + 1, total, finding.severity, finding.file_path, finding.line_start
+                )),
+                Some(progress),
+                Some(&serde_json::json!({
+                    "finding_id": finding.id,
+                    "finding_title": finding.title,
+                    "severity": finding.severity,
+                    "index": i + 1,
+                    "total": total,
+                })),
+            )
+            .await;
+
             match self.challenge_finding(finding, index).await {
                 Ok(verdict) => {
+                    let verdict_label = match verdict.outcome {
+                        VerdictOutcome::Confirmed => "confirmed",
+                        VerdictOutcome::Plausible => "plausible",
+                        VerdictOutcome::FalsePositive => "false_positive",
+                    };
+
                     match verdict.outcome {
                         VerdictOutcome::Confirmed => {
                             confirmed += 1;
-                            // Bump confidence to high — the adversary couldn't disprove it
                             self.db
                                 .update_finding_confidence(finding.id, "high")
                                 .await
                                 .ok();
-                            // If the vidarr suggests a severity adjustment, apply it
                             if let Some(ref sev) = verdict.adjusted_severity {
                                 if sev != &finding.severity {
                                     self.db
@@ -116,21 +151,19 @@ impl VidarrStage {
                                 }
                             }
                             info!(
-                                "[{}] Vidarr CONFIRMED finding {}: {}",
+                                "[{}] Víðarr CONFIRMED finding {}: {}",
                                 self.scan_id, finding.id, finding.title
                             );
                         }
                         VerdictOutcome::Plausible => {
                             plausible += 1;
-                            // Keep existing confidence (medium for AI, high for static)
                             info!(
-                                "[{}] Vidarr PLAUSIBLE finding {}: {}",
+                                "[{}] Víðarr PLAUSIBLE finding {}: {}",
                                 self.scan_id, finding.id, finding.title
                             );
                         }
                         VerdictOutcome::FalsePositive => {
                             dismissed += 1;
-                            // Mark as false_positive so it's filtered from default views
                             self.db
                                 .update_finding_status(finding.id, "false_positive")
                                 .await
@@ -140,12 +173,29 @@ impl VidarrStage {
                                 .await
                                 .ok();
                             info!(
-                                "[{}] Vidarr DISMISSED finding {}: {} — {}",
+                                "[{}] Víðarr DISMISSED finding {}: {} — {}",
                                 self.scan_id, finding.id, finding.title, verdict.reasoning
                             );
                         }
                     }
-                    // Store the vidarr's reasoning on the finding
+
+                    self.record_event(
+                        Some("challenge-verdict"),
+                        "completed",
+                        &format!("Verdict: {} — {}", verdict_label, finding.title),
+                        Some(&verdict.reasoning),
+                        Some(progress),
+                        Some(&serde_json::json!({
+                            "finding_id": finding.id,
+                            "verdict": verdict_label,
+                            "adjusted_severity": verdict.adjusted_severity,
+                            "confirmed_so_far": confirmed,
+                            "dismissed_so_far": dismissed,
+                        })),
+                    )
+                    .await;
+
+                    // Store the reasoning on the finding
                     self.db
                         .append_finding_vidarr_reasoning(finding.id, &verdict.reasoning)
                         .await
@@ -153,19 +203,49 @@ impl VidarrStage {
                 }
                 Err(e) => {
                     warn!(
-                        "[{}] Vidarr failed to challenge finding {}: {e:#}",
+                        "[{}] Víðarr failed to challenge finding {}: {e:#}",
                         self.scan_id, finding.id
                     );
-                    // On error, leave the finding as-is (fail open — don't dismiss findings
-                    // just because the vidarr errored)
                     plausible += 1;
+
+                    self.record_event(
+                        Some("challenge-error"),
+                        "failed",
+                        &format!("Failed to challenge: {}", finding.title),
+                        Some(&format!("{e:#}")),
+                        Some(progress),
+                        Some(&serde_json::json!({
+                            "finding_id": finding.id,
+                        })),
+                    )
+                    .await;
                 }
             }
         }
 
-        let total = findings.len();
+        self.record_event(
+            Some("challenge-summary"),
+            "completed",
+            &format!(
+                "Verification complete: {} confirmed, {} plausible, {} dismissed",
+                confirmed, plausible, dismissed
+            ),
+            Some(&format!(
+                "Out of {total} findings: {confirmed} confirmed as real, \
+                 {plausible} kept as plausible, {dismissed} dismissed as false positives."
+            )),
+            Some(100),
+            Some(&serde_json::json!({
+                "total": total,
+                "confirmed": confirmed,
+                "plausible": plausible,
+                "dismissed": dismissed,
+            })),
+        )
+        .await;
+
         info!(
-            "[{}] Vidarr complete: {confirmed} confirmed, {plausible} plausible, {dismissed} dismissed out of {total}",
+            "[{}] Víðarr complete: {confirmed} confirmed, {plausible} plausible, {dismissed} dismissed out of {total}",
             self.scan_id
         );
 
@@ -390,6 +470,31 @@ impl VidarrStage {
         }
 
         info
+    }
+
+    async fn record_event(
+        &self,
+        task_key: Option<&str>,
+        status: &str,
+        title: &str,
+        detail: Option<&str>,
+        progress_pct: Option<i32>,
+        metadata_json: Option<&serde_json::Value>,
+    ) {
+        let _ = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                Some("vidarr"),
+                task_key,
+                "task",
+                Some(status),
+                title,
+                detail,
+                progress_pct,
+                metadata_json,
+            )
+            .await;
     }
 }
 
