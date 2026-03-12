@@ -315,13 +315,12 @@ impl DatabaseOperations {
         .context("Failed to fetch repo by remote URL")
     }
 
-    pub async fn soft_delete_repo(&self, id: Uuid) -> HeimdallResult<bool> {
-        let result =
-            sqlx::query("UPDATE repos SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL")
-                .bind(id)
-                .execute(&self.pool)
-                .await
-                .context("Failed to soft-delete repo")?;
+    pub async fn delete_repo(&self, id: Uuid) -> HeimdallResult<bool> {
+        let result = sqlx::query("DELETE FROM repos WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to delete repo")?;
         Ok(result.rows_affected() > 0)
     }
 

@@ -511,7 +511,7 @@ mod tests {
 
         let changes = diff_schemas(&old, &new);
         let sql = PostgresIncremental.generate(&changes, &new);
-        assert!(sql.contains("ALTER TABLE users ADD COLUMN display_name TEXT"));
+        assert!(sql.contains("ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT"));
     }
 
     #[test]

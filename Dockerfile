@@ -24,11 +24,18 @@ RUN cargo build --release --bin heimdall
 # Stage 2: Runtime
 FROM debian:bookworm-slim
 
+# Optional: install semgrep for enhanced static analysis
+ARG INSTALL_SEMGREP=true
+
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     curl \
     git \
+    && if [ "$INSTALL_SEMGREP" = "true" ]; then \
+        apt-get install -y python3 python3-pip && \
+        pip3 install semgrep --break-system-packages; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

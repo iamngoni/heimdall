@@ -37,12 +37,19 @@
                         </div>
 
                         <div class="flex flex-col items-start gap-2">
-                            <button type="button"
-                                    onclick="HeimdallRepoDetail.triggerScan('{{ repo.id }}', this)"
-                                    {% if not scan_capability.available %}disabled{% endif %}
-                                    class="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition {{ 'bg-blue-500 text-white hover:bg-blue-600' if scan_capability.available else 'cursor-not-allowed bg-slate-200 text-slate-500' }}">
-                                Run Scan
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <button type="button"
+                                        onclick="HeimdallRepoDetail.triggerScan('{{ repo.id }}', this)"
+                                        {% if not scan_capability.available %}disabled{% endif %}
+                                        class="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition {{ 'bg-blue-500 text-white hover:bg-blue-600' if scan_capability.available else 'cursor-not-allowed bg-slate-200 text-slate-500' }}">
+                                    Run Scan
+                                </button>
+                                <button type="button"
+                                        onclick="HeimdallRepoDetail.deleteRepo('{{ repo.id }}', '{{ repo.name }}')"
+                                        class="inline-flex items-center justify-center rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50">
+                                    Remove
+                                </button>
+                            </div>
                             {% if scan_capability.available %}
                             <p class="text-xs text-slate-500">
                                 Ready with {{ scan_capability.provider|title }} · {{ scan_capability.model }}
@@ -283,6 +290,33 @@ window.HeimdallRepoDetail = {
             ? 'rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'
             : 'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800';
         banner.classList.remove('hidden');
+    },
+
+    async deleteRepo(repoId, repoName) {
+        if (!confirm(`Are you sure you want to remove "${repoName}"? This will delete all associated scans and findings.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/repos/${repoId}`, {
+                method: 'DELETE',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin'
+            });
+
+            if (response.ok) {
+                window.location.href = '/repos';
+                return;
+            }
+
+            const payload = await response.json().catch(() => null);
+            const message = payload && payload.error
+                ? (payload.error.message || payload.error)
+                : 'Unable to remove repository.';
+            this.showBanner(message, 'warning');
+        } catch (_) {
+            this.showBanner('Unable to remove repository right now.', 'warning');
+        }
     },
 
     async saveIssueAutomation(repoId, button) {

@@ -20,12 +20,15 @@ use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
 use crate::pipeline::deps_audit::DepsAuditStage;
 
+pub mod semgrep;
+
 /// Static analysis stage using pattern matching for deterministic vulnerability detection.
 /// Catches low-hanging fruit before the AI Hunt agent.
 pub struct StaticAnalysisStage {
     pub scan_id: uuid::Uuid,
     pub repo_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
+    pub work_dir: Option<std::path::PathBuf>,
 }
 
 /// Context passed to the Hunt agent about what static analysis found.
@@ -174,6 +177,267 @@ const RULES: &[Rule] = &[
         description: "Potential open redirect using user-controlled URL",
         languages: &[],
     },
+    // -----------------------------------------------------------------------
+    // Injection (extended)
+    // -----------------------------------------------------------------------
+    Rule {
+        name: "ldap-injection",
+        pattern: r#"(?i)(?:ldap_search|ldap_bind|ldap\.search|search_s)\s*\(.*(?:format!|\+\s*\w+|\$\{|%s|f["'])"#,
+        severity: "high",
+        cwe: "CWE-90",
+        description: "Potential LDAP injection via string interpolation in LDAP query",
+        languages: &["python", "javascript", "typescript", "java"],
+    },
+    Rule {
+        name: "xxe-xml-parsing",
+        pattern: r#"(?i)(?:XMLParser|etree\.parse|parseString|DocumentBuilder|SAXParser|XMLReader)\s*\("#,
+        severity: "high",
+        cwe: "CWE-611",
+        description: "XML parsing without explicit XXE protection — disable external entities",
+        languages: &["python", "java", "javascript", "typescript"],
+    },
+    Rule {
+        name: "xpath-injection",
+        pattern: r#"(?i)(?:xpath|evaluate)\s*\(.*(?:format!|\+\s*\w+|\$\{|%s|f["'])"#,
+        severity: "high",
+        cwe: "CWE-643",
+        description: "Potential XPath injection via string interpolation",
+        languages: &[],
+    },
+    Rule {
+        name: "ssti-template-injection",
+        pattern: r#"(?i)(?:render_template_string|Template\(|Jinja2|Environment\(\s*loader)\s*\(.*(?:request|params|input|\+\s*\w+)"#,
+        severity: "critical",
+        cwe: "CWE-1336",
+        description: "Potential server-side template injection (SSTI)",
+        languages: &["python", "javascript", "typescript"],
+    },
+    Rule {
+        name: "nosql-injection",
+        pattern: r#"(?i)(?:\.find|\.findOne|\.aggregate|\.update|\.delete)\s*\(\s*\{[^}]*(?:\$where|\$regex|\$ne|\$gt|\$lt)"#,
+        severity: "high",
+        cwe: "CWE-943",
+        description: "Potential NoSQL injection via MongoDB operator in query",
+        languages: &["javascript", "typescript", "python"],
+    },
+    Rule {
+        name: "header-injection-crlf",
+        pattern: r#"(?i)(?:set_header|setHeader|add_header|header)\s*\(.*(?:request|params|req\.|query|input)"#,
+        severity: "medium",
+        cwe: "CWE-113",
+        description: "HTTP header set with user-controlled value — potential CRLF injection",
+        languages: &[],
+    },
+    Rule {
+        name: "log-injection",
+        pattern: r#"(?i)(?:log\.(?:info|warn|error|debug)|logger\.(?:info|warn|error|debug)|console\.log)\s*\(.*(?:request|req\.|params|query|input)"#,
+        severity: "low",
+        cwe: "CWE-117",
+        description: "User-controlled data in log output — potential log injection/forging",
+        languages: &[],
+    },
+    // -----------------------------------------------------------------------
+    // Auth & Session
+    // -----------------------------------------------------------------------
+    Rule {
+        name: "hardcoded-jwt-secret",
+        pattern: r#"(?i)(?:jwt\.sign|jwt\.encode|jwt\.decode|JWTManager|SECRET_KEY)\s*[:=\(].*["'][A-Za-z0-9+/=_-]{8,}["']"#,
+        severity: "critical",
+        cwe: "CWE-798",
+        description: "Hardcoded JWT secret — use environment variables for secrets",
+        languages: &[],
+    },
+    Rule {
+        name: "permissive-cors",
+        pattern: r#"(?i)(?:Access-Control-Allow-Origin|cors\(|CORS\(|allow_origin).*['"]\*['"]"#,
+        severity: "medium",
+        cwe: "CWE-942",
+        description: "Permissive CORS policy allowing all origins",
+        languages: &[],
+    },
+    Rule {
+        name: "insecure-cookie",
+        pattern: r#"(?i)(?:set_cookie|Set-Cookie|cookie\s*=).*(?:secure\s*[:=]\s*(?:false|False)|httponly\s*[:=]\s*(?:false|False))"#,
+        severity: "medium",
+        cwe: "CWE-614",
+        description: "Cookie set without Secure or HttpOnly flag",
+        languages: &[],
+    },
+    Rule {
+        name: "session-fixation",
+        pattern: r#"(?i)session\s*\[\s*['"]session_id['"]\s*\]\s*=\s*(?:request|params|req\.|query)"#,
+        severity: "high",
+        cwe: "CWE-384",
+        description: "Session ID set from user-controlled input — potential session fixation",
+        languages: &["python", "javascript", "typescript"],
+    },
+    Rule {
+        name: "missing-auth-decorator",
+        pattern: r#"@app\.route\([^)]*\)\s*\n\s*def\s+\w+\("#,
+        severity: "low",
+        cwe: "CWE-862",
+        description: "Flask route without apparent authentication decorator",
+        languages: &["python"],
+    },
+    // -----------------------------------------------------------------------
+    // Crypto
+    // -----------------------------------------------------------------------
+    Rule {
+        name: "weak-random",
+        pattern: r#"(?i)(?:Math\.random\(\)|rand\(\)|random\.random\(\)|random\.randint|random\.choice)"#,
+        severity: "medium",
+        cwe: "CWE-338",
+        description: "Weak random number generator — use cryptographically secure alternatives for security contexts",
+        languages: &[],
+    },
+    Rule {
+        name: "ecb-mode",
+        pattern: r#"(?i)(?:ECB|MODE_ECB|AES\.new\([^)]*ECB|Cipher\.getInstance\(\s*["']AES["']\s*\))"#,
+        severity: "high",
+        cwe: "CWE-327",
+        description: "ECB mode detected — use CBC, CTR, or GCM mode instead",
+        languages: &[],
+    },
+    Rule {
+        name: "hardcoded-iv-nonce",
+        pattern: r#"(?i)(?:iv|nonce|initialization_vector)\s*[:=]\s*(?:b["']|["'])[A-Za-z0-9+/=]{8,}["']"#,
+        severity: "medium",
+        cwe: "CWE-329",
+        description: "Hardcoded IV/nonce — use a random value for each encryption",
+        languages: &[],
+    },
+    // -----------------------------------------------------------------------
+    // Data Exposure
+    // -----------------------------------------------------------------------
+    Rule {
+        name: "stack-trace-exposure",
+        pattern: r#"(?i)(?:traceback\.print_exc|e\.printStackTrace|\.backtrace\(\)|print_stacktrace)"#,
+        severity: "medium",
+        cwe: "CWE-209",
+        description: "Stack trace printed — may leak sensitive information to users",
+        languages: &[],
+    },
+    Rule {
+        name: "debug-mode-production",
+        pattern: r#"(?i)(?:DEBUG\s*=\s*True|app\.debug\s*=\s*True|debug:\s*true|FLASK_DEBUG\s*=\s*1)"#,
+        severity: "medium",
+        cwe: "CWE-489",
+        description: "Debug mode enabled — disable in production deployments",
+        languages: &[],
+    },
+    Rule {
+        name: "verbose-error-response",
+        pattern: r#"(?i)(?:res\.send|res\.json|response\.write|render)\s*\(.*(?:err\.message|error\.stack|e\.getMessage)"#,
+        severity: "medium",
+        cwe: "CWE-209",
+        description: "Error details sent in response — may expose sensitive internal information",
+        languages: &["javascript", "typescript", "java"],
+    },
+    Rule {
+        name: "todo-with-secret",
+        pattern: r#"(?i)(?://|#)\s*(?:TODO|FIXME|HACK|XXX).*(?:password|secret|key|token|credential)"#,
+        severity: "low",
+        cwe: "CWE-615",
+        description: "Comment references secrets — ensure no credentials in source comments",
+        languages: &[],
+    },
+    // -----------------------------------------------------------------------
+    // Memory & Resource Safety
+    // -----------------------------------------------------------------------
+    Rule {
+        name: "buffer-overflow-c",
+        pattern: r#"(?:gets|strcpy|strcat|sprintf|vsprintf)\s*\("#,
+        severity: "critical",
+        cwe: "CWE-120",
+        description: "Use of unsafe C function prone to buffer overflow — use bounded alternatives",
+        languages: &["c", "cpp"],
+    },
+    Rule {
+        name: "use-after-free",
+        pattern: r#"(?:free|delete|kfree)\s*\(\s*\w+\s*\)"#,
+        severity: "critical",
+        cwe: "CWE-416",
+        description: "Memory deallocation detected — verify no use-after-free of freed pointer",
+        languages: &["c", "cpp"],
+    },
+    Rule {
+        name: "integer-overflow",
+        pattern: r#"(?i)(?:as\s+(?:u8|u16|i8|i16|u32|i32)|\(\s*(?:int|short|byte)\s*\)\s*\w+)"#,
+        severity: "medium",
+        cwe: "CWE-190",
+        description: "Potential integer overflow from narrowing cast",
+        languages: &["rust", "java", "c", "cpp"],
+    },
+    // -----------------------------------------------------------------------
+    // Misc
+    // -----------------------------------------------------------------------
+    Rule {
+        name: "regex-dos",
+        pattern: r#"(?:Regex::new|re\.compile|new RegExp)\s*\(.*(?:\.\*\.\*|\(.+\|\.\+\)\*|\(\.\+\)\+)"#,
+        severity: "medium",
+        cwe: "CWE-1333",
+        description: "Potentially catastrophic regex — may cause ReDoS with crafted input",
+        languages: &[],
+    },
+    Rule {
+        name: "ssrf",
+        pattern: r#"(?i)(?:requests\.get|fetch|http\.get|urllib\.request|HttpClient|curl_exec)\s*\(.*(?:request|params|req\.|query|input|user)"#,
+        severity: "high",
+        cwe: "CWE-918",
+        description: "HTTP request with user-controlled URL — potential SSRF",
+        languages: &[],
+    },
+    Rule {
+        name: "toctou-race",
+        pattern: r#"(?i)(?:os\.path\.exists|File\.exists|access)\s*\([^)]+\).*\n.*(?:open|read|write|unlink|remove)\s*\("#,
+        severity: "medium",
+        cwe: "CWE-367",
+        description: "Time-of-check to time-of-use (TOCTOU) race condition on file operation",
+        languages: &["python", "java", "c", "cpp"],
+    },
+    Rule {
+        name: "prototype-pollution",
+        pattern: r#"(?:__proto__|constructor\s*\.\s*prototype|Object\.assign\s*\(\s*\{\s*\})"#,
+        severity: "high",
+        cwe: "CWE-1321",
+        description: "Potential prototype pollution via __proto__ or constructor.prototype",
+        languages: &["javascript", "typescript"],
+    },
+    // -----------------------------------------------------------------------
+    // Additional Secrets
+    // -----------------------------------------------------------------------
+    Rule {
+        name: "github-token",
+        pattern: r#"(?:ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|ghs_[A-Za-z0-9]{36}|ghr_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,})"#,
+        severity: "critical",
+        cwe: "CWE-798",
+        description: "GitHub personal access token or OAuth token detected",
+        languages: &[],
+    },
+    Rule {
+        name: "slack-token",
+        pattern: r#"xox[bporas]-[0-9]{10,13}-[A-Za-z0-9-]{20,}"#,
+        severity: "critical",
+        cwe: "CWE-798",
+        description: "Slack API token detected",
+        languages: &[],
+    },
+    Rule {
+        name: "google-api-key",
+        pattern: r#"AIza[0-9A-Za-z_-]{35}"#,
+        severity: "high",
+        cwe: "CWE-798",
+        description: "Google API key detected",
+        languages: &[],
+    },
+    Rule {
+        name: "connection-string-password",
+        pattern: r#"(?i)(?:mongodb|postgres|mysql|redis|amqp)://[^:]+:[^@\s]+@"#,
+        severity: "high",
+        cwe: "CWE-798",
+        description: "Connection string with embedded password detected",
+        languages: &[],
+    },
 ];
 
 impl StaticAnalysisStage {
@@ -182,7 +446,13 @@ impl StaticAnalysisStage {
             scan_id,
             repo_id,
             db,
+            work_dir: None,
         }
+    }
+
+    pub fn with_work_dir(mut self, work_dir: std::path::PathBuf) -> Self {
+        self.work_dir = Some(work_dir);
+        self
     }
 
     pub async fn run(&self, index: &CodeIndex) -> HeimdallResult<StaticAnalysisContext> {
@@ -333,6 +603,60 @@ impl StaticAnalysisStage {
             }
         };
         total_findings += deps_count;
+
+        // Semgrep integration (optional — runs if semgrep is installed)
+        if let Some(ref work_dir) = self.work_dir {
+            self.record_event(
+                Some("semgrep-scan"),
+                "running",
+                "Running Semgrep analysis",
+                Some("Executing Semgrep with auto-config rules for enhanced vulnerability detection."),
+                None,
+                None,
+            )
+            .await;
+
+            // Collect existing fingerprints for deduplication
+            let existing_fingerprints: HashSet<String> =
+                if let Ok(findings) = self.db.list_findings_by_scan(self.scan_id, None, None).await
+                {
+                    findings.iter().map(|f| f.fingerprint.clone()).collect()
+                } else {
+                    HashSet::new()
+                };
+
+            let semgrep_stage =
+                semgrep::SemgrepStage::new(self.scan_id, self.repo_id, Arc::clone(&self.db));
+            match semgrep_stage.run(work_dir, &existing_fingerprints).await {
+                Ok(semgrep_count) => {
+                    total_findings += semgrep_count;
+                    self.record_event(
+                        Some("semgrep-scan"),
+                        "completed",
+                        "Semgrep analysis finished",
+                        Some(&format!(
+                            "{semgrep_count} additional findings from Semgrep."
+                        )),
+                        Some(100),
+                        Some(&serde_json::json!({
+                            "findings": semgrep_count,
+                        })),
+                    )
+                    .await;
+                }
+                Err(error) => {
+                    self.record_event(
+                        Some("semgrep-scan"),
+                        "failed",
+                        "Semgrep analysis failed",
+                        Some(&error.to_string()),
+                        None,
+                        None,
+                    )
+                    .await;
+                }
+            }
+        }
 
         if total_findings > 0 {
             summary_parts.push(format!("{total_findings} static analysis findings"));

@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
+pub mod config_scan;
 pub mod deps_audit;
 pub mod garmr;
 pub mod hunt;
@@ -28,7 +29,7 @@ use crate::models::db_models::{Finding, Repo};
 use crate::sse::ScanBroadcaster;
 
 /// Orchestrates the full scan pipeline:
-/// Ingest -> Tyr (threat model) -> Static Analysis -> Hunt (agentic) -> Garmr (sandbox) -> Report
+/// Ingest -> Tyr (threat model) -> Static Analysis -> Taint Analysis -> Config Scan -> Hunt (agentic) -> Garmr (sandbox) -> Report
 pub struct ScanPipeline {
     pub scan_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
@@ -111,6 +112,41 @@ impl ScanPipeline {
                 "static_analysis",
                 async {
                     let stage = static_analysis::StaticAnalysisStage::new(
+                        self.scan_id,
+                        repo.id,
+                        Arc::clone(&self.db),
+                    )
+                    .with_work_dir(ingest_output.work_dir.clone());
+                    stage.run(&code_index).await
+                },
+            )
+            .await?;
+
+        // Stage 3b: Taint Analysis
+        let _taint_flows = self
+            .run_stage(
+                "taint_analysis",
+                "taint_analyzing",
+                "taint_analyzed",
+                async {
+                    let stage = taint::TaintAnalysisStage::new(
+                        self.scan_id,
+                        repo.id,
+                        Arc::clone(&self.db),
+                    );
+                    stage.run(&code_index).await
+                },
+            )
+            .await?;
+
+        // Stage 3c: Config/IaC Scan
+        let _config_ctx = self
+            .run_stage(
+                "config_scan",
+                "config_scanning",
+                "config_scanned",
+                async {
+                    let stage = config_scan::ConfigScanStage::new(
                         self.scan_id,
                         repo.id,
                         Arc::clone(&self.db),
@@ -231,6 +267,15 @@ impl ScanPipeline {
         Ok(())
     }
 
+    /// Check if the scan has been cancelled (e.g., by user request via the API).
+    async fn is_cancelled(&self) -> bool {
+        if let Ok(Some(scan)) = self.db.get_scan_by_id(self.scan_id).await {
+            scan.status == "cancelled"
+        } else {
+            false
+        }
+    }
+
     /// Run a pipeline stage with proper status tracking, error handling, and SSE events.
     async fn run_stage<T, F>(
         &self,
@@ -242,6 +287,15 @@ impl ScanPipeline {
     where
         F: std::future::Future<Output = HeimdallResult<T>>,
     {
+        // Check for cancellation before starting a new stage
+        if self.is_cancelled().await {
+            info!(
+                "[{}] Scan cancelled — skipping stage {stage_name}",
+                self.scan_id
+            );
+            return Err(anyhow::anyhow!("Scan was cancelled"));
+        }
+
         info!("[{}] Starting stage: {stage_name}", self.scan_id);
 
         // Create scan_stage record
@@ -538,6 +592,8 @@ fn humanize_stage_name(stage_name: &str) -> &'static str {
         "ingest" => "Ingest",
         "tyr" => "Tyr",
         "static_analysis" => "Static analysis",
+        "taint_analysis" => "Taint analysis",
+        "config_scan" => "Config scan",
         "hunt" => "Hunt",
         "garmr" => "Garmr",
         "report" => "Report",

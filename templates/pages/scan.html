@@ -39,15 +39,25 @@
                             </div>
                         </div>
 
-                        <span id="scan-status-pill"
-                              data-status="{{ scan.status }}"
-                              class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold
-                                  {{ 'bg-emerald-50 text-emerald-700' if scan.status == 'completed' else
-                                     'bg-amber-50 text-amber-700' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'validating', 'reporting', 'static_analysis'] else
-                                     'bg-rose-50 text-rose-700' if scan.status == 'failed' else
-                                     'bg-slate-100 text-slate-700' }}">
-                            {{ scan.status_label }}
-                        </span>
+                        <div class="flex items-center gap-3">
+                            <span id="scan-status-pill"
+                                  data-status="{{ scan.status }}"
+                                  class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold
+                                      {{ 'bg-emerald-50 text-emerald-700' if scan.status == 'completed' else
+                                         'bg-amber-50 text-amber-700' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
+                                         'bg-rose-50 text-rose-700' if scan.status == 'failed' else
+                                         'bg-orange-50 text-orange-700' if scan.status == 'cancelled' else
+                                         'bg-slate-100 text-slate-700' }}">
+                                {{ scan.status_label }}
+                            </span>
+                            {% if scan.is_live %}
+                            <button id="cancel-scan-btn"
+                                    onclick="HeimdallScanPage.cancelScan('{{ scan.id }}', this)"
+                                    class="inline-flex items-center rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50">
+                                Cancel Scan
+                            </button>
+                            {% endif %}
+                        </div>
                     </div>
 
                     <section id="scan-live-panel"
@@ -357,6 +367,29 @@
 
 <script>
 window.HeimdallScanPage = {
+    cancelScan(scanId, btn) {
+        if (!confirm('Are you sure you want to cancel this scan?')) return;
+        btn.disabled = true;
+        btn.textContent = 'Cancelling...';
+        fetch('/api/scans/' + scanId + '/cancel', { method: 'POST' })
+            .then(resp => {
+                if (resp.ok) {
+                    btn.textContent = 'Cancelled';
+                    btn.classList.add('opacity-50');
+                } else {
+                    resp.json().then(data => {
+                        alert(data.error || 'Failed to cancel scan');
+                        btn.disabled = false;
+                        btn.textContent = 'Cancel Scan';
+                    });
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.textContent = 'Cancel Scan';
+            });
+    },
+
     init() {
         this.root = document.getElementById('scan-live-root');
         if (!this.root) {

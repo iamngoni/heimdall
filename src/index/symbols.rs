@@ -782,10 +782,82 @@ static PHP_FUNC: LazyLock<Regex> = LazyLock::new(|| {
 });
 static PHP_CLASS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^\s*class\s+(\w+)").unwrap());
 
+// C
+static C_FUNC: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^(?:static\s+)?(?:inline\s+)?(?:const\s+)?(?:unsigned\s+)?(?:void|int|char|float|double|long|short|size_t|bool|\w+_t|\w+\s*\*)\s+(\w+)\s*\(").unwrap()
+});
+static C_STRUCT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*(?:typedef\s+)?struct\s+(\w+)").unwrap());
+static C_TYPEDEF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*typedef\s+.*\s+(\w+)\s*;").unwrap());
+static C_DEFINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*#define\s+(\w+)").unwrap());
+
+// C++
+static CPP_CLASS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:template\s*<[^>]*>\s*)?class\s+(\w+)").unwrap()
+});
+static CPP_NAMESPACE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*namespace\s+(\w+)").unwrap());
+static CPP_METHOD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^(?:[\w:*&<>]+\s+)+(\w+)::(\w+)\s*\(").unwrap()
+});
+
+// C#
+static CS_TYPE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:public|private|protected|internal)?\s*(?:static\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:partial\s+)?(?:class|interface|enum|struct|record)\s+(\w+)").unwrap()
+});
+static CS_METHOD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(public|private|protected|internal)\s+(?:static\s+)?(?:async\s+)?(?:override\s+)?(?:virtual\s+)?[\w<>\[\]?]+\s+(\w+)\s*\(").unwrap()
+});
+static CS_PROP: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(public|private|protected|internal)\s+(?:static\s+)?[\w<>\[\]?]+\s+(\w+)\s*\{").unwrap()
+});
+
+// Swift
+static SWIFT_FUNC: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:public\s+|private\s+|internal\s+|fileprivate\s+|open\s+)?(?:static\s+)?(?:class\s+)?func\s+(\w+)").unwrap()
+});
+static SWIFT_TYPE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:public\s+|private\s+|internal\s+|fileprivate\s+|open\s+)?(?:final\s+)?(?:class|struct|enum|protocol|actor)\s+(\w+)").unwrap()
+});
+
+// Kotlin
+static KT_FUN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+)?(?:suspend\s+)?(?:inline\s+)?fun\s+(?:<[^>]*>\s*)?(\w+)").unwrap()
+});
+static KT_TYPE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+)?(?:data\s+|sealed\s+|abstract\s+|open\s+|inner\s+)?(?:class|object|interface|enum\s+class)\s+(\w+)").unwrap()
+});
+
+// Scala
+static SCALA_DEF: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:private\s+|protected\s+)?(?:override\s+)?def\s+(\w+)").unwrap()
+});
+static SCALA_TYPE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:case\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:class|object|trait)\s+(\w+)").unwrap()
+});
+
+// Shell/Bash
+static SH_FUNC: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^\s*(?:function\s+(\w+)|(\w+)\s*\(\s*\)\s*\{)").unwrap()
+});
+static SH_EXPORT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*export\s+(\w+)=").unwrap());
+static SH_ALIAS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*alias\s+(\w+)=").unwrap());
+
 fn extract_symbols_regex(content: &str, language: &str, file: &str) -> Vec<Symbol> {
     match language {
         "ruby" => extract_ruby_symbols(content, file),
         "php" => extract_php_symbols(content, file),
+        "c" => extract_c_symbols(content, file),
+        "cpp" => extract_cpp_symbols(content, file),
+        "csharp" => extract_csharp_symbols(content, file),
+        "swift" => extract_swift_symbols(content, file),
+        "kotlin" => extract_kotlin_symbols(content, file),
+        "scala" => extract_scala_symbols(content, file),
+        "shell" | "bash" => extract_shell_symbols(content, file),
         _ => Vec::new(),
     }
 }
@@ -866,6 +938,378 @@ fn extract_php_symbols(content: &str, file: &str) -> Vec<Symbol> {
         syms.push(Symbol {
             name,
             kind: "class".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    syms
+}
+
+fn extract_c_symbols(content: &str, file: &str) -> Vec<Symbol> {
+    let mut syms = Vec::new();
+
+    for cap in C_FUNC.captures_iter(content) {
+        let name = cap[1].to_string();
+        // Skip common C keywords/types that may be false positives
+        if matches!(name.as_str(), "if" | "for" | "while" | "switch" | "return" | "sizeof" | "typeof") {
+            continue;
+        }
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "function".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: !content[..cap.get(0).unwrap().start()].ends_with("static "),
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in C_STRUCT.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "struct".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in C_TYPEDEF.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "typedef".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in C_DEFINE.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "macro".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    syms
+}
+
+fn extract_cpp_symbols(content: &str, file: &str) -> Vec<Symbol> {
+    let mut syms = extract_c_symbols(content, file);
+
+    for cap in CPP_CLASS.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "class".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in CPP_NAMESPACE.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "namespace".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in CPP_METHOD.captures_iter(content) {
+        let name = cap[2].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "method".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    syms
+}
+
+fn extract_csharp_symbols(content: &str, file: &str) -> Vec<Symbol> {
+    let mut syms = Vec::new();
+
+    for cap in CS_TYPE.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        let full_match = cap.get(0).unwrap().as_str();
+        let is_public = full_match.contains("public") || full_match.contains("internal");
+        let kind = if full_match.contains("interface") {
+            "interface"
+        } else if full_match.contains("enum") {
+            "enum"
+        } else if full_match.contains("struct") {
+            "struct"
+        } else if full_match.contains("record") {
+            "record"
+        } else {
+            "class"
+        };
+        syms.push(Symbol {
+            name,
+            kind: kind.to_string(),
+            file: file.to_string(),
+            line,
+            is_public,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in CS_METHOD.captures_iter(content) {
+        let visibility = cap[1].to_string();
+        let name = cap[2].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name: name.clone(),
+            kind: "method".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: visibility == "public",
+            is_entry_point: name == "Main",
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in CS_PROP.captures_iter(content) {
+        let visibility = cap[1].to_string();
+        let name = cap[2].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "property".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: visibility == "public",
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    syms
+}
+
+fn extract_swift_symbols(content: &str, file: &str) -> Vec<Symbol> {
+    let mut syms = Vec::new();
+
+    for cap in SWIFT_FUNC.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        let full_match = cap.get(0).unwrap().as_str();
+        let is_public = full_match.contains("public") || full_match.contains("open");
+        syms.push(Symbol {
+            name,
+            kind: "function".to_string(),
+            file: file.to_string(),
+            line,
+            is_public,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in SWIFT_TYPE.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        let full_match = cap.get(0).unwrap().as_str();
+        let is_public = full_match.contains("public") || full_match.contains("open");
+        let kind = if full_match.contains("protocol") {
+            "protocol"
+        } else if full_match.contains("struct") {
+            "struct"
+        } else if full_match.contains("enum") {
+            "enum"
+        } else if full_match.contains("actor") {
+            "actor"
+        } else {
+            "class"
+        };
+        syms.push(Symbol {
+            name,
+            kind: kind.to_string(),
+            file: file.to_string(),
+            line,
+            is_public,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    syms
+}
+
+fn extract_kotlin_symbols(content: &str, file: &str) -> Vec<Symbol> {
+    let mut syms = Vec::new();
+
+    for cap in KT_FUN.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        let full_match = cap.get(0).unwrap().as_str();
+        let is_public = !full_match.contains("private") && !full_match.contains("protected") && !full_match.contains("internal");
+        syms.push(Symbol {
+            name: name.clone(),
+            kind: "function".to_string(),
+            file: file.to_string(),
+            line,
+            is_public,
+            is_entry_point: name == "main",
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in KT_TYPE.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        let full_match = cap.get(0).unwrap().as_str();
+        let is_public = !full_match.contains("private") && !full_match.contains("protected") && !full_match.contains("internal");
+        let kind = if full_match.contains("object") {
+            "object"
+        } else if full_match.contains("interface") {
+            "interface"
+        } else if full_match.contains("enum") {
+            "enum"
+        } else {
+            "class"
+        };
+        syms.push(Symbol {
+            name,
+            kind: kind.to_string(),
+            file: file.to_string(),
+            line,
+            is_public,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    syms
+}
+
+fn extract_scala_symbols(content: &str, file: &str) -> Vec<Symbol> {
+    let mut syms = Vec::new();
+
+    for cap in SCALA_DEF.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        let full_match = cap.get(0).unwrap().as_str();
+        let is_public = !full_match.contains("private") && !full_match.contains("protected");
+        syms.push(Symbol {
+            name: name.clone(),
+            kind: "function".to_string(),
+            file: file.to_string(),
+            line,
+            is_public,
+            is_entry_point: name == "main",
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in SCALA_TYPE.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        let full_match = cap.get(0).unwrap().as_str();
+        let kind = if full_match.contains("object") {
+            "object"
+        } else if full_match.contains("trait") {
+            "trait"
+        } else {
+            "class"
+        };
+        syms.push(Symbol {
+            name,
+            kind: kind.to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    syms
+}
+
+fn extract_shell_symbols(content: &str, file: &str) -> Vec<Symbol> {
+    let mut syms = Vec::new();
+
+    for cap in SH_FUNC.captures_iter(content) {
+        let name = cap
+            .get(1)
+            .or_else(|| cap.get(2))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        if name.is_empty() {
+            continue;
+        }
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "function".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in SH_EXPORT.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "variable".to_string(),
+            file: file.to_string(),
+            line,
+            is_public: true,
+            is_entry_point: false,
+            calls: Vec::new(),
+        });
+    }
+
+    for cap in SH_ALIAS.captures_iter(content) {
+        let name = cap[1].to_string();
+        let line = regex_line_number(content, cap.get(0).unwrap().start());
+        syms.push(Symbol {
+            name,
+            kind: "alias".to_string(),
             file: file.to_string(),
             line,
             is_public: true,

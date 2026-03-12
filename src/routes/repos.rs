@@ -27,6 +27,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/repos")
             .route("", web::post().to(create_repo))
             .route("/{id}", web::get().to(get_repo))
+            .route("/{id}", web::delete().to(delete_repo))
             .route("/{id}/scan", web::post().to(trigger_scan))
             .route(
                 "/{id}/issue-automation",
@@ -64,6 +65,69 @@ async fn get_repo(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResp
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,
             format!("Failed to fetch repo: {e}"),
+        )),
+    }
+}
+
+async fn delete_repo(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let repo_id = path.into_inner();
+
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    // Verify the repo exists and belongs to this user
+    let repo = match state.db.get_repo_by_id(repo_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
+                404,
+                format!("Repo '{repo_id}' not found"),
+            ));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch repo: {e}"),
+            ));
+        }
+    };
+
+    if repo.user_id != user.id {
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(
+            403,
+            "You do not have access to this repository",
+        ));
+    }
+
+    match state.db.delete_repo(repo_id).await {
+        Ok(true) => {
+            info!("Repo {} ({}) deleted by user {}", repo.name, repo_id, user.id);
+
+            if req.headers().contains_key("HX-Request") {
+                return HttpResponse::Ok()
+                    .insert_header(("HX-Redirect", "/repos"))
+                    .finish();
+            }
+
+            HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "id": repo_id,
+                "deleted": true,
+            })))
+        }
+        Ok(false) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
+            404,
+            format!("Repo '{repo_id}' not found"),
+        )),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            format!("Failed to delete repo: {e}"),
         )),
     }
 }

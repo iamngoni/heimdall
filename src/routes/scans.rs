@@ -34,6 +34,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/scans")
             .route("/{id}", web::get().to(get_scan))
             .route("/{id}/live", web::get().to(get_scan_live))
+            .route("/{id}/cancel", web::post().to(cancel_scan))
             .route("/{id}/findings", web::get().to(get_scan_findings))
             .route("/{id}/threat-model", web::get().to(get_scan_threat_model))
             .route("/{id}/patches", web::get().to(get_scan_patches))
@@ -69,6 +70,64 @@ async fn get_scan_live(state: web::Data<AppState>, path: web::Path<Uuid>) -> Htt
             format!("Failed to build live scan snapshot: {error}"),
         )),
     }
+}
+
+async fn cancel_scan(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+    let scan_id = path.into_inner();
+
+    let scan = match state.db.get_scan_by_id(scan_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
+                404,
+                format!("Scan '{scan_id}' not found"),
+            ));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch scan: {e}"),
+            ));
+        }
+    };
+
+    // Only allow cancelling scans that are still running
+    if matches!(scan.status.as_str(), "completed" | "failed" | "cancelled") {
+        return HttpResponse::Conflict().json(ApiResponse::<()>::error(
+            409,
+            format!("Scan is already {}", scan.status),
+        ));
+    }
+
+    // Mark as cancelled in DB
+    if let Err(e) = state
+        .db
+        .update_scan_status(scan_id, "cancelled", Some("Cancelled by user"))
+        .await
+    {
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            format!("Failed to cancel scan: {e}"),
+        ));
+    }
+
+    // Emit SSE events so the UI updates immediately
+    state.sse.emit_status_change(scan_id, "cancelled");
+    state
+        .sse
+        .emit_error(scan_id, "Scan was cancelled by user");
+
+    // Clean up the SSE channel after a short delay
+    let sse = Arc::clone(&state.sse);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        sse.cleanup(scan_id);
+    });
+
+    HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+        "id": scan_id,
+        "status": "cancelled",
+    })))
 }
 
 async fn get_scan_findings(
@@ -205,6 +264,8 @@ async fn build_initial_state(db: &DatabaseOperations, scan_id: Uuid) -> String {
             "ingest",
             "tyr",
             "static_analysis",
+            "taint_analysis",
+            "config_scan",
             "hunt",
             "garmr",
             "report",
@@ -244,7 +305,7 @@ async fn build_initial_state(db: &DatabaseOperations, scan_id: Uuid) -> String {
             serde_json::to_string(&data).unwrap_or_default()
         ));
 
-        if scan["status"] == "completed" {
+        if scan["status"] == "completed" || scan["status"] == "cancelled" {
             let data = serde_json::json!({
                 "scan_id": scan_id,
                 "finding_count": scan["finding_count"],
