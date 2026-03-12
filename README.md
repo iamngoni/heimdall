@@ -10,6 +10,8 @@ Heimdall goes beyond pattern matching: it builds a threat model of your applicat
 
 - [How It Works](#how-it-works)
 - [Quick Start](#quick-start)
+- [Current Status](#current-status)
+- [Contributing](#contributing)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
   - [Local Development](#local-development)
@@ -33,7 +35,7 @@ Heimdall goes beyond pattern matching: it builds a threat model of your applicat
 ```mermaid
 graph LR
     A[Connect Repo] --> B[Run Scan]
-    B --> C[6-Stage Pipeline]
+    B --> C[7-Stage Pipeline]
     C --> D[View Findings]
     D --> E[Apply Patches]
 ```
@@ -64,6 +66,28 @@ cargo run --bin heimdall
 
 # 5. Open http://localhost:8080
 ```
+
+## Current Status
+
+What Heimdall does today:
+
+- Repository intake via GitHub OAuth, GitLab OAuth, public Git URL, or ZIP upload
+- Seven-stage scan pipeline: Ingest, Tyr, Static Analysis, Hunt, Víðarr, Garmr, Report
+- Live scan progress via SSE, plus persisted execution and tool-call logs in the database
+- Finding review with explain, verify, patch, and repository issue creation/linking
+- Optional per-repo automatic issue creation for supported GitHub/GitLab repositories
+- BYOK via environment variables or user-scoped keys stored in Settings
+
+What is still missing or intentionally not done yet:
+
+- GitHub App / installation-token repository access is not implemented yet
+- GitLab uses the same current OAuth user-token model; there is no install-style app flow yet
+- End-to-end integration tests for the full `repo import -> scan -> findings -> issue sync` loop are still limited
+- Stage-specific artifact views are still spread across scan, findings, threat model, and patch surfaces rather than one dedicated “stage outputs” screen
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, required checks, schema update flow, and PR expectations.
 
 ## Prerequisites
 
@@ -219,9 +243,22 @@ Every LLM call records which provider and model was actually used (visible in `a
 
 Users can also add API keys through the Settings UI after registration.
 
+Runtime precedence is:
+
+1. Stored user key from Settings
+2. Environment-configured provider
+
+If multiple providers are configured in the environment, Heimdall uses the fallback chain described above.
+
 ### OAuth (optional)
 
-For GitHub/GitLab login and repository import:
+For GitHub/GitLab login and repository import.
+
+Current state:
+
+- Repository access is currently OAuth user-token based
+- GitHub App / install-style repo access is planned, but not implemented yet
+- If you are comparing Heimdall to tools like Vercel, this is the biggest remaining integration gap
 
 | Variable | Description |
 |----------|-------------|
@@ -239,6 +276,8 @@ For GitHub/GitLab login and repository import:
 |----------|-------------|-----------------|
 | `ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM encryption of stored API keys | `openssl rand -hex 32` |
 | `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook signature verification | `openssl rand -hex 20` |
+
+`ENCRYPTION_KEY` should be treated as required outside local development. If it is not set, Heimdall falls back to compatibility decoding/storage behavior for API keys, which is useful for local recovery but not the standard you want in a real deployment.
 
 ### Worker
 
@@ -430,6 +469,8 @@ stateDiagram-v2
 | `get_dependencies` | Get dependency graph for a file |
 | `report_finding` | Report a discovered vulnerability |
 
+The first four are investigation tools. `report_finding` is the agent's structured output action.
+
 Each threat/attack surface spawns a parallel investigation (via `tokio::spawn`). Max 25 LLM iterations per investigation.
 
 ## Garmr Sandbox
@@ -469,6 +510,7 @@ Each finding includes:
 - **PoC exploit details** (if sandbox-validated)
 - **Source badge** — AI (Hunt agent), Static (pattern rules), Dependencies (audit)
 - **Confidence** — High (static rules), Medium (AI-discovered), Confirmed (sandbox-validated)
+- **Repository issue linkage** — manual from finding review, plus optional per-repo auto-create with severity/confidence gating when the repository provider supports it
 
 ## API Reference
 
