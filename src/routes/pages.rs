@@ -114,6 +114,7 @@ fn source_type_label(source_type: &str) -> &'static str {
     match source_type {
         "github" => "GitHub",
         "gitlab" => "GitLab",
+        "bitbucket" => "Bitbucket",
         "git_url" => "Git URL",
         "zip" => "ZIP Upload",
         _ => "Source",
@@ -156,6 +157,9 @@ async fn oauth_connections_ctx(state: &AppState, user_id: Uuid) -> minijinja::Va
     let gitlab = oauth_connections
         .iter()
         .find(|conn| conn.provider == "gitlab");
+    let bitbucket = oauth_connections
+        .iter()
+        .find(|conn| conn.provider == "bitbucket");
 
     minijinja::Value::from_serialize(&serde_json::json!({
         "github": {
@@ -167,6 +171,11 @@ async fn oauth_connections_ctx(state: &AppState, user_id: Uuid) -> minijinja::Va
             "connected": gitlab.is_some(),
             "scopes": gitlab.and_then(|conn| conn.scopes.clone()),
             "updated_at": gitlab.map(|conn| conn.updated_at.format("%Y-%m-%d %H:%M").to_string()),
+        },
+        "bitbucket": {
+            "connected": bitbucket.is_some(),
+            "scopes": bitbucket.and_then(|conn| conn.scopes.clone()),
+            "updated_at": bitbucket.map(|conn| conn.updated_at.format("%Y-%m-%d %H:%M").to_string()),
         }
     }))
 }
@@ -356,7 +365,7 @@ async fn repo_new_page(
 
     let requested_source = query.source.as_deref().unwrap_or("github");
     let active_source = match requested_source {
-        "github" | "gitlab" | "git_url" | "zip" => requested_source,
+        "github" | "gitlab" | "bitbucket" | "git_url" | "zip" => requested_source,
         _ => "github",
     };
 
@@ -446,10 +455,10 @@ async fn repo_detail_page(
                 "New findings can create or sync {} issues automatically.",
                 issue_provider.unwrap_or("repository").to_uppercase()
             )
-        } else if matches!(repo.source_type.as_str(), "github" | "gitlab") {
+        } else if matches!(repo.source_type.as_str(), "github" | "gitlab" | "bitbucket") {
             "Issue creation becomes available once this repository is connected through the provider integration.".to_string()
         } else {
-            "Issue creation is currently available for provider-backed GitHub and GitLab repositories.".to_string()
+            "Issue creation is currently available for provider-backed GitHub, GitLab, and Bitbucket repositories.".to_string()
         }
     });
 

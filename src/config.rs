@@ -29,6 +29,7 @@ pub struct Config {
     pub security: SecurityConfig,
     pub github_oauth: GithubOAuthConfig,
     pub gitlab_oauth: GitlabOAuthConfig,
+    pub bitbucket_oauth: BitbucketOAuthConfig,
     pub webhook: WebhookConfig,
 }
 
@@ -45,6 +46,13 @@ pub struct GitlabOAuthConfig {
     pub client_secret: Option<String>,
     pub redirect_uri: String,
     pub base_url: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BitbucketOAuthConfig {
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub redirect_uri: String,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +100,7 @@ impl Config {
             security: SecurityConfig::from_env(),
             github_oauth: GithubOAuthConfig::from_env(),
             gitlab_oauth: GitlabOAuthConfig::from_env(),
+            bitbucket_oauth: BitbucketOAuthConfig::from_env(),
             webhook: WebhookConfig::from_env(),
         })
     }
@@ -191,6 +200,24 @@ impl GitlabOAuthConfig {
                 "http://localhost:8080/api/auth/gitlab/callback",
             ),
             base_url: env_nonempty_or("GITLAB_BASE_URL", "https://gitlab.com"),
+        }
+    }
+
+    /// Returns true if both client_id and client_secret are configured.
+    pub fn is_configured(&self) -> bool {
+        self.client_id.is_some() && self.client_secret.is_some()
+    }
+}
+
+impl BitbucketOAuthConfig {
+    fn from_env() -> Self {
+        BitbucketOAuthConfig {
+            client_id: env_nonempty("BITBUCKET_CLIENT_ID"),
+            client_secret: env_nonempty("BITBUCKET_CLIENT_SECRET"),
+            redirect_uri: env_nonempty_or(
+                "BITBUCKET_REDIRECT_URI",
+                "http://localhost:8080/api/auth/bitbucket/callback",
+            ),
         }
     }
 

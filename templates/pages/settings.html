@@ -30,6 +30,8 @@
                             That GitHub account is already linked to another Heimdall user.
                             {% elif integration_error == "gitlab-account-in-use" %}
                             That GitLab account is already linked to another Heimdall user.
+                            {% elif integration_error == "bitbucket-account-in-use" %}
+                            That Bitbucket account is already linked to another Heimdall user.
                             {% else %}
                             {{ integration_error }}
                             {% endif %}
@@ -111,6 +113,42 @@
                                            hx-boost="false"
                                            class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
                                             {% if integrations.gitlab.connected %}Reconnect{% else %}Connect{% endif %}
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
+                                    <div class="flex items-center gap-4">
+                                        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold text-white">B</div>
+                                        <div>
+                                            <h2 class="text-sm font-semibold text-slate-900">Bitbucket</h2>
+                                            <p class="text-sm text-slate-500">
+                                                {% if integrations.bitbucket.connected %}
+                                                Connected{% if integrations.bitbucket.updated_at %} · updated {{ integrations.bitbucket.updated_at }}{% endif %}
+                                                {% else %}
+                                                Not connected
+                                                {% endif %}
+                                            </p>
+                                            {% if integrations.bitbucket.scopes %}
+                                            <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.bitbucket.scopes }}</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-3">
+                                        {% if integrations.bitbucket.connected %}
+                                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
+                                        <button hx-delete="/api/settings/integrations/bitbucket"
+                                                hx-swap="none"
+                                                hx-confirm="Disconnect Bitbucket? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
+                                                class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
+                                            Disconnect
+                                        </button>
+                                        {% endif %}
+                                        <a href="/api/auth/bitbucket/authorize?next=%2Fsettings"
+                                           hx-boost="false"
+                                           class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                            {% if integrations.bitbucket.connected %}Reconnect{% else %}Connect{% endif %}
                                         </a>
                                     </div>
                                 </div>

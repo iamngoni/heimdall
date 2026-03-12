@@ -10,6 +10,7 @@ pub fn issue_provider(repo: &Repo) -> Option<&'static str> {
     match repo.source_type.as_str() {
         "github" => Some("github"),
         "gitlab" => Some("gitlab"),
+        "bitbucket" => Some("bitbucket"),
         _ => None,
     }
 }
@@ -67,6 +68,7 @@ pub async fn create_or_link_issue(
     let created_issue = match provider {
         "github" => create_github_issue(remote_url, &token, finding).await?,
         "gitlab" => create_gitlab_issue(remote_url, &token, finding).await?,
+        "bitbucket" => create_bitbucket_issue(remote_url, &token, finding).await?,
         _ => unreachable!(),
     };
 
@@ -207,6 +209,80 @@ async fn create_gitlab_issue(
         external_issue_id: issue.id.to_string(),
         external_issue_number: Some(issue.iid.to_string()),
         issue_url: issue.web_url,
+        title: issue.title,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketIssueResponse {
+    id: u64,
+    title: String,
+    links: BitbucketIssueLinks,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketIssueLinks {
+    html: BitbucketHref,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketHref {
+    href: String,
+}
+
+async fn create_bitbucket_issue(
+    remote_url: &str,
+    token: &str,
+    finding: &Finding,
+) -> Result<CreatedIssue> {
+    let (_, path) = split_remote(remote_url)?;
+    if path.len() < 2 {
+        return Err(anyhow!(
+            "Unable to determine Bitbucket workspace/repository from remote URL"
+        ));
+    }
+    let workspace = &path[0];
+    let repo_slug = &path[1];
+    let client = Client::new();
+    let response = client
+        .post(format!(
+            "https://api.bitbucket.org/2.0/repositories/{workspace}/{repo_slug}/issues"
+        ))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("User-Agent", "Heimdall")
+        .json(&serde_json::json!({
+            "title": issue_title(finding),
+            "content": {
+                "raw": issue_body(finding),
+                "markup": "markdown"
+            },
+            "kind": "bug",
+            "priority": match finding.severity.to_lowercase().as_str() {
+                "critical" => "critical",
+                "high" => "major",
+                "medium" => "minor",
+                "low" => "trivial",
+                _ => "minor",
+            },
+        }))
+        .send()
+        .await
+        .context("Failed to reach Bitbucket issues API")?;
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("Bitbucket issue creation failed: {body}"));
+    }
+
+    let issue = response
+        .json::<BitbucketIssueResponse>()
+        .await
+        .context("Failed to parse Bitbucket issue response")?;
+
+    Ok(CreatedIssue {
+        external_issue_id: issue.id.to_string(),
+        external_issue_number: Some(issue.id.to_string()),
+        issue_url: issue.links.html.href,
         title: issue.title,
     })
 }

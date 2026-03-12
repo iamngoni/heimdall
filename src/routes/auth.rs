@@ -40,7 +40,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/github/callback", web::get().to(github_callback))
             // GitLab OAuth
             .route("/gitlab/authorize", web::get().to(gitlab_authorize))
-            .route("/gitlab/callback", web::get().to(gitlab_callback)),
+            .route("/gitlab/callback", web::get().to(gitlab_callback))
+            // Bitbucket OAuth
+            .route("/bitbucket/authorize", web::get().to(bitbucket_authorize))
+            .route("/bitbucket/callback", web::get().to(bitbucket_callback)),
     );
 }
 
@@ -54,7 +57,9 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         .route("/github/authorize", web::get().to(github_authorize))
         .route("/github/callback", web::get().to(github_callback))
         .route("/gitlab/authorize", web::get().to(gitlab_authorize))
-        .route("/gitlab/callback", web::get().to(gitlab_callback));
+        .route("/gitlab/callback", web::get().to(gitlab_callback))
+        .route("/bitbucket/authorize", web::get().to(bitbucket_authorize))
+        .route("/bitbucket/callback", web::get().to(bitbucket_callback));
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +576,51 @@ struct GitlabUser {
     email: Option<String>,
     name: Option<String>,
     avatar_url: Option<String>,
+}
+
+/// Bitbucket token exchange response.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct BitbucketTokenResponse {
+    access_token: Option<String>,
+    token_type: Option<String>,
+    refresh_token: Option<String>,
+    expires_in: Option<i64>,
+    scopes: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+/// Bitbucket user info from the /2.0/user endpoint.
+#[derive(Debug, Deserialize)]
+struct BitbucketUser {
+    uuid: String,
+    username: Option<String>,
+    display_name: Option<String>,
+    links: Option<BitbucketUserLinks>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketUserLinks {
+    avatar: Option<BitbucketLink>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketLink {
+    href: Option<String>,
+}
+
+/// Bitbucket email entry from the /2.0/user/emails endpoint.
+#[derive(Debug, Deserialize)]
+struct BitbucketEmailResponse {
+    values: Vec<BitbucketEmail>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketEmail {
+    email: String,
+    is_primary: bool,
+    is_confirmed: bool,
 }
 
 /// GitHub token exchange response.
@@ -1206,6 +1256,315 @@ async fn gitlab_callback(
             access_token,
             token_data.refresh_token.as_deref(),
             token_data.scope.as_deref(),
+            expires_at,
+        )
+        .await
+        {
+            Ok(user) => user,
+            Err(resp) => return resp,
+        }
+    };
+
+    let redirect_target = oauth_redirect_target(&req, "/repos/new");
+
+    let mut response = HttpResponse::Found();
+    if session_user.is_none() {
+        let token = match create_user_session(&state, user.id, &req).await {
+            Ok(token) => token,
+            Err(resp) => return resp,
+        };
+        response.cookie(session_cookie(&token, state.config.app.tls_enabled));
+    }
+
+    response
+        .cookie(clear_cookie(OAUTH_STATE_COOKIE))
+        .cookie(clear_cookie(OAUTH_NEXT_COOKIE))
+        .insert_header(("Location", redirect_target))
+        .finish()
+}
+
+// ---------------------------------------------------------------------------
+// Bitbucket OAuth
+// ---------------------------------------------------------------------------
+
+/// GET /auth/bitbucket/authorize
+///
+/// Redirect the user to Bitbucket's authorization page.
+async fn bitbucket_authorize(
+    state: web::Data<AppState>,
+    query: web::Query<OAuthAuthorizeParams>,
+) -> HttpResponse {
+    let config = &state.config.bitbucket_oauth;
+
+    let Some(client_id) = &config.client_id else {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Bitbucket OAuth is not configured (BITBUCKET_CLIENT_ID missing)",
+        ));
+    };
+
+    let oauth_state = generate_oauth_state();
+    let redirect_uri = &config.redirect_uri;
+
+    let auth_url = format!(
+        "https://bitbucket.org/site/oauth2/authorize?client_id={}&redirect_uri={}&response_type=code&state={}",
+        urlencoding(client_id),
+        urlencoding(redirect_uri),
+        urlencoding(&oauth_state),
+    );
+
+    let mut response = HttpResponse::Found();
+    response.cookie(oauth_state_cookie(
+        &oauth_state,
+        state.config.app.tls_enabled,
+    ));
+    if let Some(next) = sanitize_oauth_next(query.next.as_deref()) {
+        response.cookie(oauth_next_cookie(&next, state.config.app.tls_enabled));
+    }
+    response.insert_header(("Location", auth_url)).finish()
+}
+
+/// GET /auth/bitbucket/callback?code=...&state=...
+///
+/// Exchange the authorization code for an access token, fetch user info,
+/// find or create the user, create a session, and redirect.
+async fn bitbucket_callback(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    params: web::Query<OAuthCallbackParams>,
+) -> HttpResponse {
+    // Check for error from provider
+    if let Some(err) = &params.error {
+        let desc = params
+            .error_description
+            .as_deref()
+            .unwrap_or("Unknown error");
+        log::warn!("Bitbucket OAuth error: {err}: {desc}");
+        return HttpResponse::Found()
+            .insert_header(("Location", "/login"))
+            .finish();
+    }
+
+    let Some(code) = &params.code else {
+        return HttpResponse::BadRequest()
+            .json(ApiResponse::<()>::error(400, "Missing authorization code"));
+    };
+
+    // Verify state parameter (CSRF protection)
+    let stored_state = req
+        .cookie(OAUTH_STATE_COOKIE)
+        .map(|c| c.value().to_string());
+    if stored_state.as_deref() != params.state.as_deref() || stored_state.is_none() {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Invalid OAuth state parameter",
+        ));
+    }
+
+    let config = &state.config.bitbucket_oauth;
+    let Some(client_id) = &config.client_id else {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, "Bitbucket OAuth not configured"));
+    };
+    let Some(client_secret) = &config.client_secret else {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, "Bitbucket OAuth not configured"));
+    };
+
+    let http = reqwest::Client::new();
+
+    // Exchange code for access token (Bitbucket uses Basic auth for token exchange)
+    let token_resp = match http
+        .post("https://bitbucket.org/site/oauth2/access_token")
+        .basic_auth(client_id, Some(client_secret))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code.as_str()),
+            ("redirect_uri", config.redirect_uri.as_str()),
+        ])
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            log::error!("Bitbucket token exchange failed: {e:#}");
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to exchange Bitbucket authorization code",
+            ));
+        }
+    };
+
+    let token_data: BitbucketTokenResponse = match token_resp.json().await {
+        Ok(data) => data,
+        Err(e) => {
+            log::error!("Failed to parse Bitbucket token response: {e:#}");
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to parse Bitbucket token response",
+            ));
+        }
+    };
+
+    if let Some(err) = &token_data.error {
+        let desc = token_data.error_description.as_deref().unwrap_or("Unknown");
+        log::error!("Bitbucket token error: {err}: {desc}");
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            format!("Bitbucket token error: {desc}"),
+        ));
+    }
+
+    let Some(access_token) = &token_data.access_token else {
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            "No access token in Bitbucket response",
+        ));
+    };
+
+    // Compute token expiry
+    let expires_at = token_data
+        .expires_in
+        .map(|secs| Utc::now() + Duration::seconds(secs));
+
+    // Fetch user info
+    let user_resp = match http
+        .get("https://api.bitbucket.org/2.0/user")
+        .header("Authorization", format!("Bearer {access_token}"))
+        .header("User-Agent", "Heimdall")
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            log::error!("Bitbucket user info request failed: {e:#}");
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to fetch Bitbucket user info",
+            ));
+        }
+    };
+
+    let bb_user: BitbucketUser = match user_resp.json().await {
+        Ok(u) => u,
+        Err(e) => {
+            log::error!("Failed to parse Bitbucket user info: {e:#}");
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to parse Bitbucket user info",
+            ));
+        }
+    };
+
+    // Fetch email from /2.0/user/emails since Bitbucket user endpoint doesn't return email
+    let email = {
+        let emails_resp = http
+            .get("https://api.bitbucket.org/2.0/user/emails")
+            .header("Authorization", format!("Bearer {access_token}"))
+            .header("User-Agent", "Heimdall")
+            .send()
+            .await;
+
+        match emails_resp {
+            Ok(resp) => {
+                let email_data: BitbucketEmailResponse =
+                    resp.json().await.unwrap_or(BitbucketEmailResponse {
+                        values: Vec::new(),
+                    });
+                email_data
+                    .values
+                    .iter()
+                    .find(|e| e.is_primary && e.is_confirmed)
+                    .or_else(|| email_data.values.iter().find(|e| e.is_confirmed))
+                    .map(|e| e.email.clone())
+                    .unwrap_or_else(|| {
+                        format!(
+                            "{}@users.noreply.bitbucket.org",
+                            bb_user.username.as_deref().unwrap_or("unknown")
+                        )
+                    })
+            }
+            Err(_) => format!(
+                "{}@users.noreply.bitbucket.org",
+                bb_user.username.as_deref().unwrap_or("unknown")
+            ),
+        }
+    };
+
+    // Bitbucket UUID comes wrapped in braces like {uuid} — strip them for storage.
+    let provider_user_id = bb_user.uuid.trim_matches(|c| c == '{' || c == '}').to_string();
+    let display_name = bb_user
+        .display_name
+        .as_deref()
+        .or(bb_user.username.as_deref());
+    let avatar_url = bb_user
+        .links
+        .as_ref()
+        .and_then(|l| l.avatar.as_ref())
+        .and_then(|a| a.href.as_deref());
+
+    let scopes = token_data.scopes.as_deref();
+
+    let session_user = current_session_user(&state, &req).await;
+    let user = if let Some(current_user) = session_user.clone() {
+        match state
+            .db
+            .get_user_by_oauth_provider("bitbucket", &provider_user_id)
+            .await
+        {
+            Ok(Some(owner)) if owner.id != current_user.id => {
+                let redirect_target = with_query_param(
+                    "/settings",
+                    "integration_error",
+                    "bitbucket-account-in-use",
+                );
+                return HttpResponse::Found()
+                    .cookie(clear_cookie(OAUTH_STATE_COOKIE))
+                    .cookie(clear_cookie(OAUTH_NEXT_COOKIE))
+                    .insert_header(("Location", redirect_target))
+                    .finish();
+            }
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Failed to check Bitbucket OAuth ownership: {e:#}");
+                return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    500,
+                    "Failed to verify Bitbucket connection",
+                ));
+            }
+        }
+
+        if let Some(url) = avatar_url {
+            let _ = state.db.update_user_avatar(current_user.id, url).await;
+        }
+
+        if let Err(resp) = upsert_oauth_connection_for_user(
+            &state,
+            current_user.id,
+            "bitbucket",
+            &provider_user_id,
+            access_token,
+            token_data.refresh_token.as_deref(),
+            scopes,
+            expires_at,
+        )
+        .await
+        {
+            return resp;
+        }
+
+        current_user
+    } else {
+        match find_or_create_oauth_user(
+            &state,
+            "bitbucket",
+            &provider_user_id,
+            &email,
+            display_name,
+            avatar_url,
+            access_token,
+            token_data.refresh_token.as_deref(),
+            scopes,
             expires_at,
         )
         .await

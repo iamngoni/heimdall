@@ -588,10 +588,10 @@ async fn disconnect_integration(
     path: web::Path<String>,
 ) -> HttpResponse {
     let provider = path.into_inner().to_lowercase();
-    if provider != "github" && provider != "gitlab" {
+    if !matches!(provider.as_str(), "github" | "gitlab" | "bitbucket") {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
-            "Provider must be 'github' or 'gitlab'.",
+            "Provider must be 'github', 'gitlab', or 'bitbucket'.",
         ));
     }
 
