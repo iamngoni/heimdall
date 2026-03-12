@@ -44,7 +44,7 @@
                                   data-status="{{ scan.status }}"
                                   class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold
                                       {{ 'bg-emerald-50 text-emerald-700' if scan.status == 'completed' else
-                                         'bg-amber-50 text-amber-700' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
+                                         'bg-amber-50 text-amber-700' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'verifying', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
                                          'bg-rose-50 text-rose-700' if scan.status == 'failed' else
                                          'bg-orange-50 text-orange-700' if scan.status == 'cancelled' else
                                          'bg-slate-100 text-slate-700' }}">

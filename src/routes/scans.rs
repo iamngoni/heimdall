@@ -267,6 +267,7 @@ async fn build_initial_state(db: &DatabaseOperations, scan_id: Uuid) -> String {
             "taint_analysis",
             "config_scan",
             "hunt",
+            "vidarr",
             "garmr",
             "report",
         ] {
@@ -375,7 +376,10 @@ pub async fn build_scan_live_snapshot(
         "ingest",
         "tyr",
         "static_analysis",
+        "taint_analysis",
+        "config_scan",
         "hunt",
+        "vidarr",
         "garmr",
         "report",
     ]
@@ -487,6 +491,21 @@ pub async fn build_scan_live_snapshot(
 }
 
 fn humanize_slug(value: &str) -> String {
+    // Named stages get proper labels
+    match value {
+        "ingest" => return "Ingest".to_string(),
+        "tyr" => return "Tyr".to_string(),
+        "static_analysis" => return "Static Analysis".to_string(),
+        "taint_analysis" => return "Taint Analysis".to_string(),
+        "config_scan" => return "Config Scan".to_string(),
+        "hunt" => return "Hunt".to_string(),
+        "vidarr" => return "Víðarr".to_string(),
+        "garmr" => return "Garmr".to_string(),
+        "report" => return "Report".to_string(),
+        _ => {}
+    }
+
+    // Fallback: split on _ and capitalize
     value
         .split('_')
         .filter(|segment| !segment.is_empty())
