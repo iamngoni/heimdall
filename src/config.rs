@@ -67,6 +67,9 @@ pub struct AppConfig {
     pub host: String,
     pub tls_enabled: bool,
     pub cors_allowed_origin: String,
+    /// Persistent data directory for uploads, scan working copies, etc.
+    /// Defaults to `./data`. Set via `DATA_DIR` env var.
+    pub data_dir: String,
 }
 
 #[derive(Debug, Clone)]
@@ -133,6 +136,7 @@ impl AppConfig {
                 .unwrap_or(false),
             cors_allowed_origin: env::var("CORS_ALLOWED_ORIGIN")
                 .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+            data_dir: env_nonempty_or("DATA_DIR", "./data"),
         })
     }
 }

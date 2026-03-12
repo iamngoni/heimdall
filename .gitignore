@@ -5,3 +5,4 @@ node_modules/
 .playwright-cli/
 .env
 output/
+data/

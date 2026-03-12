@@ -251,12 +251,13 @@ async fn trigger_scan(
         let ai = Arc::clone(&runtime.provider);
         let model = runtime.model;
         let encryption_key = state.encryption_key;
+        let data_dir = state.config.app.data_dir.clone();
         let scan_id = scan.id;
         let repo_name = repo.name.clone();
 
         tokio::spawn(async move {
             let pipeline =
-                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key);
+                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key, data_dir);
             if let Err(e) = pipeline.run(&repo).await {
                 error!("Scan pipeline failed for {scan_id}: {e:#}");
                 sse.emit_error(scan_id, &format!("{e:#}"));
@@ -363,7 +364,7 @@ async fn upload_zip(
         .map(|u| u.id)
         .unwrap_or_else(Uuid::nil);
 
-    let upload_dir = std::env::temp_dir().join("heimdall_uploads");
+    let upload_dir = std::path::PathBuf::from(&state.config.app.data_dir).join("uploads");
     if let Err(e) = std::fs::create_dir_all(&upload_dir) {
         return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,

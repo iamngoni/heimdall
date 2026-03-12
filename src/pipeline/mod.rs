@@ -38,6 +38,7 @@ pub struct ScanPipeline {
     pub default_model: String,
     pub sse: Arc<ScanBroadcaster>,
     pub encryption_key: Option<[u8; 32]>,
+    pub data_dir: String,
 }
 
 impl ScanPipeline {
@@ -48,6 +49,7 @@ impl ScanPipeline {
         default_model: String,
         sse: Arc<ScanBroadcaster>,
         encryption_key: Option<[u8; 32]>,
+        data_dir: String,
     ) -> Self {
         Self {
             scan_id,
@@ -56,6 +58,7 @@ impl ScanPipeline {
             default_model,
             sse,
             encryption_key,
+            data_dir,
         }
     }
 
@@ -84,6 +87,7 @@ impl ScanPipeline {
                     self.scan_id,
                     Arc::clone(&self.db),
                     self.encryption_key,
+                    self.data_dir.clone(),
                 );
                 stage.run(repo).await
             })

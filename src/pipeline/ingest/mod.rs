@@ -26,6 +26,7 @@ pub struct IngestStage {
     pub scan_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
     pub encryption_key: Option<[u8; 32]>,
+    pub data_dir: String,
 }
 
 /// Output of the ingest stage.
@@ -61,11 +62,13 @@ impl IngestStage {
         scan_id: uuid::Uuid,
         db: Arc<DatabaseOperations>,
         encryption_key: Option<[u8; 32]>,
+        data_dir: String,
     ) -> Self {
         Self {
             scan_id,
             db,
             encryption_key,
+            data_dir,
         }
     }
 
@@ -197,7 +200,7 @@ impl IngestStage {
 
     /// Clone or locate the repo source.
     async fn acquire_source(&self, repo: &Repo) -> HeimdallResult<PathBuf> {
-        let work_base = std::env::temp_dir().join("heimdall").join("scans");
+        let work_base = PathBuf::from(&self.data_dir).join("scans");
         std::fs::create_dir_all(&work_base)?;
         let work_dir = work_base.join(self.scan_id.to_string());
 
