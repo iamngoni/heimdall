@@ -4,6 +4,8 @@
 
 Heimdall goes beyond pattern matching: it builds a threat model of your application, deploys an AI agent that reasons about your codebase to discover real vulnerabilities, validates them in a sandboxed environment, and produces ranked findings with patches and proof-of-concept exploits.
 
+![Heimdall — Sign In](assets/images/screenshot.png)
+
 ## Table of Contents
 
 - [How It Works](#how-it-works)
@@ -57,13 +59,10 @@ docker compose -f docker-compose.dev.yml up -d
 cp .env.example .env
 # Edit .env — set at least one AI provider key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL)
 
-# 4. Generate database migrations
-cargo run --bin schema_gen -- postgres
-
-# 5. Run the server
+# 4. Run the server (schema is applied automatically on startup)
 cargo run --bin heimdall
 
-# 6. Open http://localhost:8080
+# 5. Open http://localhost:8080
 ```
 
 ## Prerequisites
@@ -146,16 +145,13 @@ ANTHROPIC_API_KEY=sk-ant-...          # Claude (recommended)
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
 
-Generate migrations and build:
+Build and run:
 
 ```bash
-# Generate the database schema migration
-cargo run --bin schema_gen -- postgres
-
 # Build the project
 cargo build
 
-# Run
+# Run (schema is applied automatically on startup)
 cargo run --bin heimdall
 ```
 
@@ -210,7 +206,7 @@ Example: `postgres://heimdall:heimdall@localhost:5432/heimdall`
 
 ### AI Providers (BYOK)
 
-Set **at least one**. Heimdall selects the first available in this order: Anthropic > OpenAI > Ollama.
+Set **at least one**. When multiple providers are configured, Heimdall chains them in a **fallback provider** — if the primary fails with a retryable error (429 rate limit, 500/502/503 server errors, billing/quota exhaustion, or connection failures), requests automatically fall through to the next configured provider. Priority order: Anthropic > OpenAI > Ollama.
 
 | Variable | Provider | Description |
 |----------|----------|-------------|
@@ -218,6 +214,8 @@ Set **at least one**. Heimdall selects the first available in this order: Anthro
 | `OPENAI_API_KEY` | OpenAI | OpenAI API key (`sk-...`) |
 | `OLLAMA_URL` | Ollama | Ollama server URL (e.g. `http://localhost:11434`) |
 | `DEFAULT_AI_MODEL` | — | Override default model (default: `claude-sonnet-4-20250514`) |
+
+Every LLM call records which provider and model was actually used (visible in `agent_tool_calls`), so you always know which provider served each request — especially useful when fallback kicks in.
 
 Users can also add API keys through the Settings UI after registration.
 
@@ -242,6 +240,14 @@ For GitHub/GitLab login and repository import:
 | `ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM encryption of stored API keys | `openssl rand -hex 32` |
 | `WEBHOOK_SECRET` | Shared secret for GitHub/GitLab webhook signature verification | `openssl rand -hex 20` |
 
+### Worker
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKER_ENABLED` | `true` | Enable/disable the background scan worker |
+| `WORKER_POLL_INTERVAL_SECS` | `5` | How often the worker polls for queued scans |
+| `WORKER_STALE_TIMEOUT_MINS` | `10` | Timeout for stale/stuck scans |
+
 ### Logging
 
 | Variable | Default | Description |
@@ -256,10 +262,7 @@ For GitHub/GitLab login and repository import:
 # Start database
 docker compose -f docker-compose.dev.yml up -d
 
-# Generate migrations (only needed once, or after schema changes)
-cargo run --bin schema_gen -- postgres
-
-# Run with hot logging
+# Run with hot logging (schema applied automatically)
 RUST_LOG=debug cargo run --bin heimdall
 ```
 
@@ -360,6 +363,7 @@ graph TB
 
         subgraph AI["AI Backend"]
             MP["ModelProvider trait"]
+            FB["FallbackProvider\n<i>Auto-retry chain</i>"]
             Claude["ClaudeProvider"]
             OpenAI["OpenAiProvider"]
             Ollama["OllamaProvider"]
@@ -385,9 +389,10 @@ graph TB
     Pipeline --> Garmr
     Hunt --> MP
     Garmr --> Docker
-    MP --> Claude
-    MP --> OpenAI
-    MP --> Ollama
+    MP --> FB
+    FB --> Claude
+    FB --> OpenAI
+    FB --> Ollama
     Pipeline --> PG
     Pipeline --> FS
     AW --> GH
@@ -480,6 +485,7 @@ Each finding includes:
 |--------|----------|-------------|
 | `POST` | `/api/repos` | Create a repository |
 | `GET` | `/api/repos/{id}` | Get repository details |
+| `DELETE` | `/api/repos/{id}` | Delete a repository (cascades to scans, findings, etc.) |
 | `POST` | `/api/repos/{id}/scan` | Trigger a scan |
 
 ### Scans
@@ -487,6 +493,7 @@ Each finding includes:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/scans/{id}` | Get scan metadata |
+| `POST` | `/api/scans/{id}/cancel` | Cancel a running scan |
 | `GET` | `/api/scans/{id}/findings` | List findings (supports `?severity=high&status=open&page=1&per_page=25`) |
 | `GET` | `/api/scans/{id}/threat-model` | Get threat model |
 | `GET` | `/api/scans/{id}/patches` | Get generated patches |
@@ -538,7 +545,7 @@ Each finding includes:
 | AST parsing | tree-sitter (Rust, Python, JS, TS, Go, Java) |
 | Docker SDK | bollard |
 | AI providers | Claude, OpenAI, Ollama (BYOK) |
-| Auth | Argon2id + session cookies + CSRF double-submit |
+| Auth | Argon2id + session cookies + CSRF double-submit cookie |
 | Encryption | AES-256-GCM (stored API keys) |
 | Async runtime | Tokio |
 
@@ -595,12 +602,17 @@ heimdall/
 │   │   ├── hunt/               # Stage 4: Agentic discovery
 │   │   ├── garmr/              # Stage 5: Sandbox validation
 │   │   └── report/             # Stage 6: Patches + ranking
+│   ├── worker.rs               # Background scan worker (poll + execute)
+│   ├── integrations/
+│   │   ├── mod.rs              # Integration hub
+│   │   └── issues.rs           # Issue tracker integration
 │   ├── ai/
-│   │   ├── mod.rs              # ModelProvider trait
+│   │   ├── mod.rs              # ModelProvider trait + provider builder
 │   │   ├── types.rs            # Request/response types
 │   │   ├── claude.rs           # Anthropic provider
 │   │   ├── openai.rs           # OpenAI provider
-│   │   └── ollama.rs           # Ollama provider
+│   │   ├── ollama.rs           # Ollama provider
+│   │   └── fallback.rs         # FallbackProvider (auto-retry chain)
 │   ├── index/
 │   │   ├── mod.rs              # CodeIndex (unified)
 │   │   ├── symbols.rs          # tree-sitter symbol extraction
@@ -627,7 +639,7 @@ heimdall/
 
 ## Schema DSL
 
-The database schema is defined once in Rust and generates migrations for any supported driver:
+The database schema is defined once in Rust and generates idempotent DDL for any supported driver:
 
 ```rust
 Schema::new()
@@ -643,16 +655,24 @@ Schema::new()
     .build()
 ```
 
-Generate migrations:
+### Automatic schema at startup
+
+On every startup, Heimdall generates the full DDL from the schema definition and applies it using `IF NOT EXISTS` / `DROP TRIGGER IF EXISTS` statements. No migration files or tracking tables needed — this is safe to run repeatedly.
+
+### Generating migration files (optional)
+
+For external tooling, CI, or manual review you can still export migration SQL:
 
 ```bash
-cargo run --bin schema_gen -- postgres   # migrations/active/ (applied at startup)
+cargo run --bin schema_gen -- postgres   # migrations/active/
 cargo run --bin schema_gen -- sqlite     # migrations/sqlite/
 cargo run --bin schema_gen -- mysql      # migrations/mysql/
 cargo run --bin schema_gen -- all        # all drivers
 ```
 
-Migrations are generated artifacts — the schema definition in `src/db/schema/definition.rs` is the source of truth.
+The schema DSL also supports **smart incremental migrations** — it snapshots the current schema and diffs against it on the next run, generating only `ALTER TABLE` / `CREATE INDEX` / etc. for what changed.
+
+The schema definition in `src/db/schema/definition.rs` is the source of truth.
 
 ## Testing
 
@@ -683,10 +703,7 @@ The test suite covers: symbol extraction (all 6 languages), static analysis rule
 # Build release binary
 cargo build --release
 
-# Generate migrations
-./target/release/schema_gen postgres
-
-# Run (ensure .env is configured)
+# Run (ensure .env is configured — schema applied automatically)
 ./target/release/heimdall
 ```
 
@@ -762,8 +779,12 @@ pub trait ModelProvider: Send + Sync {
 
 **Supported providers:**
 - **Claude** (Anthropic) — native tool_use format, recommended
-- **OpenAI** — function calling format (GPT-4o, GPT-4o mini)
-- **Ollama** — local inference, no API key required (Llama, Mistral, etc.)
+- **OpenAI** — function calling format (GPT-4o)
+- **Ollama** — local inference, no API key required (Llama 3.3, Mistral, etc.)
+
+**Automatic fallback:** When multiple providers are configured, Heimdall chains them via `FallbackProvider`. If the primary provider fails with a retryable error (HTTP 429/500/502/503/529, billing/quota errors, or connection failures), the request is automatically retried with the next provider. Non-retryable errors (401, invalid request) propagate immediately.
+
+**Model tracking:** Every LLM call records the actual `provider` and `model` used in the `agent_tool_calls` table, providing full observability into which provider served each request.
 
 **BYOK:** Users bring their own API keys. Keys are encrypted at rest with AES-256-GCM when `ENCRYPTION_KEY` is configured.
 

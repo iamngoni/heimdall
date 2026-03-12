@@ -371,7 +371,13 @@ window.HeimdallScanPage = {
         if (!confirm('Are you sure you want to cancel this scan?')) return;
         btn.disabled = true;
         btn.textContent = 'Cancelling...';
-        fetch('/api/scans/' + scanId + '/cancel', { method: 'POST' })
+        const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+        fetch('/api/scans/' + scanId + '/cancel', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken },
+            credentials: 'same-origin'
+        })
             .then(resp => {
                 if (resp.ok) {
                     btn.textContent = 'Cancelled';
