@@ -1,68 +1,223 @@
 {% extends "base.html" %}
 
-{% block title %}Register{% endblock %}
+{% block title %}Create Account{% endblock %}
 
 {% block body %}
-<div class="flex min-h-full items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-    <div class="w-full max-w-sm space-y-8">
-        <!-- Logo -->
-        <div class="text-center">
-            <svg class="mx-auto h-12 w-12 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <h2 class="mt-4 text-2xl font-bold text-white">Create an account</h2>
-            <p class="mt-2 text-sm text-gray-400">Start scanning your code with Heimdall</p>
-        </div>
+<div class="relative min-h-screen overflow-hidden bg-[#eef2f7] text-slate-900">
+    <div class="pointer-events-none absolute inset-0 overflow-hidden">
+        <div class="absolute -left-12 top-10 h-72 w-72 rounded-full bg-blue-200/45 blur-3xl"></div>
+        <div class="absolute right-8 top-0 h-72 w-72 rounded-full bg-emerald-100/40 blur-3xl"></div>
+        <div class="absolute bottom-0 right-1/4 h-64 w-64 rounded-full bg-amber-100/45 blur-3xl"></div>
+        <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-300/80 to-transparent"></div>
+    </div>
 
-        <!-- OAuth buttons -->
-        <div class="flex flex-col space-y-3">
-            <a href="/api/auth/github/authorize" hx-boost="false" class="w-full rounded-md border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 transition-colors text-center">
-                Sign in with GitHub
+    <div class="relative mx-auto flex min-h-screen w-full max-w-[1520px] flex-col px-4 pb-4 pt-4 sm:px-5 lg:px-6">
+        <header class="flex items-center justify-between">
+            <a href="/login" class="inline-flex items-center gap-3 text-slate-900">
+                <span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-[0_18px_40px_rgba(15,23,42,0.18)]">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.7" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </span>
+                <span>
+                    <span class="block text-lg font-semibold tracking-tight">Heimdall</span>
+                    <span class="block text-sm text-slate-500">Agentic code security review</span>
+                </span>
             </a>
-            <a href="/api/auth/gitlab/authorize" hx-boost="false" class="w-full rounded-md border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 transition-colors text-center">
-                Sign in with GitLab
-            </a>
-        </div>
-        <div class="relative my-4"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="bg-gray-900 px-2 text-gray-500">or</span></div></div>
 
-        <!-- Error display -->
-        <div id="register-error" class="hidden rounded-md bg-red-900/30 border border-red-800/50 p-3">
-            <p class="text-sm text-red-400" id="register-error-text"></p>
-        </div>
+            <div class="flex items-center gap-3 text-sm">
+                <span class="hidden text-slate-500 sm:inline">Already have access?</span>
+                <a href="/login"
+                   class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
+                    Sign in
+                </a>
+            </div>
+        </header>
 
-        <!-- Register Form -->
-        <form id="register-form" class="space-y-6">
-            <div>
-                <label for="display_name" class="block text-sm font-medium text-gray-300">Display name</label>
-                <input type="text" name="display_name" id="display_name" autocomplete="name"
-                       class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder-gray-500"
-                       placeholder="Your name">
-            </div>
-            <div>
-                <label for="email" class="block text-sm font-medium text-gray-300">Email address</label>
-                <input type="email" name="email" id="email" required autocomplete="email"
-                       class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder-gray-500"
-                       placeholder="you@example.com">
-            </div>
-            <div>
-                <label for="password" class="block text-sm font-medium text-gray-300">Password</label>
-                <input type="password" name="password" id="password" required autocomplete="new-password" minlength="8"
-                       class="mt-1 block w-full rounded-md border-gray-700 bg-gray-800 px-3 py-2.5 text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder-gray-500"
-                       placeholder="At least 8 characters">
-            </div>
-            <div>
-                <button type="submit" id="register-btn"
-                        class="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 transition-colors">
-                    Create Account
-                </button>
-            </div>
-        </form>
+        <main class="mt-4 grid flex-1 gap-4 lg:min-h-0 lg:grid-cols-[minmax(0,1.42fr)_430px] lg:items-stretch">
+            <section class="relative overflow-hidden rounded-[36px] bg-[#08111f] px-6 py-7 text-white shadow-[0_30px_80px_rgba(15,23,42,0.28)] lg:-ml-2 lg:px-10 lg:py-8 xl:px-12">
+                <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_34%),radial-gradient(circle_at_80%_25%,_rgba(16,185,129,0.12),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0))]"></div>
+                <div class="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(8,17,31,0),rgba(8,17,31,0.9))]"></div>
 
-        <p class="text-center text-sm text-gray-400">
-            Already have an account?
-            <a href="/login" class="font-medium text-indigo-400 hover:text-indigo-300 transition-colors">Sign in</a>
-        </p>
+                <div class="relative flex h-full flex-col">
+                    <div class="inline-flex w-fit items-center gap-2 rounded-full border border-white/12 bg-white/8 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-100">
+                        Create workspace
+                    </div>
+
+                    <div class="mt-6 max-w-4xl">
+                        <p class="text-sm font-medium uppercase tracking-[0.28em] text-emerald-200/80">Security program onboarding</p>
+                        <h1 class="mt-4 text-4xl leading-[0.95] tracking-[-0.03em] text-white sm:text-5xl xl:text-[4.5rem]"
+                            style="font-family: Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, serif;">
+                            Stand up repo scanning, finding review, and issue follow-through from one workspace.
+                        </h1>
+                        <p class="mt-5 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+                            Heimdall is built for teams that want deeper inspection than a dashboard and more discipline than raw model output.
+                            Create an account, connect source control, and start reviewing code with visible execution and grounded evidence.
+                        </p>
+                    </div>
+
+                    <div class="mt-6 grid gap-3 sm:grid-cols-3">
+                        <article class="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Repo intake</p>
+                            <p class="mt-2 text-sm leading-6 text-slate-200">GitHub, GitLab, public Git URLs, or ZIP snapshots from day one.</p>
+                        </article>
+                        <article class="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Finding review</p>
+                            <p class="mt-2 text-sm leading-6 text-slate-200">Explain, verify, patch, and validate before pushing noise to engineering.</p>
+                        </article>
+                        <article class="rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Execution clarity</p>
+                            <p class="mt-2 text-sm leading-6 text-slate-200">Persisted scan events, stage outputs, and operator-grade progress instead of spinner theater.</p>
+                        </article>
+                    </div>
+
+                    <div class="mt-6 rounded-[28px] border border-white/12 bg-white/[0.07] p-5 backdrop-blur-md">
+                        <div class="flex items-center justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Workspace in practice</p>
+                                <p class="mt-2 text-sm text-slate-300">A good first session should feel guided, not empty.</p>
+                            </div>
+                            <span class="rounded-full border border-blue-400/30 bg-blue-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-200">
+                                First scan
+                            </span>
+                        </div>
+
+                        <div class="mt-4 grid gap-3 xl:grid-cols-3">
+                            <div class="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                                <p class="text-sm font-semibold text-white">1. Connect a repository</p>
+                                <p class="mt-1 text-sm text-slate-300">Authorize GitHub or GitLab, or point Heimdall at a repo URL.</p>
+                            </div>
+                            <div class="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                                <p class="text-sm font-semibold text-white">2. Watch the run happen</p>
+                                <p class="mt-1 text-sm text-slate-300">Ingest, threat modeling, static analysis, hunt, validation, and reporting are visible and queryable.</p>
+                            </div>
+                            <div class="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3">
+                                <p class="text-sm font-semibold text-white">3. Make findings actionable</p>
+                                <p class="mt-1 text-sm text-slate-300">Verify alerts, review patches, and sync issues back to the repository when they qualify.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto pt-6">
+                        <div class="flex flex-wrap items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">Visible stages</span>
+                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">Grounded findings</span>
+                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">Validated patches</span>
+                            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1.5">Issue automation</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="flex items-center">
+                <div class="w-full rounded-[32px] border border-white/80 bg-white/90 p-7 shadow-[0_28px_90px_rgba(15,23,42,0.14)] backdrop-blur-sm sm:p-8">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Create account</p>
+                            <h2 class="mt-2.5 text-3xl font-semibold tracking-tight text-slate-900">Start your Heimdall workspace</h2>
+                            <p class="mt-2.5 max-w-sm text-sm leading-6 text-slate-500">
+                                Sign up with provider auth or create credentials directly. Once you are in, you can configure AI providers, connect repos, and start scanning.
+                            </p>
+                        </div>
+                        <div class="hidden h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 sm:flex">
+                            <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 7.5h-9a3 3 0 00-3 3v6a3 3 0 003 3h9a3 3 0 003-3v-6a3 3 0 00-3-3z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 7.5v-1.5a3.75 3.75 0 117.5 0v1.5" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div class="mt-7 grid gap-3">
+                        <a href="/api/auth/github/authorize"
+                           hx-boost="false"
+                           class="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900">
+                            <span class="flex items-center gap-3">
+                                <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white">G</span>
+                                <span>Continue with GitHub</span>
+                            </span>
+                            <span class="text-xs uppercase tracking-[0.16em] text-slate-400">OAuth</span>
+                        </a>
+
+                        <a href="/api/auth/gitlab/authorize"
+                           hx-boost="false"
+                           class="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white hover:text-slate-900">
+                            <span class="flex items-center gap-3">
+                                <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500 text-white">L</span>
+                                <span>Continue with GitLab</span>
+                            </span>
+                            <span class="text-xs uppercase tracking-[0.16em] text-slate-400">OAuth</span>
+                        </a>
+                    </div>
+
+                    <div class="relative my-6">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-slate-200"></div>
+                        </div>
+                        <div class="relative flex justify-center">
+                            <span class="bg-white px-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Or create with email</span>
+                        </div>
+                    </div>
+
+                    <div id="register-error" class="hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                        <p class="text-sm text-rose-700" id="register-error-text"></p>
+                    </div>
+
+                    <form id="register-form" class="mt-5 space-y-4.5">
+                        <label class="block">
+                            <span class="mb-2 block text-sm font-medium text-slate-700">Display name</span>
+                            <input type="text"
+                                   name="display_name"
+                                   id="display_name"
+                                   autocomplete="name"
+                                   class="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                   placeholder="Your name">
+                        </label>
+
+                        <label class="block">
+                            <span class="mb-2 block text-sm font-medium text-slate-700">Email address</span>
+                            <input type="email"
+                                   name="email"
+                                   id="email"
+                                   required
+                                   autocomplete="email"
+                                   class="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                   placeholder="you@company.com">
+                        </label>
+
+                        <label class="block">
+                            <span class="mb-2 block text-sm font-medium text-slate-700">Password</span>
+                            <input type="password"
+                                   name="password"
+                                   id="password"
+                                   required
+                                   autocomplete="new-password"
+                                   minlength="8"
+                                   class="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                   placeholder="At least 8 characters">
+                        </label>
+
+                        <button type="submit"
+                                id="register-btn"
+                                class="inline-flex w-full items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:bg-slate-200 disabled:text-slate-500">
+                            Create Account
+                        </button>
+                    </form>
+
+                    <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p class="text-sm font-semibold text-slate-900">What happens next?</p>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">
+                            You will land in the security workspace, add a repository, and start a first scan with visible execution telemetry instead of a blank dashboard.
+                        </p>
+                    </div>
+
+                    <p class="mt-5 text-center text-sm text-slate-500">
+                        Already have an account?
+                        <a href="/login" class="font-semibold text-blue-600 transition hover:text-blue-700">Sign in</a>
+                    </p>
+                </div>
+            </section>
+        </main>
     </div>
 </div>
 

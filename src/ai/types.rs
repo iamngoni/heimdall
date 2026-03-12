@@ -28,6 +28,14 @@ pub struct CompletionResponse {
     pub tool_calls: Option<Vec<ToolCall>>,
     pub stop_reason: StopReason,
     pub usage: TokenUsage,
+    /// Which provider actually served this response (e.g. "claude", "openai", "ollama").
+    /// Set by the provider or fallback layer.
+    #[serde(default)]
+    pub provider: String,
+    /// Which model actually handled the request. May differ from the requested model
+    /// if a fallback occurred.
+    #[serde(default)]
+    pub model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

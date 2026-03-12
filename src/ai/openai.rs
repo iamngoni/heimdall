@@ -222,6 +222,8 @@ impl ModelProvider for OpenAiProvider {
                 completion_tokens: api_resp.usage.completion_tokens,
                 total_tokens: api_resp.usage.total_tokens,
             },
+            provider: "openai".to_string(),
+            model: request.model,
         })
     }
 

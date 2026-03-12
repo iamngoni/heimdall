@@ -906,6 +906,8 @@ impl DatabaseOperations {
         scan_id: Uuid,
         stage: &str,
         tool_name: &str,
+        provider: Option<&str>,
+        model: Option<&str>,
         input_json: Option<&serde_json::Value>,
         output_json: Option<&serde_json::Value>,
         prompt_tokens: Option<i32>,
@@ -916,13 +918,15 @@ impl DatabaseOperations {
     ) -> HeimdallResult<AgentToolCall> {
         sqlx::query_as::<_, AgentToolCall>(
             "INSERT INTO agent_tool_calls \
-             (scan_id, stage, tool_name, input_json, output_json, prompt_tokens, completion_tokens, total_tokens, duration_ms, error) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+             (scan_id, stage, tool_name, provider, model, input_json, output_json, prompt_tokens, completion_tokens, total_tokens, duration_ms, error) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
              RETURNING *",
         )
         .bind(scan_id)
         .bind(stage)
         .bind(tool_name)
+        .bind(provider)
+        .bind(model)
         .bind(input_json)
         .bind(output_json)
         .bind(prompt_tokens)

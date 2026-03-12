@@ -232,6 +232,8 @@ impl ModelProvider for ClaudeProvider {
                 completion_tokens: api_resp.usage.output_tokens,
                 total_tokens: api_resp.usage.input_tokens + api_resp.usage.output_tokens,
             },
+            provider: "claude".to_string(),
+            model: request.model,
         })
     }
 

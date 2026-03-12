@@ -159,6 +159,8 @@ impl TyrStage {
                 self.scan_id,
                 "tyr",
                 "llm_completion",
+                Some(&response.provider),
+                Some(&response.model),
                 None,
                 None,
                 Some(response.usage.prompt_tokens as i32),

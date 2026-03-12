@@ -365,6 +365,8 @@ pub struct AgentToolCall {
     pub scan_id: Uuid,
     pub stage: String,
     pub tool_name: String,
+    pub provider: Option<String>,
+    pub model: Option<String>,
     pub input_json: Option<serde_json::Value>,
     pub output_json: Option<serde_json::Value>,
     pub prompt_tokens: Option<i32>,

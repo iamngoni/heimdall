@@ -329,6 +329,8 @@ pub fn heimdall_schema() -> SchemaDef {
                 .on_delete(OnDelete::Cascade);
             t.text("stage").not_null();
             t.text("tool_name").not_null();
+            t.text("provider");
+            t.text("model");
             t.jsonb("input_json");
             t.jsonb("output_json");
             t.int("prompt_tokens");

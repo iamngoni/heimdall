@@ -8,6 +8,7 @@
 //
 
 pub mod claude;
+pub mod fallback;
 pub mod ollama;
 pub mod openai;
 pub mod types;
@@ -35,8 +36,8 @@ impl ProviderKind {
     pub fn fallback_model(self) -> &'static str {
         match self {
             Self::Anthropic => "claude-sonnet-4-20250514",
-            Self::OpenAi => "gpt-4o-mini",
-            Self::Ollama => "llama3.2",
+            Self::OpenAi => "gpt-4o",
+            Self::Ollama => "llama3.3",
         }
     }
 
@@ -131,23 +132,31 @@ pub trait ModelProvider: Send + Sync {
     fn provider_name(&self) -> &str;
 }
 
-/// Builds the best available AI provider from config.
-/// Priority: Anthropic > OpenAI > Ollama.
+/// Builds a fallback-capable AI provider from config.
+/// All configured providers are chained: Anthropic > OpenAI > Ollama.
+/// On retryable errors (429, 500, 502, 503, 529), the next provider is tried.
 /// Returns None if no provider is configured (BYOK — user hasn't set keys yet).
 pub fn build_provider(config: &AiConfig) -> Option<Box<dyn ModelProvider>> {
+    let mut chain = fallback::FallbackProvider::new();
+
     if let Some(ref key) = config.anthropic_api_key {
-        return Some(build_provider_for_kind(
-            ProviderKind::Anthropic,
-            key.clone(),
-        ));
+        let model = model_for_provider(ProviderKind::Anthropic, &config.default_model);
+        chain = chain.add(build_provider_for_kind(ProviderKind::Anthropic, key.clone()), model);
     }
     if let Some(ref key) = config.openai_api_key {
-        return Some(build_provider_for_kind(ProviderKind::OpenAi, key.clone()));
+        let model = model_for_provider(ProviderKind::OpenAi, &config.default_model);
+        chain = chain.add(build_provider_for_kind(ProviderKind::OpenAi, key.clone()), model);
     }
     if let Some(ref url) = config.ollama_url {
-        return Some(build_provider_for_kind(ProviderKind::Ollama, url.clone()));
+        let model = model_for_provider(ProviderKind::Ollama, &config.default_model);
+        chain = chain.add(build_provider_for_kind(ProviderKind::Ollama, url.clone()), model);
     }
-    None
+
+    if chain.has_providers() {
+        Some(Box::new(chain))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -161,7 +170,7 @@ mod tests {
             Some(ProviderKind::Anthropic)
         );
         assert_eq!(
-            provider_kind_from_model("gpt-4o-mini"),
+            provider_kind_from_model("gpt-4o"),
             Some(ProviderKind::OpenAi)
         );
         assert_eq!(
@@ -174,7 +183,7 @@ mod tests {
     fn falls_back_to_provider_safe_model_when_default_model_mismatches() {
         assert_eq!(
             model_for_provider(ProviderKind::OpenAi, "claude-sonnet-4-20250514"),
-            "gpt-4o-mini"
+            "gpt-4o"
         );
         assert_eq!(
             model_for_provider(ProviderKind::Anthropic, "claude-sonnet-4-20250514"),
@@ -190,7 +199,7 @@ mod tests {
         );
         assert_eq!(
             model_for_provider(ProviderKind::OpenAi, "   "),
-            "gpt-4o-mini"
+            "gpt-4o"
         );
     }
 

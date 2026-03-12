@@ -197,6 +197,8 @@ impl ModelProvider for OllamaProvider {
                 completion_tokens,
                 total_tokens: prompt_tokens + completion_tokens,
             },
+            provider: "ollama".to_string(),
+            model: request.model,
         })
     }
 
