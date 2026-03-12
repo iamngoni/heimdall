@@ -60,8 +60,18 @@ fn is_retryable_error(err: &anyhow::Error) -> bool {
             return true;
         }
     }
-    // Also catch connection/timeout errors that suggest the provider is down
+    // Catch billing/quota errors — these mean the provider can't serve requests
+    // even though the HTTP status may be 400 or 403
     let lower = msg.to_ascii_lowercase();
+    if lower.contains("credit balance")
+        || lower.contains("billing")
+        || lower.contains("quota")
+        || lower.contains("insufficient_quota")
+        || lower.contains("rate_limit")
+    {
+        return true;
+    }
+    // Also catch connection/timeout errors that suggest the provider is down
     lower.contains("connection refused")
         || lower.contains("timed out")
         || lower.contains("connection reset")
@@ -274,8 +284,36 @@ mod tests {
         assert!(is_retryable_error(&anyhow::anyhow!("API error (503): unavailable")));
         assert!(is_retryable_error(&anyhow::anyhow!("API error (529): overloaded")));
         assert!(!is_retryable_error(&anyhow::anyhow!("API error (401): unauthorized")));
-        assert!(!is_retryable_error(&anyhow::anyhow!("API error (400): bad request")));
         assert!(is_retryable_error(&anyhow::anyhow!("connection refused")));
         assert!(is_retryable_error(&anyhow::anyhow!("request timed out")));
+    }
+
+    #[tokio::test]
+    async fn is_retryable_detects_billing_errors() {
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "Claude API error (400): billing_error — Your credit balance is too low to access the Anthropic API."
+        )));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "OpenAI API error (429): insufficient_quota — You exceeded your current quota"
+        )));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "API error (400): rate_limit — too many requests"
+        )));
+    }
+
+    #[tokio::test]
+    async fn falls_back_on_billing_error() {
+        let provider = FallbackProvider::new()
+            .add(
+                Box::new(FailingProvider {
+                    name: "primary",
+                    error_msg: "Claude API error (400): billing_error — Your credit balance is too low to access the Anthropic API.".into(),
+                }),
+                "model-a".into(),
+            )
+            .add(Box::new(SuccessProvider { name: "secondary" }), "model-b".into());
+
+        let result = provider.complete(test_request()).await.unwrap();
+        assert_eq!(result.content, "response from secondary");
     }
 }

@@ -47,14 +47,17 @@ async fn main() -> std::io::Result<()> {
 
     info!("Database connected");
 
-    sqlx::migrate!("./migrations/active")
-        .run(&db_pool)
+    // Apply schema idempotently from the DSL — no file-based migration tracking.
+    // Every statement uses IF NOT EXISTS / IF NOT EXISTS so this is safe on every startup.
+    let ddl = heimdall::db::schema::generate_ddl(heimdall::db::schema::DbDriver::Postgres);
+    sqlx::raw_sql(&ddl)
+        .execute(&db_pool)
         .await
         .map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Migration failed: {e}"))
+            std::io::Error::new(std::io::ErrorKind::Other, format!("Schema apply failed: {e}"))
         })?;
 
-    info!("Migrations applied");
+    info!("Schema applied");
 
     let ai_provider = ai::build_provider(&config.ai);
     if ai_provider.is_some() {

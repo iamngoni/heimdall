@@ -124,9 +124,10 @@ where
                 }
             }
 
-            // Call the inner service
+            // Call the inner service — borrow must be dropped before .await
             let needs_csrf_cookie = cookie_token.is_none();
-            let res = service.borrow_mut().call(req).await?;
+            let fut = service.borrow_mut().call(req);
+            let res = fut.await?;
 
             // If no _csrf cookie exists, set one on the response
             if needs_csrf_cookie {

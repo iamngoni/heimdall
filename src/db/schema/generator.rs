@@ -135,7 +135,8 @@ impl PostgresGenerator {
 
     pub fn generate_trigger(&self, table_name: &str) -> String {
         format!(
-            "CREATE TRIGGER update_{table_name}_updated_at BEFORE UPDATE ON {table_name} FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();"
+            "DROP TRIGGER IF EXISTS update_{table_name}_updated_at ON {table_name};\n\
+             CREATE TRIGGER update_{table_name}_updated_at BEFORE UPDATE ON {table_name} FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();"
         )
     }
 }
@@ -450,7 +451,8 @@ impl MysqlGenerator {
 
     pub fn generate_trigger(&self, table_name: &str) -> String {
         format!(
-            "CREATE TRIGGER `update_{table_name}_updated_at` BEFORE UPDATE ON `{table_name}`\n\
+            "DROP TRIGGER IF EXISTS `update_{table_name}_updated_at`;\n\
+             CREATE TRIGGER `update_{table_name}_updated_at` BEFORE UPDATE ON `{table_name}`\n\
              FOR EACH ROW SET NEW.`updated_at` = CURRENT_TIMESTAMP;"
         )
     }

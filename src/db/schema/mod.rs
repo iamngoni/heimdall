@@ -25,6 +25,18 @@ pub use generator::{
 };
 pub use types::*;
 
+/// Generate the full idempotent DDL for the current schema.
+/// All statements use `IF NOT EXISTS` so this is safe to run on every startup.
+pub fn generate_ddl(driver: DbDriver) -> String {
+    let schema = heimdall_schema();
+    match driver {
+        DbDriver::Postgres => PostgresGenerator.generate(&schema),
+        DbDriver::Sqlite => SqliteGenerator.generate(&schema),
+        DbDriver::Mysql => MysqlGenerator.generate(&schema),
+        DbDriver::Mongo => MongoGenerator.generate(&schema),
+    }
+}
+
 /// Result of a migration generation run
 pub enum MigrationResult {
     /// No snapshot found — generated full initial migration

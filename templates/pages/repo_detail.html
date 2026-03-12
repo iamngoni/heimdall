@@ -298,9 +298,14 @@ window.HeimdallRepoDetail = {
         }
 
         try {
+            const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+            const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
             const response = await fetch(`/api/repos/${repoId}`, {
                 method: 'DELETE',
-                headers: { 'Accept': 'application/json' },
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                },
                 credentials: 'same-origin'
             });
 
