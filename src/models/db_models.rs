@@ -188,6 +188,7 @@ pub struct OauthConnection {
     pub access_token_enc: Option<String>,
     pub refresh_token_enc: Option<String>,
     pub scopes: Option<String>,
+    pub token_source: String,
     pub expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

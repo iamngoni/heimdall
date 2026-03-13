@@ -28,6 +28,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
                 "/integrations/{provider}",
                 web::delete().to(disconnect_integration),
             )
+            .route(
+                "/integrations/{provider}/pat",
+                web::post().to(save_pat),
+            )
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
             .route("/test-connection", web::post().to(test_connection))
@@ -44,6 +48,11 @@ struct CreateApiKeyRequest {
     provider: String,
     key: String,
     label: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SavePatRequest {
+    token: String,
 }
 
 #[derive(Deserialize)]
@@ -647,6 +656,64 @@ async fn disconnect_integration(
                 500,
                 "Failed to disconnect integration.",
             ))
+        }
+    }
+}
+
+/// POST /settings/integrations/{provider}/pat — save a personal access token.
+async fn save_pat(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<String>,
+    body: web::Json<SavePatRequest>,
+) -> HttpResponse {
+    let provider = path.into_inner().to_lowercase();
+    if !matches!(provider.as_str(), "github" | "gitlab" | "bitbucket") {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Provider must be 'github', 'gitlab', or 'bitbucket'.",
+        ));
+    }
+
+    if body.token.trim().is_empty() {
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, "Token must not be empty.");
+        }
+        return HttpResponse::BadRequest()
+            .json(ApiResponse::<()>::error(400, "Token must not be empty."));
+    }
+
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let encrypted = encrypt_key(body.token.trim(), state.encryption_key.as_ref());
+
+    match state
+        .db
+        .upsert_pat_connection(user.id, &provider, &encrypted)
+        .await
+    {
+        Ok(_) => {
+            if is_hx_request(&req) {
+                return HttpResponse::Ok()
+                    .insert_header(("HX-Redirect", "/settings"))
+                    .finish();
+            }
+            HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "success": true,
+                "provider": provider,
+            })))
+        }
+        Err(e) => {
+            log::error!("Failed to save PAT for {provider}: {e:#}");
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "Failed to save token.");
+            }
+            HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to save token."))
         }
     }
 }

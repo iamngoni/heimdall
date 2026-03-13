@@ -90,6 +90,9 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("access_token_enc");
             t.text("refresh_token_enc");
             t.text("scopes");
+            t.text("token_source")
+                .not_null()
+                .default_str("'oauth'");
             t.timestamp("expires_at");
             t.timestamps();
             t.unique_together(&["user_id", "provider"]);

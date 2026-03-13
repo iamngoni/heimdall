@@ -41,116 +41,200 @@
                         <section id="integrations" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <div>
                                 <h1 class="text-2xl font-bold tracking-tight text-slate-900">Integrations</h1>
-                                <p class="mt-1 text-sm text-slate-500">Connect source control once, then import repositories from the add-repository flow.</p>
+                                <p class="mt-1 text-sm text-slate-500">Connect via personal access token (recommended) or OAuth.</p>
                             </div>
 
                             <div class="mt-6 space-y-4">
-                                <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
-                                    <div class="flex items-center gap-4">
-                                        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">G</div>
-                                        <div>
-                                            <h2 class="text-sm font-semibold text-slate-900">GitHub</h2>
-                                            <p class="text-sm text-slate-500">
-                                                {% if integrations.github.connected %}
-                                                Connected{% if integrations.github.updated_at %} · updated {{ integrations.github.updated_at }}{% endif %}
-                                                {% else %}
-                                                Not connected
+                                {# ── GitHub ── #}
+                                <div class="rounded-2xl border border-slate-200 p-5">
+                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                        <div class="flex items-center gap-4">
+                                            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">G</div>
+                                            <div>
+                                                <h2 class="text-sm font-semibold text-slate-900">GitHub</h2>
+                                                <p class="text-sm text-slate-500">
+                                                    {% if integrations.github.connected %}
+                                                    Connected via {{ integrations.github.token_source|upper }}{% if integrations.github.updated_at %} · updated {{ integrations.github.updated_at }}{% endif %}
+                                                    {% else %}
+                                                    Not connected
+                                                    {% endif %}
+                                                </p>
+                                                {% if integrations.github.scopes %}
+                                                <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.github.scopes }}</p>
                                                 {% endif %}
-                                            </p>
-                                            {% if integrations.github.scopes %}
-                                            <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.github.scopes }}</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-center gap-3">
+                                            {% if integrations.github.connected %}
+                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
+                                            <button hx-delete="/api/settings/integrations/github"
+                                                    hx-swap="none"
+                                                    hx-confirm="Disconnect GitHub? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
+                                                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
+                                                Disconnect
+                                            </button>
                                             {% endif %}
                                         </div>
                                     </div>
 
-                                    <div class="flex items-center gap-3">
-                                        {% if integrations.github.connected %}
-                                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
-                                        <button hx-delete="/api/settings/integrations/github"
-                                                hx-swap="none"
-                                                hx-confirm="Disconnect GitHub? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
-                                                class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-                                            Disconnect
-                                        </button>
-                                        {% endif %}
-                                        <a href="/api/auth/github/authorize?next=%2Fsettings"
-                                           hx-boost="false"
-                                           class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                            {% if integrations.github.connected %}Reconnect{% else %}Connect{% endif %}
-                                        </a>
+                                    <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                                        <p class="mb-3 text-xs font-medium text-slate-500">Personal Access Token</p>
+                                        <form hx-post="/api/settings/integrations/github/pat"
+                                              hx-ext="json-enc"
+                                              hx-target="#github-pat-feedback"
+                                              hx-swap="innerHTML"
+                                              class="flex gap-3">
+                                            <input type="password" name="token"
+                                                   class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                   placeholder="ghp_... (Settings > Developer settings > Fine-grained tokens)">
+                                            <button type="submit"
+                                                    class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+                                                Save
+                                            </button>
+                                        </form>
+                                        <div id="github-pat-feedback" class="mt-2"></div>
+                                        <p class="mt-2 text-xs text-slate-400">Required scope: <code class="rounded bg-slate-200 px-1 py-0.5">repo</code> (for private repos)</p>
                                     </div>
+
+                                    <details class="mt-3">
+                                        <summary class="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-600">Or connect via OAuth</summary>
+                                        <div class="mt-2 flex justify-end">
+                                            <a href="/api/auth/github/authorize?next=%2Fsettings"
+                                               hx-boost="false"
+                                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                                {% if integrations.github.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %}
+                                            </a>
+                                        </div>
+                                    </details>
                                 </div>
 
-                                <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
-                                    <div class="flex items-center gap-4">
-                                        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-bold text-white">L</div>
-                                        <div>
-                                            <h2 class="text-sm font-semibold text-slate-900">GitLab</h2>
-                                            <p class="text-sm text-slate-500">
-                                                {% if integrations.gitlab.connected %}
-                                                Connected{% if integrations.gitlab.updated_at %} · updated {{ integrations.gitlab.updated_at }}{% endif %}
-                                                {% else %}
-                                                Not connected
+                                {# ── GitLab ── #}
+                                <div class="rounded-2xl border border-slate-200 p-5">
+                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                        <div class="flex items-center gap-4">
+                                            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-bold text-white">L</div>
+                                            <div>
+                                                <h2 class="text-sm font-semibold text-slate-900">GitLab</h2>
+                                                <p class="text-sm text-slate-500">
+                                                    {% if integrations.gitlab.connected %}
+                                                    Connected via {{ integrations.gitlab.token_source|upper }}{% if integrations.gitlab.updated_at %} · updated {{ integrations.gitlab.updated_at }}{% endif %}
+                                                    {% else %}
+                                                    Not connected
+                                                    {% endif %}
+                                                </p>
+                                                {% if integrations.gitlab.scopes %}
+                                                <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.gitlab.scopes }}</p>
                                                 {% endif %}
-                                            </p>
-                                            {% if integrations.gitlab.scopes %}
-                                            <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.gitlab.scopes }}</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-center gap-3">
+                                            {% if integrations.gitlab.connected %}
+                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
+                                            <button hx-delete="/api/settings/integrations/gitlab"
+                                                    hx-swap="none"
+                                                    hx-confirm="Disconnect GitLab? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
+                                                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
+                                                Disconnect
+                                            </button>
                                             {% endif %}
                                         </div>
                                     </div>
 
-                                    <div class="flex items-center gap-3">
-                                        {% if integrations.gitlab.connected %}
-                                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
-                                        <button hx-delete="/api/settings/integrations/gitlab"
-                                                hx-swap="none"
-                                                hx-confirm="Disconnect GitLab? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
-                                                class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-                                            Disconnect
-                                        </button>
-                                        {% endif %}
-                                        <a href="/api/auth/gitlab/authorize?next=%2Fsettings"
-                                           hx-boost="false"
-                                           class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                            {% if integrations.gitlab.connected %}Reconnect{% else %}Connect{% endif %}
-                                        </a>
+                                    <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                                        <p class="mb-3 text-xs font-medium text-slate-500">Personal Access Token</p>
+                                        <form hx-post="/api/settings/integrations/gitlab/pat"
+                                              hx-ext="json-enc"
+                                              hx-target="#gitlab-pat-feedback"
+                                              hx-swap="innerHTML"
+                                              class="flex gap-3">
+                                            <input type="password" name="token"
+                                                   class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                   placeholder="glpat-... (Settings > Access Tokens)">
+                                            <button type="submit"
+                                                    class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+                                                Save
+                                            </button>
+                                        </form>
+                                        <div id="gitlab-pat-feedback" class="mt-2"></div>
+                                        <p class="mt-2 text-xs text-slate-400">Required scopes: <code class="rounded bg-slate-200 px-1 py-0.5">read_user</code> <code class="rounded bg-slate-200 px-1 py-0.5">read_repository</code></p>
                                     </div>
+
+                                    <details class="mt-3">
+                                        <summary class="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-600">Or connect via OAuth</summary>
+                                        <div class="mt-2 flex justify-end">
+                                            <a href="/api/auth/gitlab/authorize?next=%2Fsettings"
+                                               hx-boost="false"
+                                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                                {% if integrations.gitlab.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %}
+                                            </a>
+                                        </div>
+                                    </details>
                                 </div>
 
-                                <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
-                                    <div class="flex items-center gap-4">
-                                        <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold text-white">B</div>
-                                        <div>
-                                            <h2 class="text-sm font-semibold text-slate-900">Bitbucket</h2>
-                                            <p class="text-sm text-slate-500">
-                                                {% if integrations.bitbucket.connected %}
-                                                Connected{% if integrations.bitbucket.updated_at %} · updated {{ integrations.bitbucket.updated_at }}{% endif %}
-                                                {% else %}
-                                                Not connected
+                                {# ── Bitbucket ── #}
+                                <div class="rounded-2xl border border-slate-200 p-5">
+                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                        <div class="flex items-center gap-4">
+                                            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold text-white">B</div>
+                                            <div>
+                                                <h2 class="text-sm font-semibold text-slate-900">Bitbucket</h2>
+                                                <p class="text-sm text-slate-500">
+                                                    {% if integrations.bitbucket.connected %}
+                                                    Connected via {{ integrations.bitbucket.token_source|upper }}{% if integrations.bitbucket.updated_at %} · updated {{ integrations.bitbucket.updated_at }}{% endif %}
+                                                    {% else %}
+                                                    Not connected
+                                                    {% endif %}
+                                                </p>
+                                                {% if integrations.bitbucket.scopes %}
+                                                <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.bitbucket.scopes }}</p>
                                                 {% endif %}
-                                            </p>
-                                            {% if integrations.bitbucket.scopes %}
-                                            <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.bitbucket.scopes }}</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-center gap-3">
+                                            {% if integrations.bitbucket.connected %}
+                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
+                                            <button hx-delete="/api/settings/integrations/bitbucket"
+                                                    hx-swap="none"
+                                                    hx-confirm="Disconnect Bitbucket? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
+                                                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
+                                                Disconnect
+                                            </button>
                                             {% endif %}
                                         </div>
                                     </div>
 
-                                    <div class="flex items-center gap-3">
-                                        {% if integrations.bitbucket.connected %}
-                                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
-                                        <button hx-delete="/api/settings/integrations/bitbucket"
-                                                hx-swap="none"
-                                                hx-confirm="Disconnect Bitbucket? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
-                                                class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-                                            Disconnect
-                                        </button>
-                                        {% endif %}
-                                        <a href="/api/auth/bitbucket/authorize?next=%2Fsettings"
-                                           hx-boost="false"
-                                           class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                            {% if integrations.bitbucket.connected %}Reconnect{% else %}Connect{% endif %}
-                                        </a>
+                                    <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                                        <p class="mb-3 text-xs font-medium text-slate-500">App Password</p>
+                                        <form hx-post="/api/settings/integrations/bitbucket/pat"
+                                              hx-ext="json-enc"
+                                              hx-target="#bitbucket-pat-feedback"
+                                              hx-swap="innerHTML"
+                                              class="flex gap-3">
+                                            <input type="password" name="token"
+                                                   class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                   placeholder="App password (Settings > App passwords)">
+                                            <button type="submit"
+                                                    class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+                                                Save
+                                            </button>
+                                        </form>
+                                        <div id="bitbucket-pat-feedback" class="mt-2"></div>
+                                        <p class="mt-2 text-xs text-slate-400">Required permission: <code class="rounded bg-slate-200 px-1 py-0.5">Repositories: Read</code></p>
                                     </div>
+
+                                    <details class="mt-3">
+                                        <summary class="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-600">Or connect via OAuth</summary>
+                                        <div class="mt-2 flex justify-end">
+                                            <a href="/api/auth/bitbucket/authorize?next=%2Fsettings"
+                                               hx-boost="false"
+                                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                                {% if integrations.bitbucket.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %}
+                                            </a>
+                                        </div>
+                                    </details>
                                 </div>
                             </div>
                         </section>

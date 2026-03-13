@@ -322,7 +322,7 @@ impl IngestStage {
 
     async fn resolve_clone_url(&self, repo: &Repo, remote_url: &str) -> HeimdallResult<String> {
         match repo.source_type.as_str() {
-            "github" | "gitlab" => {
+            "github" | "gitlab" | "bitbucket" => {
                 let Some(connection_id) = repo.oauth_connection_id else {
                     return Ok(remote_url.to_string());
                 };
@@ -436,6 +436,7 @@ fn embed_token_in_clone_url(provider: &str, url: &str, token: &str) -> String {
     let username = match provider {
         "github" => "x-access-token",
         "gitlab" => "oauth2",
+        "bitbucket" => "x-token-auth",
         _ => return url.to_string(),
     };
 

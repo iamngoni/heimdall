@@ -164,16 +164,19 @@ async fn oauth_connections_ctx(state: &AppState, user_id: Uuid) -> minijinja::Va
     minijinja::Value::from_serialize(&serde_json::json!({
         "github": {
             "connected": github.is_some(),
+            "token_source": github.map(|conn| conn.token_source.as_str()).unwrap_or("none"),
             "scopes": github.and_then(|conn| conn.scopes.clone()),
             "updated_at": github.map(|conn| conn.updated_at.format("%Y-%m-%d %H:%M").to_string()),
         },
         "gitlab": {
             "connected": gitlab.is_some(),
+            "token_source": gitlab.map(|conn| conn.token_source.as_str()).unwrap_or("none"),
             "scopes": gitlab.and_then(|conn| conn.scopes.clone()),
             "updated_at": gitlab.map(|conn| conn.updated_at.format("%Y-%m-%d %H:%M").to_string()),
         },
         "bitbucket": {
             "connected": bitbucket.is_some(),
+            "token_source": bitbucket.map(|conn| conn.token_source.as_str()).unwrap_or("none"),
             "scopes": bitbucket.and_then(|conn| conn.scopes.clone()),
             "updated_at": bitbucket.map(|conn| conn.updated_at.format("%Y-%m-%d %H:%M").to_string()),
         }

@@ -111,13 +111,14 @@ impl DatabaseOperations {
     ) -> HeimdallResult<OauthConnection> {
         sqlx::query_as::<_, OauthConnection>(
             "INSERT INTO oauth_connections \
-             (user_id, provider, provider_user_id, access_token_enc, refresh_token_enc, scopes, expires_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             (user_id, provider, provider_user_id, access_token_enc, refresh_token_enc, scopes, token_source, expires_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, 'oauth', $7) \
              ON CONFLICT (user_id, provider) DO UPDATE SET \
                  provider_user_id = EXCLUDED.provider_user_id, \
                  access_token_enc = EXCLUDED.access_token_enc, \
                  refresh_token_enc = EXCLUDED.refresh_token_enc, \
                  scopes = EXCLUDED.scopes, \
+                 token_source = EXCLUDED.token_source, \
                  expires_at = EXCLUDED.expires_at \
              RETURNING *",
         )
@@ -131,6 +132,30 @@ impl DatabaseOperations {
         .fetch_one(&self.pool)
         .await
         .context("Failed to upsert OAuth connection")
+    }
+
+    pub async fn upsert_pat_connection(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+        access_token_enc: &str,
+    ) -> HeimdallResult<OauthConnection> {
+        sqlx::query_as::<_, OauthConnection>(
+            "INSERT INTO oauth_connections \
+             (user_id, provider, provider_user_id, access_token_enc, token_source) \
+             VALUES ($1, $2, 'pat', $3, 'pat') \
+             ON CONFLICT (user_id, provider) DO UPDATE SET \
+                 access_token_enc = EXCLUDED.access_token_enc, \
+                 token_source = EXCLUDED.token_source, \
+                 provider_user_id = EXCLUDED.provider_user_id \
+             RETURNING *",
+        )
+        .bind(user_id)
+        .bind(provider)
+        .bind(access_token_enc)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to upsert PAT connection")
     }
 
     pub async fn create_user_with_avatar(
