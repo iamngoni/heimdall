@@ -53,6 +53,7 @@ struct CreateApiKeyRequest {
 #[derive(Deserialize)]
 struct SavePatRequest {
     token: String,
+    username: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -683,6 +684,18 @@ async fn save_pat(
             .json(ApiResponse::<()>::error(400, "Token must not be empty."));
     }
 
+    // Bitbucket App Passwords require a username for Basic auth.
+    if provider == "bitbucket" {
+        let username = body.username.as_deref().unwrap_or("").trim();
+        if username.is_empty() {
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "Bitbucket username is required for App Passwords.");
+            }
+            return HttpResponse::BadRequest()
+                .json(ApiResponse::<()>::error(400, "Bitbucket username is required."));
+        }
+    }
+
     let user = req
         .extensions()
         .get::<AuthenticatedUser>()
@@ -691,9 +704,17 @@ async fn save_pat(
 
     let encrypted = encrypt_key(body.token.trim(), state.encryption_key.as_ref());
 
+    let provider_user_id = body
+        .username
+        .as_deref()
+        .map(|u| u.trim())
+        .filter(|u| !u.is_empty())
+        .unwrap_or("pat")
+        .to_string();
+
     match state
         .db
-        .upsert_pat_connection(user.id, &provider, &encrypted)
+        .upsert_pat_connection(user.id, &provider, &encrypted, &provider_user_id)
         .await
     {
         Ok(_) => {

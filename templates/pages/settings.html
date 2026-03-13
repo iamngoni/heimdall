@@ -212,14 +212,19 @@
                                               hx-ext="json-enc"
                                               hx-target="#bitbucket-pat-feedback"
                                               hx-swap="innerHTML"
-                                              class="flex gap-3">
-                                            <input type="password" name="token"
-                                                   class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                                   placeholder="App password (Settings > App passwords)">
-                                            <button type="submit"
-                                                    class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
-                                                Save
-                                            </button>
+                                              class="flex flex-col gap-3">
+                                            <div class="flex gap-3">
+                                                <input type="text" name="username"
+                                                       class="w-44 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                       placeholder="Bitbucket username">
+                                                <input type="password" name="token"
+                                                       class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                       placeholder="App password">
+                                                <button type="submit"
+                                                        class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+                                                    Save
+                                                </button>
+                                            </div>
                                         </form>
                                         <div id="bitbucket-pat-feedback" class="mt-2"></div>
                                         <p class="mt-2 text-xs text-slate-400">Required permission: <code class="rounded bg-slate-200 px-1 py-0.5">Repositories: Read</code></p>

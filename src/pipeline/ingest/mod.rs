@@ -342,6 +342,8 @@ impl IngestStage {
                     &repo.source_type,
                     remote_url,
                     &token,
+                    &connection.token_source,
+                    &connection.provider_user_id,
                 ))
             }
             _ => Ok(remote_url.to_string()),
@@ -428,7 +430,13 @@ impl IngestStage {
     }
 }
 
-fn embed_token_in_clone_url(provider: &str, url: &str, token: &str) -> String {
+fn embed_token_in_clone_url(
+    provider: &str,
+    url: &str,
+    token: &str,
+    token_source: &str,
+    provider_user_id: &str,
+) -> String {
     let Some(rest) = url.strip_prefix("https://") else {
         return url.to_string();
     };
@@ -436,6 +444,8 @@ fn embed_token_in_clone_url(provider: &str, url: &str, token: &str) -> String {
     let username = match provider {
         "github" => "x-access-token",
         "gitlab" => "oauth2",
+        // Bitbucket App Passwords use the actual username, not x-token-auth.
+        "bitbucket" if token_source == "pat" => provider_user_id,
         "bitbucket" => "x-token-auth",
         _ => return url.to_string(),
     };

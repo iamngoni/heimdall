@@ -139,11 +139,12 @@ impl DatabaseOperations {
         user_id: Uuid,
         provider: &str,
         access_token_enc: &str,
+        provider_user_id: &str,
     ) -> HeimdallResult<OauthConnection> {
         sqlx::query_as::<_, OauthConnection>(
             "INSERT INTO oauth_connections \
              (user_id, provider, provider_user_id, access_token_enc, token_source) \
-             VALUES ($1, $2, 'pat', $3, 'pat') \
+             VALUES ($1, $2, $4, $3, 'pat') \
              ON CONFLICT (user_id, provider) DO UPDATE SET \
                  access_token_enc = EXCLUDED.access_token_enc, \
                  token_source = EXCLUDED.token_source, \
@@ -153,6 +154,7 @@ impl DatabaseOperations {
         .bind(user_id)
         .bind(provider)
         .bind(access_token_enc)
+        .bind(provider_user_id)
         .fetch_one(&self.pool)
         .await
         .context("Failed to upsert PAT connection")

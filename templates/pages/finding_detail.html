@@ -39,6 +39,15 @@
                         </div>
 
                         <div class="flex flex-wrap items-center gap-2">
+                            <button id="copy-finding-btn"
+                                    type="button"
+                                    class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                                <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>
+                                    <path d="M10.5 5.5V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h2.5"/>
+                                </svg>
+                                <span id="copy-finding-label">Copy Finding</span>
+                            </button>
                             <a href="/scans/{{ finding.scan_id }}/findings"
                                class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
                                 Back to Findings
@@ -164,4 +173,118 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    const finding = {{ finding|tojson }};
+    const repo    = {{ repo|tojson }};
+    const issue   = {{ issue|tojson }};
+    const patch   = {{ patch|tojson }};
+
+    function buildMarkdown() {
+        const lines = [];
+
+        lines.push(`# ${finding.title}`);
+        lines.push('');
+
+        const badges = [`**Severity:** ${(finding.severity || '').toUpperCase()}`];
+        badges.push(`**Confidence:** ${finding.confidence}`);
+        badges.push(`**Source:** ${(finding.source || '').replace(/_/g, ' ')}`);
+        badges.push(`**Status:** ${(finding.status || '').replace(/_/g, ' ')}`);
+        lines.push(badges.join(' | '));
+        lines.push('');
+
+        const loc = finding.line_end
+            ? `${finding.file_path}:${finding.line_start}-${finding.line_end}`
+            : `${finding.file_path}:${finding.line_start}`;
+        lines.push(`**Repository:** ${repo.name}`);
+        lines.push(`**Location:** \`${loc}\``);
+        if (finding.cwe_id) lines.push(`**CWE:** ${finding.cwe_id}`);
+        if (finding.cve_id) lines.push(`**CVE:** ${finding.cve_id}`);
+        lines.push('');
+
+        if (finding.description) {
+            lines.push('## Description');
+            lines.push('');
+            lines.push(finding.description.trim());
+            lines.push('');
+        }
+
+        if (finding.code_snippet) {
+            lines.push('## Vulnerable Code');
+            lines.push('');
+            lines.push('```');
+            lines.push(finding.code_snippet.trim());
+            lines.push('```');
+            lines.push('');
+        }
+
+        if (finding.suggested_patch) {
+            lines.push('## Suggested Fix');
+            lines.push('');
+            if (patch && patch.id && patch.applied) {
+                lines.push('> Patch has been applied.');
+                lines.push('');
+            }
+            lines.push('```diff');
+            lines.push(finding.suggested_patch.trim());
+            lines.push('```');
+            lines.push('');
+        }
+
+        if (finding.agent_reasoning) {
+            lines.push('## Analyst Notes');
+            lines.push('');
+            lines.push(finding.agent_reasoning.trim());
+            lines.push('');
+        }
+
+        if (finding.poc_exploit_json) {
+            const label = finding.poc_validated ? 'Exploitable' : 'Not Validated';
+            lines.push(`## Validation Evidence (${label})`);
+            lines.push('');
+            lines.push('```json');
+            lines.push(finding.poc_exploit_json.trim());
+            lines.push('```');
+            lines.push('');
+        }
+
+        if (issue && issue.url) {
+            lines.push('## Linked Issue');
+            lines.push('');
+            const num = issue.number ? ` #${issue.number}` : '';
+            const prov = (issue.provider || '').toUpperCase();
+            const state = issue.state || 'open';
+            lines.push(`[${prov}${num}](${issue.url}) — ${state}`);
+            if (issue.auto_created) lines.push('*(auto-created by Heimdall)*');
+            lines.push('');
+        }
+
+        lines.push('---');
+        lines.push(`*Exported from [Heimdall](/findings/${finding.id})*`);
+
+        return lines.join('\n');
+    }
+
+    const btn   = document.getElementById('copy-finding-btn');
+    const label = document.getElementById('copy-finding-label');
+
+    btn.addEventListener('click', async function () {
+        try {
+            await navigator.clipboard.writeText(buildMarkdown());
+            label.textContent = 'Copied!';
+            btn.classList.add('border-emerald-300', 'text-emerald-700');
+            btn.classList.remove('border-slate-200', 'text-slate-700');
+            setTimeout(function () {
+                label.textContent = 'Copy Finding';
+                btn.classList.remove('border-emerald-300', 'text-emerald-700');
+                btn.classList.add('border-slate-200', 'text-slate-700');
+            }, 2000);
+        } catch (_) {
+            label.textContent = 'Failed';
+            setTimeout(function () { label.textContent = 'Copy Finding'; }, 2000);
+        }
+    });
+})();
+</script>
 {% endblock %}

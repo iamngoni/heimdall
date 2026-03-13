@@ -649,11 +649,19 @@ async fn list_remote_repos(
             .header("Authorization", format!("Bearer {token}"))
             .send()
             .await,
-        "bitbucket" => client
-            .get("https://api.bitbucket.org/2.0/repositories?role=member&sort=-updated_on&pagelen=100")
-            .header("Authorization", format!("Bearer {token}"))
-            .send()
-            .await,
+        "bitbucket" => {
+            let mut req = client
+                .get("https://api.bitbucket.org/2.0/repositories?role=member&sort=-updated_on&pagelen=100");
+            // Bitbucket App Passwords use Basic auth (username:app_password).
+            // OAuth tokens use Bearer. We distinguish via token_source.
+            if conn.token_source == "pat" {
+                let username = &conn.provider_user_id;
+                req = req.basic_auth(username, Some(&token));
+            } else {
+                req = req.header("Authorization", format!("Bearer {token}"));
+            }
+            req.send().await
+        },
         _ => unreachable!(),
     };
 
