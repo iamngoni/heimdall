@@ -36,6 +36,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/upload", web::post().to(upload_zip))
             .route("/github/list", web::get().to(list_github_repos))
             .route("/gitlab/list", web::get().to(list_gitlab_repos))
+            .route("/bitbucket/list", web::get().to(list_bitbucket_repos))
             .route("/import", web::post().to(import_repo)),
     );
 }
@@ -517,6 +518,37 @@ struct GitLabProject {
     visibility: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct BitbucketResponse {
+    values: Vec<BitbucketRepo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketRepo {
+    full_name: String,
+    description: Option<String>,
+    language: Option<String>,
+    is_private: bool,
+    mainbranch: Option<BitbucketBranch>,
+    links: BitbucketLinks,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketBranch {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketLinks {
+    clone: Vec<BitbucketCloneLink>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BitbucketCloneLink {
+    name: String,
+    href: String,
+}
+
 fn extract_user_id(req: &HttpRequest) -> Uuid {
     req.extensions()
         .get::<crate::middleware::auth::AuthenticatedUser>()
@@ -538,6 +570,14 @@ async fn list_gitlab_repos(
     query: web::Query<RemoteRepoQuery>,
 ) -> HttpResponse {
     list_remote_repos(state, req, query, "gitlab").await
+}
+
+async fn list_bitbucket_repos(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<RemoteRepoQuery>,
+) -> HttpResponse {
+    list_remote_repos(state, req, query, "bitbucket").await
 }
 
 async fn list_remote_repos(
@@ -606,6 +646,11 @@ async fn list_remote_repos(
             .await,
         "gitlab" => client
             .get("https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=100")
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await,
+        "bitbucket" => client
+            .get("https://api.bitbucket.org/2.0/repositories?role=member&sort=-updated_on&pagelen=100")
             .header("Authorization", format!("Bearer {token}"))
             .send()
             .await,
@@ -691,6 +736,41 @@ async fn list_remote_repos(
                         );
                     }
                 },
+                "bitbucket" => match resp.json::<BitbucketResponse>().await {
+                    Ok(response) => response
+                        .values
+                        .into_iter()
+                        .map(|repo| {
+                            let clone_url = repo
+                                .links
+                                .clone
+                                .iter()
+                                .find(|l| l.name == "https")
+                                .map(|l| l.href.clone())
+                                .unwrap_or_default();
+                            RemoteRepo {
+                                full_name: repo.full_name,
+                                clone_url,
+                                description: repo.description,
+                                default_branch: repo
+                                    .mainbranch
+                                    .map(|b| b.name)
+                                    .unwrap_or_else(|| "main".to_string()),
+                                language: repo.language,
+                                private: repo.is_private,
+                            }
+                        })
+                        .collect(),
+                    Err(e) => {
+                        return render_remote_repo_list(
+                            &state,
+                            provider,
+                            &[],
+                            Some(&connected_urls),
+                            Some(&format!("Failed to parse repositories: {e}")),
+                        );
+                    }
+                },
                 _ => unreachable!(),
             };
 
@@ -732,6 +812,7 @@ fn provider_display_name(provider: &str) -> &'static str {
     match provider {
         "github" => "GitHub",
         "gitlab" => "GitLab",
+        "bitbucket" => "Bitbucket",
         _ => "Provider",
     }
 }

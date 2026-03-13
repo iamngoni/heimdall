@@ -152,6 +152,13 @@
                                         </div>
                                         <span class="inline-flex h-2.5 w-2.5 rounded-full {{ 'bg-emerald-500' if integrations.gitlab.connected else 'bg-slate-300' }}"></span>
                                     </div>
+                                    <div class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
+                                        <div>
+                                            <p class="text-sm font-semibold text-slate-900">Bitbucket</p>
+                                            <p class="mt-1 text-sm text-slate-500">{{ 'Connected' if integrations.bitbucket.connected else 'Not connected' }}</p>
+                                        </div>
+                                        <span class="inline-flex h-2.5 w-2.5 rounded-full {{ 'bg-emerald-500' if integrations.bitbucket.connected else 'bg-slate-300' }}"></span>
+                                    </div>
                                 </div>
                             </section>
                         </div>

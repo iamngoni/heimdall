@@ -29,6 +29,10 @@
                            class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'gitlab' else 'text-slate-500 hover:text-slate-900' }}">
                             GitLab
                         </a>
+                        <a href="/repos/new?source=bitbucket"
+                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'bitbucket' else 'text-slate-500 hover:text-slate-900' }}">
+                            Bitbucket
+                        </a>
                         <a href="/repos/new?source=git_url"
                            class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'git_url' else 'text-slate-500 hover:text-slate-900' }}">
                             Git URL
@@ -41,10 +45,20 @@
 
                     <div id="repo-connect-feedback" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
 
-                    {% if active_source == "github" or active_source == "gitlab" %}
-                    {% set provider = integrations.github if active_source == "github" else integrations.gitlab %}
-                    {% set provider_name = "GitHub" if active_source == "github" else "GitLab" %}
-                    {% set connect_href = "/api/auth/github/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgithub" if active_source == "github" else "/api/auth/gitlab/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgitlab" %}
+                    {% if active_source == "github" or active_source == "gitlab" or active_source == "bitbucket" %}
+                    {% if active_source == "github" %}
+                        {% set provider = integrations.github %}
+                        {% set provider_name = "GitHub" %}
+                        {% set connect_href = "/api/auth/github/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgithub" %}
+                    {% elif active_source == "gitlab" %}
+                        {% set provider = integrations.gitlab %}
+                        {% set provider_name = "GitLab" %}
+                        {% set connect_href = "/api/auth/gitlab/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgitlab" %}
+                    {% else %}
+                        {% set provider = integrations.bitbucket %}
+                        {% set provider_name = "Bitbucket" %}
+                        {% set connect_href = "/api/auth/bitbucket/authorize?next=%2Frepos%2Fnew%3Fsource%3Dbitbucket" %}
+                    {% endif %}
                     <section class="space-y-4">
                         <div class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
                             <span class="h-2 w-2 rounded-full {{ 'bg-emerald-500' if provider.connected else 'bg-slate-300' }}"></span>
@@ -75,14 +89,14 @@
                         </div>
                         {% else %}
                         <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-16 text-center shadow-sm">
-                            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl {{ 'bg-slate-900 text-white' if active_source == 'github' else 'bg-orange-500 text-white' }}">
-                                {{ 'G' if active_source == 'github' else 'L' }}
+                            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl {{ 'bg-slate-900 text-white' if active_source == 'github' else 'bg-orange-500 text-white' if active_source == 'gitlab' else 'bg-blue-600 text-white' }}">
+                                {{ 'G' if active_source == 'github' else 'L' if active_source == 'gitlab' else 'B' }}
                             </div>
                             <h2 class="mt-5 text-lg font-semibold text-slate-900">Continue with {{ provider_name }}</h2>
                             <p class="mt-2 text-sm text-slate-500">Authorize Heimdall once, then pick the repositories you want to scan.</p>
                             <a href="{{ connect_href }}"
                                hx-boost="false"
-                               class="mt-6 inline-flex items-center justify-center rounded-xl {{ 'bg-slate-900 text-white hover:bg-slate-800' if active_source == 'github' else 'bg-orange-500 text-white hover:bg-orange-600' }} px-4 py-2.5 text-sm font-semibold transition">
+                               class="mt-6 inline-flex items-center justify-center rounded-xl {{ 'bg-slate-900 text-white hover:bg-slate-800' if active_source == 'github' else 'bg-orange-500 text-white hover:bg-orange-600' if active_source == 'gitlab' else 'bg-blue-600 text-white hover:bg-blue-700' }} px-4 py-2.5 text-sm font-semibold transition">
                                 Continue with {{ provider_name }}
                             </a>
                         </div>
