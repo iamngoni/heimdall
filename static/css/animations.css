@@ -1,0 +1,257 @@
+/* ───────────────────────────────────────────────────────────────
+   Heimdall — Subtle animation layer
+   Professional, GPU-accelerated motion. Every animation earns
+   its place by improving clarity, feedback, or polish.
+   ─────────────────────────────────────────────────────────────── */
+
+:root {
+    --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-out-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 120ms;
+    --dur-normal: 200ms;
+    --dur-slow: 350ms;
+    --dur-entrance: 500ms;
+}
+
+/* ── 1. Page entrance — staggered fade-up ────────────────────── */
+
+@keyframes heimdall-fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Cards, sections, and panels fade up on load */
+main .space-y-6 > *,
+main .grid > section,
+main .grid > .space-y-6 > *,
+#integrations,
+#providers,
+#profile,
+#security,
+#keys {
+    animation: heimdall-fade-up var(--dur-entrance) var(--ease-out) both;
+}
+
+/* Stagger children with increasing delays */
+main .space-y-6 > *:nth-child(1) { animation-delay: 0ms; }
+main .space-y-6 > *:nth-child(2) { animation-delay: 60ms; }
+main .space-y-6 > *:nth-child(3) { animation-delay: 120ms; }
+main .space-y-6 > *:nth-child(4) { animation-delay: 180ms; }
+main .space-y-6 > *:nth-child(5) { animation-delay: 240ms; }
+main .space-y-6 > *:nth-child(6) { animation-delay: 300ms; }
+
+/* Dashboard stat cards stagger */
+main .grid.gap-4 > div:nth-child(1) { animation-delay: 40ms; }
+main .grid.gap-4 > div:nth-child(2) { animation-delay: 100ms; }
+main .grid.gap-4 > div:nth-child(3) { animation-delay: 160ms; }
+main .grid.gap-4 > div:nth-child(4) { animation-delay: 220ms; }
+
+/* ── 2. Card hover — gentle lift ─────────────────────────────── */
+
+/* Dashboard stat cards and repo cards */
+.shadow-sm {
+    transition: transform var(--dur-normal) var(--ease-out),
+                box-shadow var(--dur-normal) var(--ease-out);
+}
+
+.shadow-sm:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+/* Finding rows */
+.divide-y a[href*="/scans/"],
+a[href*="/repos/"].rounded-xl {
+    transition: transform var(--dur-normal) var(--ease-out),
+                background-color var(--dur-fast) ease;
+}
+
+.divide-y a[href*="/scans/"]:hover,
+a[href*="/repos/"].rounded-xl:hover {
+    transform: translateY(-1px);
+}
+
+/* ── 3. Button feedback — press scale ────────────────────────── */
+
+button,
+a[class*="rounded-xl"][class*="bg-blue"],
+a[class*="rounded-xl"][class*="bg-slate-900"],
+a[class*="rounded-2xl"][class*="bg-blue"],
+[type="submit"] {
+    transition: transform var(--dur-fast) var(--ease-out-snappy),
+                background-color var(--dur-fast) ease,
+                border-color var(--dur-fast) ease,
+                color var(--dur-fast) ease,
+                box-shadow var(--dur-fast) ease;
+}
+
+button:active:not(:disabled),
+a[class*="rounded-xl"][class*="bg-blue"]:active,
+a[class*="rounded-xl"][class*="bg-slate-900"]:active,
+a[class*="rounded-2xl"][class*="bg-blue"]:active,
+[type="submit"]:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+/* ── 4. HTMX transitions — smooth swaps ──────────────────────── */
+
+.htmx-swapping {
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity var(--dur-normal) var(--ease-out),
+                transform var(--dur-normal) var(--ease-out);
+}
+
+.htmx-settling {
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity var(--dur-slow) var(--ease-out),
+                transform var(--dur-slow) var(--ease-out);
+}
+
+.htmx-added {
+    animation: heimdall-fade-up var(--dur-slow) var(--ease-out) both;
+}
+
+/* ── 5. Login / register page — entrance choreography ────────── */
+
+@keyframes heimdall-hero-text {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes heimdall-form-slide {
+    from {
+        opacity: 0;
+        transform: translateX(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Hero text on login/register */
+.min-h-screen > .relative > .relative > section {
+    animation: heimdall-hero-text 600ms var(--ease-out) 100ms both;
+}
+
+/* Login form panel */
+.min-h-screen > .relative > .relative > aside {
+    animation: heimdall-form-slide 500ms var(--ease-out) 250ms both;
+}
+
+/* Pipeline step cards on login page */
+.min-h-screen > .relative > .relative > section article {
+    animation: heimdall-fade-up 500ms var(--ease-out) both;
+}
+
+.min-h-screen > .relative > .relative > section article:nth-child(1) {
+    animation-delay: 300ms;
+}
+
+.min-h-screen > .relative > .relative > section article:nth-child(2) {
+    animation-delay: 420ms;
+}
+
+/* ── 6. Scan pipeline — active stage glow ────────────────────── */
+
+@keyframes heimdall-stage-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.25); }
+    50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.08); }
+}
+
+/* Active scan stage indicator */
+[class*="border-blue-500"][class*="ring"] {
+    animation: heimdall-stage-pulse 2s var(--ease-out) infinite;
+}
+
+/* ── 7. Form inputs — focus glow ─────────────────────────────── */
+
+input,
+select,
+textarea {
+    transition: border-color var(--dur-normal) ease,
+                box-shadow var(--dur-normal) ease;
+}
+
+/* ── 8. Status badges — smooth color transitions ─────────────── */
+
+[class*="rounded-full"][class*="text-xs"][class*="font-semibold"] {
+    transition: background-color var(--dur-normal) ease,
+                color var(--dur-normal) ease;
+}
+
+/* ── 9. Sidebar nav — smooth active state ────────────────────── */
+
+aside[class*="w-[72px]"] a {
+    transition: background-color var(--dur-normal) var(--ease-out),
+                color var(--dur-normal) var(--ease-out);
+}
+
+/* ── 10. Details/summary — smooth open ───────────────────────── */
+
+details summary {
+    transition: color var(--dur-normal) ease;
+}
+
+details[open] summary {
+    color: rgb(71, 85, 105);
+}
+
+/* ── 11. Feedback messages — entrance ────────────────────────── */
+
+@keyframes heimdall-feedback-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+[class*="border-emerald-200"][class*="bg-emerald-50"],
+[class*="border-rose-200"][class*="bg-rose-50"],
+[class*="border-amber-200"][class*="bg-amber-50"] {
+    animation: heimdall-feedback-in var(--dur-slow) var(--ease-out) both;
+}
+
+/* ── 12. Connected status dot — subtle pulse ─────────────────── */
+
+@keyframes heimdall-dot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+span[class*="bg-emerald-500"][class*="rounded-full"][class*="h-2"] {
+    animation: heimdall-dot-pulse 3s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   ACCESSIBILITY: Respect reduced motion preference
+   ─────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
