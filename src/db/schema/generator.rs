@@ -191,6 +191,29 @@ impl MigrationGenerator for PostgresGenerator {
             out.push(String::new());
         }
 
+        // Idempotent column additions — ensures columns added after initial
+        // table creation are present on existing databases. Every column in
+        // the DSL gets an `ADD COLUMN IF NOT EXISTS` so new fields are
+        // picked up automatically on restart.
+        out.push("-- Idempotent column sync".to_string());
+        for table in &schema.tables {
+            for col in &table.columns {
+                let col_type = self.col_type(&col.col_type);
+                let mut def = format!("{col_type}");
+                if !col.nullable {
+                    def.push_str(" NOT NULL");
+                }
+                if let Some(ref dv) = col.default {
+                    def.push_str(&format!(" DEFAULT {}", self.default_value(dv)));
+                }
+                out.push(format!(
+                    "ALTER TABLE {} ADD COLUMN IF NOT EXISTS {} {};",
+                    table.name, col.name, def
+                ));
+            }
+        }
+        out.push(String::new());
+
         out.join("\n")
     }
 }
