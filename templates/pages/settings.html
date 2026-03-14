@@ -425,7 +425,10 @@
                                 </div>
                                 {% endfor %}
                                 {% else %}
-                                <p id="api-keys-empty" class="text-sm text-slate-500">No stored API keys yet.</p>
+                                <div id="api-keys-empty" class="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-sm">
+                                    <p class="font-medium text-slate-600">No API keys configured</p>
+                                    <p class="mt-1 text-slate-400">Add an Anthropic, OpenAI, or Ollama key above to enable AI-powered scanning.</p>
+                                </div>
                                 {% endif %}
                             </div>
                         </section>

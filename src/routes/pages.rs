@@ -768,6 +768,8 @@ async fn finding_detail_page(
         repo => minijinja::Value::from_serialize(&serde_json::json!({
             "id": repo.id,
             "name": repo.name,
+            "remote_url": repo.remote_url,
+            "source_type": repo.source_type,
         })),
         finding => minijinja::Value::from_serialize(&serde_json::json!({
             "id": finding.id,

@@ -7,8 +7,13 @@
 
     {% if repos|length == 0 %}
     <div class="px-5 py-12 text-center">
-        <p class="text-sm font-medium text-slate-900">No {{ provider_name }} repositories matched this search.</p>
-        <p class="mt-2 text-sm text-slate-500">Try a broader query or reconnect the provider if access changed.</p>
+        <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+            <svg class="h-5 w-5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+        </div>
+        <p class="mt-3 text-sm font-medium text-slate-700">No repositories matched</p>
+        <p class="mt-1 text-sm text-slate-500">Try a shorter search term or clear the query to see all available {{ provider_name }} repos.</p>
     </div>
     {% else %}
     <div class="divide-y divide-slate-200">

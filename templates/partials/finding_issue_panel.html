@@ -56,10 +56,15 @@
             </p>
         </div>
         {% else %}
-        <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <p class="text-sm font-semibold text-slate-900">No linked issue yet</p>
-            <p class="mt-2 text-sm leading-6 text-slate-600">
-                Create a repository issue directly from this alert, or let Heimdall do it automatically at scan completion.
+        <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center">
+            <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                <svg class="h-5 w-5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </div>
+            <p class="mt-3 text-sm font-medium text-slate-700">No linked issue yet</p>
+            <p class="mt-1 text-sm text-slate-500">
+                Use "Create Issue" above to push this finding into your tracker, or enable auto-creation in the repo settings.
             </p>
         </div>
         {% endif %}

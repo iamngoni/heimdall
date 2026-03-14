@@ -100,8 +100,9 @@
                 </div>
             </div>
             {% else %}
-            <div class="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
-                No AI explanation has been generated yet.
+            <div class="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-4 py-5 text-center text-sm">
+                <p class="font-medium text-slate-600">No explanation yet</p>
+                <p class="mt-1 text-slate-400">Click "Explain Alert" to get a plain-language breakdown of why this was flagged.</p>
             </div>
             {% endif %}
         </article>
@@ -168,8 +169,9 @@
                 {% endif %}
             </div>
             {% else %}
-            <div class="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">
-                No AI verification has been generated yet.
+            <div class="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-4 py-5 text-center text-sm">
+                <p class="font-medium text-slate-600">No verification yet</p>
+                <p class="mt-1 text-slate-400">Click "Verify Alert" for a second-pass triage to separate true issues from noise.</p>
             </div>
             {% endif %}
         </article>

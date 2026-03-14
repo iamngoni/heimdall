@@ -93,8 +93,8 @@
                             </span>
                             <p class="mt-2 text-sm text-slate-500">{{ latest_scan.created_at }}</p>
                             {% else %}
-                            <p class="mt-3 text-lg font-semibold text-slate-900">No scans yet</p>
-                            <p class="mt-2 text-sm text-slate-500">Trigger a scan once the repository is ready.</p>
+                            <p class="mt-3 text-lg font-semibold text-slate-900">Awaiting first scan</p>
+                            <p class="mt-2 text-sm text-slate-500">Hit "Run Scan" above to start.</p>
                             {% endif %}
                         </div>
                         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -140,8 +140,13 @@
                             </div>
                             {% else %}
                             <div class="px-8 py-16 text-center">
-                                <h3 class="text-sm font-semibold text-slate-900">No scans have been run yet</h3>
-                                <p class="mt-2 text-sm text-slate-500">Trigger the first scan when you are ready to inspect this codebase.</p>
+                                <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50">
+                                    <svg class="h-6 w-6 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                                    </svg>
+                                </div>
+                                <h3 class="mt-4 text-sm font-semibold text-slate-900">Ready for its first scan</h3>
+                                <p class="mx-auto mt-2 max-w-sm text-sm text-slate-500">Heimdall will clone the repo, build a code index, generate a threat model, and hunt for vulnerabilities. Results will appear here.</p>
                             </div>
                             {% endif %}
 

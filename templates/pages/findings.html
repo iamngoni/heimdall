@@ -109,8 +109,20 @@
                         </div>
                         {% else %}
                         <div class="px-8 py-16 text-center">
-                            <h2 class="text-sm font-semibold text-slate-900">No findings match the current filters</h2>
-                            <p class="mt-2 text-sm text-slate-500">Adjust the current filter set or clear it to review the full result set.</p>
+                            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                                <svg class="h-6 w-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                </svg>
+                            </div>
+                            {% if severity_filter or status_filter %}
+                            <h2 class="mt-4 text-sm font-semibold text-slate-900">No findings match these filters</h2>
+                            <p class="mx-auto mt-2 max-w-sm text-sm text-slate-500">Try broadening your search by removing a severity or status filter.</p>
+                            <a href="/scans/{{ scan.id }}/findings" class="mt-4 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">Clear All Filters</a>
+                            {% else %}
+                            <h2 class="mt-4 text-sm font-semibold text-slate-900">No findings in this scan</h2>
+                            <p class="mx-auto mt-2 max-w-sm text-sm text-slate-500">This scan completed without detecting any security findings. Review the threat model for a broader architectural perspective.</p>
+                            <a href="/scans/{{ scan.id }}/threat-model" class="mt-4 inline-flex text-sm font-semibold text-blue-600 transition hover:text-blue-700">View Threat Model</a>
+                            {% endif %}
                         </div>
                         {% endif %}
 

@@ -78,7 +78,10 @@
                                     {% endfor %}
                                 </div>
                                 {% else %}
-                                <p class="mt-4 text-sm text-slate-500">No trust boundaries were captured for this scan.</p>
+                                <div class="mt-4 rounded-xl border border-dashed border-slate-200 px-5 py-6 text-center">
+                                    <p class="text-sm font-medium text-slate-600">No trust boundaries captured</p>
+                                    <p class="mx-auto mt-1 max-w-sm text-sm text-slate-400">The AI model didn't identify distinct security zones in this codebase. This can happen in small or single-service projects.</p>
+                                </div>
                                 {% endif %}
                             </section>
 
@@ -120,7 +123,10 @@
                                     {% endfor %}
                                 </div>
                                 {% else %}
-                                <p class="mt-4 text-sm text-slate-500">No attack surfaces were captured for this scan.</p>
+                                <div class="mt-4 rounded-xl border border-dashed border-slate-200 px-5 py-6 text-center">
+                                    <p class="text-sm font-medium text-slate-600">No attack surfaces captured</p>
+                                    <p class="mx-auto mt-1 max-w-sm text-sm text-slate-400">Entry points like HTTP routes, CLI handlers, or RPC endpoints weren't detected. Check that the scan completed successfully.</p>
+                                </div>
                                 {% endif %}
                             </section>
 
@@ -152,7 +158,10 @@
                                     {% endfor %}
                                 </div>
                                 {% else %}
-                                <p class="mt-4 text-sm text-slate-500">No data flows were captured for this scan.</p>
+                                <div class="mt-4 rounded-xl border border-dashed border-slate-200 px-5 py-6 text-center">
+                                    <p class="text-sm font-medium text-slate-600">No data flows captured</p>
+                                    <p class="mx-auto mt-1 max-w-sm text-sm text-slate-400">Movement of sensitive data between components wasn't detected. This section populates when the codebase has observable I/O paths.</p>
+                                </div>
                                 {% endif %}
                             </section>
                         </div>

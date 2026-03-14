@@ -321,8 +321,9 @@
                                     </div>
                                     {% endfor %}
                                     {% else %}
-                                    <div class="rounded-xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500">
-                                        No agent sub-operations have been recorded yet.
+                                    <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
+                                        <p class="font-medium text-slate-600">No agent operations yet</p>
+                                        <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -775,7 +776,7 @@ window.HeimdallScanPage = {
             ? 'inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700'
             : 'inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600';
         this.currentTaskTitle.textContent = task.title || 'Waiting for activity';
-        this.currentTaskDetail.textContent = task.detail || 'No execution activity has been recorded yet.';
+        this.currentTaskDetail.textContent = task.detail || 'Pipeline stages will stream progress here as they execute.';
 
         if (typeof task.progress_pct === 'number') {
             this.currentTaskProgressWrap.classList.remove('hidden');
@@ -826,8 +827,9 @@ window.HeimdallScanPage = {
     renderActivity(activity) {
         if (!activity.length) {
             this.activityFeed.innerHTML = `
-                <li class="rounded-xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500">
-                    No execution events have been recorded yet.
+                <li class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
+                    <p class="font-medium text-slate-600">No events yet</p>
+                    <p class="mt-1 text-slate-400">Execution timeline populates as stages complete.</p>
                 </li>
             `;
             return;
@@ -856,8 +858,9 @@ window.HeimdallScanPage = {
     renderAgentCalls(calls) {
         if (!calls.length) {
             this.agentCalls.innerHTML = `
-                <div class="rounded-xl border border-dashed border-slate-200 px-4 py-4 text-sm text-slate-500">
-                    No agent sub-operations have been recorded yet.
+                <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
+                    <p class="font-medium text-slate-600">No agent operations yet</p>
+                    <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
                 </div>
             `;
             return;

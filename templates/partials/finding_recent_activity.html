@@ -21,6 +21,9 @@
         {% endfor %}
     </div>
     {% else %}
-    <p class="mt-4 text-sm text-slate-500">No review events have been recorded for this finding yet.</p>
+    <div class="mt-4 rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-sm">
+        <p class="font-medium text-slate-600">No activity yet</p>
+        <p class="mt-1 text-slate-400">Status changes, AI reviews, and issue creation will be logged here.</p>
+    </div>
     {% endif %}
 </section>

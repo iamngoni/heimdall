@@ -181,6 +181,36 @@
     const issue   = {{ issue|tojson }};
     const patch   = {{ patch|tojson }};
 
+    // Build a browsable URL for the repo (strips .git, handles providers).
+    function repoUrl() {
+        const raw = (repo.remote_url || '').replace(/\.git$/, '');
+        if (raw.startsWith('http')) return raw;
+        return null;
+    }
+
+    // Build a deep link to the file + line range on the hosting provider.
+    function fileUrl() {
+        const base = repoUrl();
+        if (!base || !finding.file_path) return null;
+        const src = repo.source_type || '';
+        const path = finding.file_path;
+        const start = finding.line_start;
+        const end = finding.line_end;
+        if (src === 'github') {
+            const anchor = end ? `L${start}-L${end}` : `L${start}`;
+            return `${base}/blob/HEAD/${path}#${anchor}`;
+        }
+        if (src === 'gitlab') {
+            const anchor = end ? `L${start}-${end}` : `L${start}`;
+            return `${base}/-/blob/HEAD/${path}#${anchor}`;
+        }
+        if (src === 'bitbucket') {
+            const anchor = end ? `lines-${start}:${end}` : `lines-${start}`;
+            return `${base}/src/HEAD/${path}#${anchor}`;
+        }
+        return null;
+    }
+
     function buildMarkdown() {
         const lines = [];
 
@@ -194,11 +224,14 @@
         lines.push(badges.join(' | '));
         lines.push('');
 
+        const rUrl = repoUrl();
+        lines.push(`**Repository:** ${rUrl ? `[${repo.name}](${rUrl})` : repo.name}`);
+
         const loc = finding.line_end
             ? `${finding.file_path}:${finding.line_start}-${finding.line_end}`
             : `${finding.file_path}:${finding.line_start}`;
-        lines.push(`**Repository:** ${repo.name}`);
-        lines.push(`**Location:** \`${loc}\``);
+        const fUrl = fileUrl();
+        lines.push(`**Location:** ${fUrl ? `[\`${loc}\`](${fUrl})` : `\`${loc}\``}`);
         if (finding.cwe_id) lines.push(`**CWE:** ${finding.cwe_id}`);
         if (finding.cve_id) lines.push(`**CVE:** ${finding.cve_id}`);
         lines.push('');

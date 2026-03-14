@@ -89,11 +89,14 @@
                         </div>
                         {% else %}
                         <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-16 text-center shadow-sm">
-                            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl {{ 'bg-slate-900 text-white' if active_source == 'github' else 'bg-orange-500 text-white' if active_source == 'gitlab' else 'bg-blue-600 text-white' }}">
-                                {{ 'G' if active_source == 'github' else 'L' if active_source == 'gitlab' else 'B' }}
+                            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl {{ 'bg-slate-900 text-white' if active_source == 'github' else 'bg-orange-500 text-white' if active_source == 'gitlab' else 'bg-blue-600 text-white' }}">
+                                <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                                </svg>
                             </div>
-                            <h2 class="mt-5 text-lg font-semibold text-slate-900">Continue with {{ provider_name }}</h2>
-                            <p class="mt-2 text-sm text-slate-500">Authorize Heimdall once, then pick the repositories you want to scan.</p>
+                            <h2 class="mt-5 text-lg font-semibold text-slate-900">Connect {{ provider_name }}</h2>
+                            <p class="mx-auto mt-2 max-w-md text-sm text-slate-500">Authorize once and Heimdall will list all your repositories so you can pick which to scan. You can also save a personal access token in <a href="/settings" class="font-semibold text-blue-600 hover:text-blue-700">Settings</a> instead.</p>
                             <a href="{{ connect_href }}"
                                hx-boost="false"
                                class="mt-6 inline-flex items-center justify-center rounded-xl {{ 'bg-slate-900 text-white hover:bg-slate-800' if active_source == 'github' else 'bg-orange-500 text-white hover:bg-orange-600' if active_source == 'gitlab' else 'bg-blue-600 text-white hover:bg-blue-700' }} px-4 py-2.5 text-sm font-semibold transition">
