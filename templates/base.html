@@ -12,6 +12,9 @@
     <link rel="icon" href="data:,">
 </head>
 <body class="h-full bg-gray-900 text-gray-100 antialiased">
+    <div id="heimdall-floating-layer"
+         class="pointer-events-none fixed inset-0 z-[80]">
+    </div>
     {# ── Toast system ── #}
     <div id="heimdall-toast-region" aria-live="polite" aria-atomic="true"
          style="position:fixed;bottom:0;right:0;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;padding:1.5rem;pointer-events:none">
@@ -83,6 +86,7 @@
         const bgColors = { success: 'bg-emerald-50', warning: 'bg-amber-50', error: 'bg-rose-50', info: 'bg-white' };
 
         function getStack() { return document.getElementById('heimdall-toast-stack'); }
+        function getFloatingLayer() { return document.getElementById('heimdall-floating-layer'); }
 
         function removeToast(el) {
             el.classList.remove('heimdall-toast-enter');
@@ -153,6 +157,50 @@
         });
 
         return {
+            mountFloatingSurface(element) {
+                if (!element) return null;
+                const layer = getFloatingLayer();
+                if (!layer) return element;
+                if (element.parentElement !== layer) {
+                    layer.appendChild(element);
+                }
+                return element;
+            },
+            positionFloatingSurface({
+                element,
+                anchor,
+                minWidth = 240,
+                maxHeight = 256,
+                offset = 8,
+                viewportPadding = 16
+            } = {}) {
+                if (!element || !anchor) return;
+
+                const rect = anchor.getBoundingClientRect();
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                const width = Math.max(rect.width, minWidth);
+
+                element.style.position = 'fixed';
+                element.style.width = `${Math.min(width, viewportWidth - viewportPadding * 2)}px`;
+                element.style.maxWidth = `calc(100vw - ${viewportPadding * 2}px)`;
+                element.style.maxHeight = `${maxHeight}px`;
+
+                const surfaceHeight = Math.min(element.scrollHeight || maxHeight, maxHeight);
+                const canOpenAbove = rect.top - offset - surfaceHeight >= viewportPadding;
+                const shouldOpenAbove = rect.bottom + offset + surfaceHeight > viewportHeight - viewportPadding && canOpenAbove;
+                const top = shouldOpenAbove
+                    ? Math.max(viewportPadding, rect.top - surfaceHeight - offset)
+                    : Math.min(viewportHeight - surfaceHeight - viewportPadding, rect.bottom + offset);
+                const left = Math.min(
+                    Math.max(viewportPadding, rect.left),
+                    viewportWidth - element.offsetWidth - viewportPadding
+                );
+
+                element.style.top = `${top}px`;
+                element.style.left = `${left}px`;
+                element.style.transformOrigin = shouldOpenAbove ? 'bottom left' : 'top left';
+            },
             notify,
             success(message, duration = 4000) { notify({ message, tone: 'success', duration }); },
             warning(message, duration = 4500) { notify({ message, tone: 'warning', duration }); },

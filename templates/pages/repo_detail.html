@@ -115,7 +115,7 @@
                             </div>
                             {# Dropdown portal — rendered outside card to avoid overflow clip #}
                             <div id="branch-dropdown"
-                                 class="fixed z-50 hidden max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                                 class="pointer-events-auto fixed z-[110] hidden max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white py-1 shadow-[0_24px_60px_-24px_rgba(15,23,42,0.45)] ring-1 ring-slate-100"
                                  style="scrollbar-width:thin">
                             </div>
                             <p class="mt-2 text-sm text-slate-500">Branch cloned when scans run on this repository.</p>
@@ -481,6 +481,7 @@ window.HeimdallRepoDetail = {
     _branches: [],
     _branchRepoId: null,
     _highlightIdx: -1,
+    _branchRepositionHandler: null,
 
     async openBranchPicker(repoId) {
         this._branchRepoId = repoId;
@@ -490,6 +491,10 @@ window.HeimdallRepoDetail = {
         const spinner  = document.getElementById('branch-spinner');
         const dropdown = document.getElementById('branch-dropdown');
         const current  = document.getElementById('branch-value').textContent.trim();
+
+        if (window.HeimdallUI && typeof window.HeimdallUI.mountFloatingSurface === 'function') {
+            window.HeimdallUI.mountFloatingSurface(dropdown);
+        }
 
         display.classList.add('hidden');
         picker.classList.remove('hidden');
@@ -525,13 +530,14 @@ window.HeimdallRepoDetail = {
         });
 
         this._renderBranchList('', current);
-        this._positionDropdown();
         dropdown.classList.remove('hidden');
+        this._positionDropdown();
 
         // Wire up search input (debounced)
         search.oninput = () => {
             this._highlightIdx = -1;
             this._renderBranchList(search.value.trim(), current);
+            this._positionDropdown();
         };
 
         // Keyboard navigation
@@ -564,6 +570,10 @@ window.HeimdallRepoDetail = {
             }
         };
         setTimeout(() => document.addEventListener('click', this._branchOutsideClick), 0);
+
+        this._branchRepositionHandler = () => this._positionDropdown();
+        window.addEventListener('resize', this._branchRepositionHandler);
+        window.addEventListener('scroll', this._branchRepositionHandler, true);
     },
 
     _renderBranchList(query, current) {
@@ -575,6 +585,7 @@ window.HeimdallRepoDetail = {
 
         if (filtered.length === 0) {
             dropdown.innerHTML = '<div class="px-4 py-6 text-center text-sm text-slate-400">No branches match your search.</div>';
+            this._positionDropdown();
             return;
         }
 
@@ -591,6 +602,7 @@ window.HeimdallRepoDetail = {
                 ${isCurrent ? '<span class="ml-auto shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-600">current</span>' : ''}
             </button>`;
         }).join('');
+        this._positionDropdown();
     },
 
     _applyHighlight(items) {
@@ -639,10 +651,16 @@ window.HeimdallRepoDetail = {
         const anchor = document.getElementById('branch-search-anchor');
         const dropdown = document.getElementById('branch-dropdown');
         if (!anchor || !dropdown) return;
-        const rect = anchor.getBoundingClientRect();
-        dropdown.style.top = (rect.bottom + 4) + 'px';
-        dropdown.style.left = rect.left + 'px';
-        dropdown.style.width = rect.width + 'px';
+        if (window.HeimdallUI && typeof window.HeimdallUI.positionFloatingSurface === 'function') {
+            window.HeimdallUI.positionFloatingSurface({
+                element: dropdown,
+                anchor,
+                minWidth: 240,
+                maxHeight: 256,
+                offset: 8,
+                viewportPadding: 16,
+            });
+        }
     },
 
     closeBranchPicker() {
@@ -652,6 +670,11 @@ window.HeimdallRepoDetail = {
         if (this._branchOutsideClick) {
             document.removeEventListener('click', this._branchOutsideClick);
             this._branchOutsideClick = null;
+        }
+        if (this._branchRepositionHandler) {
+            window.removeEventListener('resize', this._branchRepositionHandler);
+            window.removeEventListener('scroll', this._branchRepositionHandler, true);
+            this._branchRepositionHandler = null;
         }
     },
 
