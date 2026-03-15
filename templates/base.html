@@ -87,6 +87,10 @@
 
         function getStack() { return document.getElementById('heimdall-toast-stack'); }
         function getFloatingLayer() { return document.getElementById('heimdall-floating-layer'); }
+        function getCsrfToken() {
+            const csrf = document.cookie.split('; ').find((cookie) => cookie.startsWith('_csrf='));
+            return csrf ? decodeURIComponent(csrf.split('=').slice(1).join('=')) : null;
+        }
 
         function removeToast(el) {
             el.classList.remove('heimdall-toast-enter');
@@ -157,6 +161,26 @@
         });
 
         return {
+            getCsrfToken,
+            fetch(url, options = {}) {
+                const method = (options.method || 'GET').toUpperCase();
+                const headers = new Headers(options.headers || {});
+                if (!headers.has('Accept')) {
+                    headers.set('Accept', 'application/json');
+                }
+                if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !headers.has('X-CSRF-Token')) {
+                    const csrf = getCsrfToken();
+                    if (csrf) {
+                        headers.set('X-CSRF-Token', csrf);
+                    }
+                }
+                return window.fetch(url, {
+                    credentials: 'same-origin',
+                    ...options,
+                    method,
+                    headers,
+                });
+            },
             mountFloatingSurface(element) {
                 if (!element) return null;
                 const layer = getFloatingLayer();

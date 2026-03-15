@@ -10,12 +10,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
+use log::warn;
 use serde::Deserialize;
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use crate::db::DatabaseOperations;
+use crate::integrations::issues;
+use crate::middleware::auth::AuthenticatedUser;
 use crate::models::ScanStage;
 use crate::models::{ApiResponse, PaginatedResponse, PaginationParams};
 use crate::sse::{ScanBroadcaster, ScanEvent, ScanEventType};
@@ -38,7 +41,11 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/{id}/findings", web::get().to(get_scan_findings))
             .route("/{id}/threat-model", web::get().to(get_scan_threat_model))
             .route("/{id}/patches", web::get().to(get_scan_patches))
-            .route("/{id}/progress/stream", web::get().to(scan_progress_stream)),
+            .route("/{id}/progress/stream", web::get().to(scan_progress_stream))
+            .route(
+                "/{id}/findings/create-all-issues",
+                web::post().to(create_all_issues),
+            ),
     );
 }
 
@@ -624,4 +631,141 @@ async fn scan_progress_stream(state: web::Data<AppState>, path: web::Path<Uuid>)
         .insert_header(("Cache-Control", "no-cache"))
         .insert_header(("X-Accel-Buffering", "no"))
         .streaming(receiver_stream)
+}
+
+/// Bulk-create issues for all open findings in a scan that don't already have linked issues.
+async fn create_all_issues(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let scan_id = path.into_inner();
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    // Load scan and repo
+    let scan = match state.db.get_scan_by_id(scan_id).await {
+        Ok(Some(scan)) => scan,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Scan not found"))
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, format!("Failed to fetch scan: {e}")))
+        }
+    };
+
+    let repo = match state.db.get_repo_by_id(scan.repo_id).await {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Repository not found"))
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, format!("Failed to fetch repo: {e}")))
+        }
+    };
+
+    if repo.user_id != user.id {
+        return HttpResponse::Forbidden()
+            .json(ApiResponse::<()>::error(403, "You do not have access to this repository"));
+    }
+
+    if !issues::supports_issue_creation(&repo) {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "This repository does not support issue creation. Connect an OAuth account first.",
+        ));
+    }
+
+    // Get all open findings for this scan
+    let findings = match state
+        .db
+        .list_findings_by_scan(scan_id, None, Some("open"))
+        .await
+    {
+        Ok(f) => f,
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, format!("Failed to list findings: {e}")))
+        }
+    };
+
+    let mut created_count = 0u32;
+    let mut linked_count = 0u32;
+    let mut failed_count = 0u32;
+
+    for finding in &findings {
+        match issues::create_or_link_issue(
+            &state.db,
+            state.encryption_key.as_ref(),
+            &repo,
+            finding,
+            false,
+        )
+        .await
+        {
+            Ok((repo_issue, created)) => {
+                if created {
+                    created_count += 1;
+                } else {
+                    linked_count += 1;
+                }
+
+                let metadata = serde_json::json!({
+                    "provider": repo_issue.provider,
+                    "issue_url": repo_issue.issue_url,
+                    "external_issue_number": repo_issue.external_issue_number,
+                    "auto_created": false,
+                    "created": created,
+                    "bulk": true,
+                });
+                let _ = state
+                    .db
+                    .create_finding_event_with_metadata(
+                        finding.id,
+                        Some(user.id),
+                        "issue_linked",
+                        None,
+                        repo_issue.external_issue_number.as_deref(),
+                        Some(if created {
+                            "Issue created via bulk action from the findings list."
+                        } else {
+                            "Linked to existing issue via bulk action from the findings list."
+                        }),
+                        Some(&metadata),
+                    )
+                    .await;
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to create issue for finding {} ({}): {e}",
+                    finding.id, finding.title
+                );
+                failed_count += 1;
+            }
+        }
+    }
+
+    let summary = format!(
+        "{created_count} created, {linked_count} already linked, {failed_count} failed"
+    );
+
+    if req.headers().contains_key("HX-Request") {
+        // Return an HTMX-friendly response that triggers a page reload
+        return HttpResponse::Ok()
+            .insert_header(("HX-Refresh", "true"))
+            .body(summary);
+    }
+
+    HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+        "created": created_count,
+        "linked": linked_count,
+        "failed": failed_count,
+        "total_findings": findings.len(),
+        "summary": summary,
+    })))
 }

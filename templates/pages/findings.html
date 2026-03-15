@@ -33,6 +33,31 @@
                         </div>
 
                         <div class="flex flex-wrap items-center gap-2">
+                            {% if issue_supported and total > 0 %}
+                            <button id="bulk-issue-btn"
+                                    type="button"
+                                    onclick="createAllIssues(this)"
+                                    class="inline-flex items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50">
+                                <span class="flex h-5 w-5 items-center justify-center {% if issue_provider == "github" %}text-slate-900{% elif issue_provider == "gitlab" %}text-orange-500{% elif issue_provider == "bitbucket" %}text-sky-600{% else %}text-slate-500{% endif %}">
+                                    <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                        {% if issue_provider == "github" %}
+                                        <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
+                                        {% elif issue_provider == "gitlab" %}
+                                        <path d="M15.97 9.058l-.895-2.756L13.3.842a.37.37 0 0 0-.702 0L10.82 6.302H5.18L3.402.842a.37.37 0 0 0-.702 0L.924 6.302.03 9.058a.74.74 0 0 0 .269.826L8 15.323l7.7-5.44a.74.74 0 0 0 .27-.825"/>
+                                        {% elif issue_provider == "bitbucket" %}
+                                        <path d="M.778 1.213a.768.768 0 0 0-.768.892l2.17 13.095a1.045 1.045 0 0 0 1.024.87h9.78a.768.768 0 0 0 .768-.646L15.99 2.105a.768.768 0 0 0-.768-.892H.778zm9.098 9.457H6.125l-.8-4.186h5.36l-.81 4.186z"/>
+                                        {% else %}
+                                        <path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm9-3a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM8 6.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4A.75.75 0 0 1 8 6.75Z" clip-rule="evenodd"/>
+                                        {% endif %}
+                                    </svg>
+                                </span>
+                                <span id="bulk-issue-label">Create Issues</span>
+                                <svg id="bulk-issue-spinner" class="hidden h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                            </button>
+                            {% endif %}
                             <a href="/scans/{{ scan.id }}"
                                class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
                                 Back to Scan
@@ -151,4 +176,48 @@
         </div>
     </div>
 </div>
+
+<script>
+async function createAllIssues(btn) {
+    const label = document.getElementById('bulk-issue-label');
+    const spinner = document.getElementById('bulk-issue-spinner');
+    const originalText = label.textContent;
+
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    label.textContent = 'Creating...';
+    spinner.classList.remove('hidden');
+
+    try {
+        const resp = await window.HeimdallUI.fetch('/api/scans/{{ scan.id }}/findings/create-all-issues', {
+            method: 'POST',
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.data) {
+            const d = data.data;
+            const summary = d.summary || (
+                d.created + ' created' +
+                (d.linked > 0 ? ', ' + d.linked + ' already linked' : '') +
+                (d.failed > 0 ? ', ' + d.failed + ' failed' : '')
+            );
+            label.textContent = d.created > 0 ? 'Issues created' : 'No new issues';
+            window.HeimdallUI.success(summary, 3600);
+            setTimeout(function() { window.location.reload(); }, 1200);
+        } else {
+            const msg = data.error || data.message || 'Failed to create issues';
+            window.HeimdallUI.error(msg, 4800);
+            label.textContent = originalText;
+            btn.disabled = false;
+        }
+    } catch (err) {
+        window.HeimdallUI.error('Network error while creating issues. Try again.', 4800);
+        label.textContent = originalText;
+        btn.disabled = false;
+    } finally {
+        btn.removeAttribute('aria-busy');
+        spinner.classList.add('hidden');
+    }
+}
+</script>
 {% endblock %}

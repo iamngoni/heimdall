@@ -717,6 +717,10 @@ async fn scan_findings_page(
         })
         .collect();
 
+    let issue_supported = crate::integrations::issues::supports_issue_creation(&repo);
+    let issue_provider = crate::integrations::issues::issue_provider(&repo)
+        .unwrap_or("unknown");
+
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
@@ -737,6 +741,8 @@ async fn scan_findings_page(
         per_page => per_page,
         total => total,
         total_pages => total_pages,
+        issue_supported => issue_supported,
+        issue_provider => issue_provider,
     };
 
     render_html(&state, "pages/findings.html", ctx)
