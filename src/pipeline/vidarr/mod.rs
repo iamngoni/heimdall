@@ -86,10 +86,7 @@ impl VidarrStage {
         }
 
         let total = findings.len();
-        info!(
-            "[{}] Víðarr: challenging {} findings",
-            self.scan_id, total
-        );
+        info!("[{}] Víðarr: challenging {} findings", self.scan_id, total);
 
         self.record_event(
             Some("challenge-start"),
@@ -114,7 +111,11 @@ impl VidarrStage {
                 &format!("Challenging: {}", finding.title),
                 Some(&format!(
                     "Reviewing finding {}/{} — {} in {}:{}",
-                    i + 1, total, finding.severity, finding.file_path, finding.line_start
+                    i + 1,
+                    total,
+                    finding.severity,
+                    finding.file_path,
+                    finding.line_start
                 )),
                 Some(progress),
                 Some(&serde_json::json!({
@@ -144,10 +145,7 @@ impl VidarrStage {
                                 .ok();
                             if let Some(ref sev) = verdict.adjusted_severity {
                                 if sev != &finding.severity {
-                                    self.db
-                                        .update_finding_severity(finding.id, sev)
-                                        .await
-                                        .ok();
+                                    self.db.update_finding_severity(finding.id, sev).await.ok();
                                 }
                             }
                             info!(
@@ -357,11 +355,7 @@ impl VidarrStage {
     }
 
     /// Parse the LLM response into a Verdict.
-    fn parse_verdict(
-        &self,
-        finding_id: uuid::Uuid,
-        raw: &str,
-    ) -> HeimdallResult<Verdict> {
+    fn parse_verdict(&self, finding_id: uuid::Uuid, raw: &str) -> HeimdallResult<Verdict> {
         // Try to extract JSON from the response (handle markdown fences)
         let json_str = raw
             .trim()
@@ -375,9 +369,7 @@ impl VidarrStage {
         let parsed: serde_json::Value = serde_json::from_str(json_str)
             .map_err(|e| anyhow::anyhow!("Vidarr returned invalid JSON: {e}\nRaw: {raw}"))?;
 
-        let verdict_str = parsed["verdict"]
-            .as_str()
-            .unwrap_or("plausible");
+        let verdict_str = parsed["verdict"].as_str().unwrap_or("plausible");
 
         let outcome = match verdict_str {
             "confirmed" => VerdictOutcome::Confirmed,
@@ -406,10 +398,7 @@ impl VidarrStage {
     /// Gather surrounding code context for the finding.
     fn gather_code_context(&self, finding: &Finding, index: &CodeIndex) -> String {
         // Try to read the file from the index
-        let file_content = index
-            .files
-            .get(&finding.file_path)
-            .map(|f| &f.content);
+        let file_content = index.files.get(&finding.file_path).map(|f| &f.content);
 
         let Some(content) = file_content else {
             return format!("(File {} not found in code index)", finding.file_path);
@@ -436,9 +425,7 @@ impl VidarrStage {
         if callers_info.is_empty() {
             context
         } else {
-            format!(
-                "{context}\n## Call Sites (reachability evidence)\n{callers_info}"
-            )
+            format!("{context}\n## Call Sites (reachability evidence)\n{callers_info}")
         }
     }
 
@@ -455,15 +442,9 @@ impl VidarrStage {
             if sym_line >= finding.line_start - 5 && sym_line <= finding_end + 5 {
                 let callers = index.callgraph.get_callers(&symbol.name);
                 if !callers.is_empty() {
-                    info.push_str(&format!(
-                        "- `{}` is called from:\n",
-                        symbol.name
-                    ));
+                    info.push_str(&format!("- `{}` is called from:\n", symbol.name));
                     for caller in callers.iter().take(5) {
-                        info.push_str(&format!(
-                            "  - {}:{}\n",
-                            caller.file, caller.line
-                        ));
+                        info.push_str(&format!("  - {}:{}\n", caller.file, caller.line));
                     }
                 }
             }

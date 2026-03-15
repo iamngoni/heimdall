@@ -617,13 +617,15 @@ impl StaticAnalysisStage {
             .await;
 
             // Collect existing fingerprints for deduplication
-            let existing_fingerprints: HashSet<String> =
-                if let Ok(findings) = self.db.list_findings_by_scan(self.scan_id, None, None).await
-                {
-                    findings.iter().map(|f| f.fingerprint.clone()).collect()
-                } else {
-                    HashSet::new()
-                };
+            let existing_fingerprints: HashSet<String> = if let Ok(findings) = self
+                .db
+                .list_findings_by_scan(self.scan_id, None, None)
+                .await
+            {
+                findings.iter().map(|f| f.fingerprint.clone()).collect()
+            } else {
+                HashSet::new()
+            };
 
             let semgrep_stage =
                 semgrep::SemgrepStage::new(self.scan_id, self.repo_id, Arc::clone(&self.db));

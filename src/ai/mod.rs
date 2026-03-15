@@ -141,15 +141,24 @@ pub fn build_provider(config: &AiConfig) -> Option<Box<dyn ModelProvider>> {
 
     if let Some(ref key) = config.anthropic_api_key {
         let model = model_for_provider(ProviderKind::Anthropic, &config.default_model);
-        chain = chain.add(build_provider_for_kind(ProviderKind::Anthropic, key.clone()), model);
+        chain = chain.add(
+            build_provider_for_kind(ProviderKind::Anthropic, key.clone()),
+            model,
+        );
     }
     if let Some(ref key) = config.openai_api_key {
         let model = model_for_provider(ProviderKind::OpenAi, &config.default_model);
-        chain = chain.add(build_provider_for_kind(ProviderKind::OpenAi, key.clone()), model);
+        chain = chain.add(
+            build_provider_for_kind(ProviderKind::OpenAi, key.clone()),
+            model,
+        );
     }
     if let Some(ref url) = config.ollama_url {
         let model = model_for_provider(ProviderKind::Ollama, &config.default_model);
-        chain = chain.add(build_provider_for_kind(ProviderKind::Ollama, url.clone()), model);
+        chain = chain.add(
+            build_provider_for_kind(ProviderKind::Ollama, url.clone()),
+            model,
+        );
     }
 
     if chain.has_providers() {
@@ -197,10 +206,7 @@ mod tests {
             model_for_provider(ProviderKind::Anthropic, ""),
             "claude-sonnet-4-20250514"
         );
-        assert_eq!(
-            model_for_provider(ProviderKind::OpenAi, "   "),
-            "gpt-4o"
-        );
+        assert_eq!(model_for_provider(ProviderKind::OpenAi, "   "), "gpt-4o");
     }
 
     #[test]

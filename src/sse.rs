@@ -66,14 +66,20 @@ impl ScanBroadcaster {
     /// Create and register a cancellation token for a scan.
     pub fn register_cancellation_token(&self, scan_id: Uuid) -> CancellationToken {
         let token = CancellationToken::new();
-        let mut tokens = self.cancellation_tokens.lock().expect("cancellation tokens lock poisoned");
+        let mut tokens = self
+            .cancellation_tokens
+            .lock()
+            .expect("cancellation tokens lock poisoned");
         tokens.insert(scan_id, token.clone());
         token
     }
 
     /// Cancel a running scan by signalling its cancellation token.
     pub fn cancel_scan(&self, scan_id: Uuid) -> bool {
-        let tokens = self.cancellation_tokens.lock().expect("cancellation tokens lock poisoned");
+        let tokens = self
+            .cancellation_tokens
+            .lock()
+            .expect("cancellation tokens lock poisoned");
         if let Some(token) = tokens.get(&scan_id) {
             token.cancel();
             true
@@ -84,7 +90,10 @@ impl ScanBroadcaster {
 
     /// Remove the cancellation token for a scan.
     pub fn cleanup_cancellation_token(&self, scan_id: Uuid) {
-        let mut tokens = self.cancellation_tokens.lock().expect("cancellation tokens lock poisoned");
+        let mut tokens = self
+            .cancellation_tokens
+            .lock()
+            .expect("cancellation tokens lock poisoned");
         tokens.remove(&scan_id);
     }
 

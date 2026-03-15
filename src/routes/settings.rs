@@ -28,10 +28,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
                 "/integrations/{provider}",
                 web::delete().to(disconnect_integration),
             )
-            .route(
-                "/integrations/{provider}/pat",
-                web::post().to(save_pat),
-            )
+            .route("/integrations/{provider}/pat", web::post().to(save_pat))
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
             .route("/test-connection", web::post().to(test_connection))
@@ -688,12 +685,12 @@ async fn save_pat(
     if provider == "bitbucket" {
         let email = body.username.as_deref().map(|u| u.trim()).unwrap_or("");
         if email.is_empty() || !email.contains('@') {
-            let msg = "Bitbucket requires your account email (used for Basic auth with App Passwords).";
+            let msg =
+                "Bitbucket requires your account email (used for Basic auth with App Passwords).";
             if is_hx_request(&req) {
                 return inline_feedback_html(false, msg);
             }
-            return HttpResponse::BadRequest()
-                .json(ApiResponse::<()>::error(400, msg));
+            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
         }
     }
 

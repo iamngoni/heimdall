@@ -69,10 +69,7 @@ impl SemgrepStage {
         let output = match output {
             Ok(o) => o,
             Err(e) => {
-                warn!(
-                    "[{}] Failed to execute semgrep: {e}",
-                    self.scan_id
-                );
+                warn!("[{}] Failed to execute semgrep: {e}", self.scan_id);
                 return Ok(0);
             }
         };
@@ -95,10 +92,7 @@ impl SemgrepStage {
         let parsed: SemgrepOutput = match serde_json::from_str(&stdout) {
             Ok(p) => p,
             Err(e) => {
-                warn!(
-                    "[{}] Failed to parse semgrep output: {e}",
-                    self.scan_id
-                );
+                warn!("[{}] Failed to parse semgrep output: {e}", self.scan_id);
                 return Ok(0);
             }
         };

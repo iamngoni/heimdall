@@ -13,10 +13,10 @@ pub mod garmr;
 pub mod hunt;
 pub mod ingest;
 pub mod report;
-pub mod vidarr;
 pub mod static_analysis;
 pub mod taint;
 pub mod tyr;
+pub mod vidarr;
 
 use std::sync::Arc;
 
@@ -138,11 +138,8 @@ impl ScanPipeline {
                 "taint_analyzing",
                 "taint_analyzed",
                 async {
-                    let stage = taint::TaintAnalysisStage::new(
-                        self.scan_id,
-                        repo.id,
-                        Arc::clone(&self.db),
-                    );
+                    let stage =
+                        taint::TaintAnalysisStage::new(self.scan_id, repo.id, Arc::clone(&self.db));
                     stage.run(&code_index).await
                 },
             )
@@ -150,19 +147,11 @@ impl ScanPipeline {
 
         // Stage 3c: Config/IaC Scan
         let _config_ctx = self
-            .run_stage(
-                "config_scan",
-                "config_scanning",
-                "config_scanned",
-                async {
-                    let stage = config_scan::ConfigScanStage::new(
-                        self.scan_id,
-                        repo.id,
-                        Arc::clone(&self.db),
-                    );
-                    stage.run(&code_index).await
-                },
-            )
+            .run_stage("config_scan", "config_scanning", "config_scanned", async {
+                let stage =
+                    config_scan::ConfigScanStage::new(self.scan_id, repo.id, Arc::clone(&self.db));
+                stage.run(&code_index).await
+            })
             .await?;
 
         // Stage 4: Hunt (Agentic Discovery)
@@ -397,7 +386,10 @@ impl ScanPipeline {
                     "failed"
                 };
 
-                error!("[{}] Stage {stage_name} {stage_status}: {err_msg}", self.scan_id);
+                error!(
+                    "[{}] Stage {stage_name} {stage_status}: {err_msg}",
+                    self.scan_id
+                );
                 self.db
                     .update_scan_stage_status(scan_stage.id, stage_status, Some(&err_msg))
                     .await?;

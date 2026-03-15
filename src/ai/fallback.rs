@@ -136,7 +136,9 @@ impl ModelProvider for FallbackProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::types::{CompletionRequest, CompletionResponse, Message, StopReason, TokenUsage};
+    use crate::ai::types::{
+        CompletionRequest, CompletionResponse, Message, StopReason, TokenUsage,
+    };
 
     /// A mock provider that always fails with a specific error.
     struct FailingProvider {
@@ -146,7 +148,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ModelProvider for FailingProvider {
-        async fn complete(&self, _request: CompletionRequest) -> HeimdallResult<CompletionResponse> {
+        async fn complete(
+            &self,
+            _request: CompletionRequest,
+        ) -> HeimdallResult<CompletionResponse> {
             anyhow::bail!("{}", self.error_msg)
         }
         fn provider_name(&self) -> &str {
@@ -161,7 +166,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ModelProvider for SuccessProvider {
-        async fn complete(&self, _request: CompletionRequest) -> HeimdallResult<CompletionResponse> {
+        async fn complete(
+            &self,
+            _request: CompletionRequest,
+        ) -> HeimdallResult<CompletionResponse> {
             Ok(CompletionResponse {
                 content: format!("response from {}", self.name),
                 tool_calls: None,
@@ -196,8 +204,14 @@ mod tests {
     #[tokio::test]
     async fn primary_provider_success_does_not_fallback() {
         let provider = FallbackProvider::new()
-            .add(Box::new(SuccessProvider { name: "primary" }), "model-a".into())
-            .add(Box::new(SuccessProvider { name: "secondary" }), "model-b".into());
+            .add(
+                Box::new(SuccessProvider { name: "primary" }),
+                "model-a".into(),
+            )
+            .add(
+                Box::new(SuccessProvider { name: "secondary" }),
+                "model-b".into(),
+            );
 
         let result = provider.complete(test_request()).await.unwrap();
         assert_eq!(result.content, "response from primary");
@@ -209,11 +223,15 @@ mod tests {
             .add(
                 Box::new(FailingProvider {
                     name: "primary",
-                    error_msg: "Claude API error (429): rate_limit_error — too many requests".into(),
+                    error_msg: "Claude API error (429): rate_limit_error — too many requests"
+                        .into(),
                 }),
                 "model-a".into(),
             )
-            .add(Box::new(SuccessProvider { name: "secondary" }), "model-b".into());
+            .add(
+                Box::new(SuccessProvider { name: "secondary" }),
+                "model-b".into(),
+            );
 
         let result = provider.complete(test_request()).await.unwrap();
         assert_eq!(result.content, "response from secondary");
@@ -225,11 +243,15 @@ mod tests {
             .add(
                 Box::new(FailingProvider {
                     name: "primary",
-                    error_msg: "Claude API error (401): authentication_error — invalid api key".into(),
+                    error_msg: "Claude API error (401): authentication_error — invalid api key"
+                        .into(),
                 }),
                 "model-a".into(),
             )
-            .add(Box::new(SuccessProvider { name: "secondary" }), "model-b".into());
+            .add(
+                Box::new(SuccessProvider { name: "secondary" }),
+                "model-b".into(),
+            );
 
         let result = provider.complete(test_request()).await;
         assert!(result.is_err());
@@ -246,7 +268,10 @@ mod tests {
                 }),
                 "model-a".into(),
             )
-            .add(Box::new(SuccessProvider { name: "secondary" }), "model-b".into());
+            .add(
+                Box::new(SuccessProvider { name: "secondary" }),
+                "model-b".into(),
+            );
 
         let result = provider.complete(test_request()).await.unwrap();
         assert_eq!(result.content, "response from secondary");
@@ -278,12 +303,24 @@ mod tests {
 
     #[tokio::test]
     async fn is_retryable_detects_status_codes() {
-        assert!(is_retryable_error(&anyhow::anyhow!("API error (429): rate limit")));
-        assert!(is_retryable_error(&anyhow::anyhow!("API error (500): internal")));
-        assert!(is_retryable_error(&anyhow::anyhow!("API error (502): bad gateway")));
-        assert!(is_retryable_error(&anyhow::anyhow!("API error (503): unavailable")));
-        assert!(is_retryable_error(&anyhow::anyhow!("API error (529): overloaded")));
-        assert!(!is_retryable_error(&anyhow::anyhow!("API error (401): unauthorized")));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "API error (429): rate limit"
+        )));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "API error (500): internal"
+        )));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "API error (502): bad gateway"
+        )));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "API error (503): unavailable"
+        )));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "API error (529): overloaded"
+        )));
+        assert!(!is_retryable_error(&anyhow::anyhow!(
+            "API error (401): unauthorized"
+        )));
         assert!(is_retryable_error(&anyhow::anyhow!("connection refused")));
         assert!(is_retryable_error(&anyhow::anyhow!("request timed out")));
     }

@@ -78,8 +78,7 @@ impl ConfigScanStage {
                 // For whole-file checks (negative patterns), check once
                 if rule.whole_file {
                     if !re.is_match(&indexed_file.content) {
-                        let fingerprint =
-                            make_fingerprint(rule.name, file_path, 1);
+                        let fingerprint = make_fingerprint(rule.name, file_path, 1);
                         let _ = self
                             .db
                             .create_finding_full(
@@ -238,21 +237,49 @@ mod tests {
 
     #[test]
     fn test_file_matches_extension() {
-        assert!(file_matches_patterns("deploy/app.yml", "app.yml", &["*.yml", "*.yaml"]));
-        assert!(file_matches_patterns("k8s/deployment.yaml", "deployment.yaml", &["*.yml", "*.yaml"]));
-        assert!(!file_matches_patterns("src/main.rs", "main.rs", &["*.yml", "*.yaml"]));
+        assert!(file_matches_patterns(
+            "deploy/app.yml",
+            "app.yml",
+            &["*.yml", "*.yaml"]
+        ));
+        assert!(file_matches_patterns(
+            "k8s/deployment.yaml",
+            "deployment.yaml",
+            &["*.yml", "*.yaml"]
+        ));
+        assert!(!file_matches_patterns(
+            "src/main.rs",
+            "main.rs",
+            &["*.yml", "*.yaml"]
+        ));
     }
 
     #[test]
     fn test_file_matches_exact_name() {
-        assert!(file_matches_patterns("app/Dockerfile", "Dockerfile", &["Dockerfile"]));
-        assert!(!file_matches_patterns("app/main.py", "main.py", &["Dockerfile"]));
+        assert!(file_matches_patterns(
+            "app/Dockerfile",
+            "Dockerfile",
+            &["Dockerfile"]
+        ));
+        assert!(!file_matches_patterns(
+            "app/main.py",
+            "main.py",
+            &["Dockerfile"]
+        ));
     }
 
     #[test]
     fn test_file_matches_path_component() {
-        assert!(file_matches_patterns(".github/workflows/ci.yml", "ci.yml", &[".github/workflows/"]));
-        assert!(!file_matches_patterns("src/workflows.rs", "workflows.rs", &[".github/workflows/"]));
+        assert!(file_matches_patterns(
+            ".github/workflows/ci.yml",
+            "ci.yml",
+            &[".github/workflows/"]
+        ));
+        assert!(!file_matches_patterns(
+            "src/workflows.rs",
+            "workflows.rs",
+            &[".github/workflows/"]
+        ));
     }
 
     #[test]

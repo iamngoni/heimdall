@@ -31,7 +31,9 @@ pub async fn check_bitbucket_issue_tracker(
 ) -> Result<bool> {
     let (_, path) = split_remote(remote_url)?;
     if path.len() < 2 {
-        return Err(anyhow!("Unable to determine Bitbucket workspace/repository from remote URL"));
+        return Err(anyhow!(
+            "Unable to determine Bitbucket workspace/repository from remote URL"
+        ));
     }
     let workspace = &path[0];
     let repo_slug = &path[1];
@@ -47,7 +49,10 @@ pub async fn check_bitbucket_issue_tracker(
         req = req.header("Authorization", format!("Bearer {token}"));
     }
 
-    let resp = req.send().await.context("Failed to reach Bitbucket issues API")?;
+    let resp = req
+        .send()
+        .await
+        .context("Failed to reach Bitbucket issues API")?;
     let status = resp.status();
 
     if status.is_success() {
@@ -63,7 +68,9 @@ pub async fn check_bitbucket_issue_tracker(
 
     if status.as_u16() == 401 || status.as_u16() == 403 {
         warn!("[bitbucket] auth error checking issue tracker for {workspace}/{repo_slug}: {body}");
-        return Err(anyhow!("Authentication failed checking Bitbucket issue tracker"));
+        return Err(anyhow!(
+            "Authentication failed checking Bitbucket issue tracker"
+        ));
     }
 
     warn!("[bitbucket] unexpected response checking issue tracker ({status}): {body}");

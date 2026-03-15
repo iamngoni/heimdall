@@ -794,14 +794,12 @@ static C_DEFINE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*#define\s+(\w+)").unwrap());
 
 // C++
-static CPP_CLASS: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*(?:template\s*<[^>]*>\s*)?class\s+(\w+)").unwrap()
-});
+static CPP_CLASS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*(?:template\s*<[^>]*>\s*)?class\s+(\w+)").unwrap());
 static CPP_NAMESPACE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*namespace\s+(\w+)").unwrap());
-static CPP_METHOD: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^(?:[\w:*&<>]+\s+)+(\w+)::(\w+)\s*\(").unwrap()
-});
+static CPP_METHOD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^(?:[\w:*&<>]+\s+)+(\w+)::(\w+)\s*\(").unwrap());
 
 // C#
 static CS_TYPE: LazyLock<Regex> = LazyLock::new(|| {
@@ -811,7 +809,10 @@ static CS_METHOD: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^\s*(public|private|protected|internal)\s+(?:static\s+)?(?:async\s+)?(?:override\s+)?(?:virtual\s+)?[\w<>\[\]?]+\s+(\w+)\s*\(").unwrap()
 });
 static CS_PROP: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*(public|private|protected|internal)\s+(?:static\s+)?[\w<>\[\]?]+\s+(\w+)\s*\{").unwrap()
+    Regex::new(
+        r"(?m)^\s*(public|private|protected|internal)\s+(?:static\s+)?[\w<>\[\]?]+\s+(\w+)\s*\{",
+    )
+    .unwrap()
 });
 
 // Swift
@@ -835,17 +836,16 @@ static SCALA_DEF: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^\s*(?:private\s+|protected\s+)?(?:override\s+)?def\s+(\w+)").unwrap()
 });
 static SCALA_TYPE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*(?:case\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:class|object|trait)\s+(\w+)").unwrap()
+    Regex::new(r"(?m)^\s*(?:case\s+)?(?:abstract\s+)?(?:sealed\s+)?(?:class|object|trait)\s+(\w+)")
+        .unwrap()
 });
 
 // Shell/Bash
-static SH_FUNC: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*(?:function\s+(\w+)|(\w+)\s*\(\s*\)\s*\{)").unwrap()
-});
+static SH_FUNC: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*(?:function\s+(\w+)|(\w+)\s*\(\s*\)\s*\{)").unwrap());
 static SH_EXPORT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*export\s+(\w+)=").unwrap());
-static SH_ALIAS: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^\s*alias\s+(\w+)=").unwrap());
+static SH_ALIAS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^\s*alias\s+(\w+)=").unwrap());
 
 fn extract_symbols_regex(content: &str, language: &str, file: &str) -> Vec<Symbol> {
     match language {
@@ -955,7 +955,10 @@ fn extract_c_symbols(content: &str, file: &str) -> Vec<Symbol> {
     for cap in C_FUNC.captures_iter(content) {
         let name = cap[1].to_string();
         // Skip common C keywords/types that may be false positives
-        if matches!(name.as_str(), "if" | "for" | "while" | "switch" | "return" | "sizeof" | "typeof") {
+        if matches!(
+            name.as_str(),
+            "if" | "for" | "while" | "switch" | "return" | "sizeof" | "typeof"
+        ) {
             continue;
         }
         let line = regex_line_number(content, cap.get(0).unwrap().start());
@@ -1182,7 +1185,9 @@ fn extract_kotlin_symbols(content: &str, file: &str) -> Vec<Symbol> {
         let name = cap[1].to_string();
         let line = regex_line_number(content, cap.get(0).unwrap().start());
         let full_match = cap.get(0).unwrap().as_str();
-        let is_public = !full_match.contains("private") && !full_match.contains("protected") && !full_match.contains("internal");
+        let is_public = !full_match.contains("private")
+            && !full_match.contains("protected")
+            && !full_match.contains("internal");
         syms.push(Symbol {
             name: name.clone(),
             kind: "function".to_string(),
@@ -1198,7 +1203,9 @@ fn extract_kotlin_symbols(content: &str, file: &str) -> Vec<Symbol> {
         let name = cap[1].to_string();
         let line = regex_line_number(content, cap.get(0).unwrap().start());
         let full_match = cap.get(0).unwrap().as_str();
-        let is_public = !full_match.contains("private") && !full_match.contains("protected") && !full_match.contains("internal");
+        let is_public = !full_match.contains("private")
+            && !full_match.contains("protected")
+            && !full_match.contains("internal");
         let kind = if full_match.contains("object") {
             "object"
         } else if full_match.contains("interface") {

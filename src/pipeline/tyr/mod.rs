@@ -690,7 +690,10 @@ impl TyrStage {
         ctx.push_str("## File Structure\n");
         for (i, path) in recon.file_tree.iter().enumerate() {
             if ctx.len() > 8000 {
-                ctx.push_str(&format!("... and {} more files\n", recon.file_tree.len() - i));
+                ctx.push_str(&format!(
+                    "... and {} more files\n",
+                    recon.file_tree.len() - i
+                ));
                 break;
             }
             ctx.push_str(&format!("- {path}\n"));
@@ -758,9 +761,22 @@ impl TyrStage {
         // 9. Key source files — include actual content of critical files
         ctx.push_str("## Key Source Files (selected content)\n");
         let critical_file_patterns = [
-            "auth", "login", "session", "middleware", "security", "crypto",
-            "config", "route", "router", "controller", "handler", "api",
-            "upload", "webhook", "payment", "admin",
+            "auth",
+            "login",
+            "session",
+            "middleware",
+            "security",
+            "crypto",
+            "config",
+            "route",
+            "router",
+            "controller",
+            "handler",
+            "api",
+            "upload",
+            "webhook",
+            "payment",
+            "admin",
         ];
 
         let mut included_bytes = 0usize;
@@ -787,7 +803,11 @@ impl TyrStage {
             if included_bytes >= max_source_bytes {
                 break;
             }
-            let content_len = file.content.len().min(max_source_bytes - included_bytes).min(4000);
+            let content_len = file
+                .content
+                .len()
+                .min(max_source_bytes - included_bytes)
+                .min(4000);
             let snippet: String = file.content.chars().take(content_len).collect();
             ctx.push_str(&format!("\n### {path}\n```\n{snippet}\n```\n"));
             included_bytes += content_len;

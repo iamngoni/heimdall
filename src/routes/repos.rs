@@ -34,10 +34,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
                 web::patch().to(update_repo_issue_automation),
             )
             .route("/{id}/branches", web::get().to(list_repo_branches))
-            .route(
-                "/{id}/branch",
-                web::patch().to(update_repo_branch),
-            )
+            .route("/{id}/branch", web::patch().to(update_repo_branch))
             .route(
                 "/{id}/check-issue-tracker",
                 web::get().to(check_issue_tracker),
@@ -118,7 +115,10 @@ async fn delete_repo(
 
     match state.db.delete_repo(repo_id).await {
         Ok(true) => {
-            info!("Repo {} ({}) deleted by user {}", repo.name, repo_id, user.id);
+            info!(
+                "Repo {} ({}) deleted by user {}",
+                repo.name, repo_id, user.id
+            );
 
             if req.headers().contains_key("HX-Request") {
                 return HttpResponse::Ok()
@@ -267,8 +267,16 @@ async fn trigger_scan(
 
         let cancel_token = sse.register_cancellation_token(scan_id);
         tokio::spawn(async move {
-            let pipeline =
-                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key, data_dir, cancel_token);
+            let pipeline = ScanPipeline::new(
+                scan_id,
+                db.clone(),
+                ai,
+                model,
+                sse.clone(),
+                encryption_key,
+                data_dir,
+                cancel_token,
+            );
             if let Err(e) = pipeline.run(&repo).await {
                 error!("Scan pipeline failed for {scan_id}: {e:#}");
                 if !pipeline.cancel_token.is_cancelled() {
@@ -368,17 +376,13 @@ async fn update_repo_issue_automation(
 }
 
 /// GET /repos/{id}/branches — list remote branches for a repo.
-async fn list_repo_branches(
-    state: web::Data<AppState>,
-    path: web::Path<Uuid>,
-) -> HttpResponse {
+async fn list_repo_branches(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
     let repo_id = path.into_inner();
 
     let repo = match state.db.get_repo_by_id(repo_id).await {
         Ok(Some(r)) => r,
         Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Repo not found"));
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Repo not found"));
         }
         Err(e) => {
             return HttpResponse::InternalServerError()
@@ -441,87 +445,188 @@ async fn list_repo_branches(
     let provider = repo.source_type.as_str();
 
     let branches: Vec<String> = match provider {
-        "github" => {
-            let resp = client
-                .get(format!(
-                    "https://api.github.com/repos/{owner}/{repo_name}/branches?per_page=100"
-                ))
-                .header("Authorization", format!("Bearer {token}"))
-                .header("User-Agent", "Heimdall")
-                .header("Accept", "application/vnd.github+json")
-                .send()
-                .await;
-
-            match resp {
-                Ok(r) if r.status().is_success() => {
-                    #[derive(Deserialize)]
-                    struct GhBranch { name: String }
-                    r.json::<Vec<GhBranch>>()
-                        .await
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|b| b.name)
-                        .collect()
-                }
-                _ => vec![],
-            }
-        }
+        "github" => fetch_github_branches(&client, &token, &owner, &repo_name).await,
         "gitlab" => {
-            let encoded = format!("{owner}%2F{repo_name}");
-            let resp = client
-                .get(format!(
-                    "https://gitlab.com/api/v4/projects/{encoded}/repository/branches?per_page=100"
-                ))
-                .header("Authorization", format!("Bearer {token}"))
-                .send()
-                .await;
-
-            match resp {
-                Ok(r) if r.status().is_success() => {
-                    #[derive(Deserialize)]
-                    struct GlBranch { name: String }
-                    r.json::<Vec<GlBranch>>()
-                        .await
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|b| b.name)
-                        .collect()
-                }
-                _ => vec![],
-            }
+            fetch_gitlab_branches(
+                &client,
+                &token,
+                &state.config.gitlab_oauth.base_url,
+                &owner,
+                &repo_name,
+            )
+            .await
         }
-        "bitbucket" => {
-            let mut req = client.get(format!(
-                "https://api.bitbucket.org/2.0/repositories/{owner}/{repo_name}/refs/branches?pagelen=100"
-            ));
-            if conn.token_source == "pat" {
-                req = req.basic_auth(&conn.provider_user_id, Some(&token));
-            } else {
-                req = req.header("Authorization", format!("Bearer {token}"));
-            }
-            let resp = req.send().await;
-
-            match resp {
-                Ok(r) if r.status().is_success() => {
-                    #[derive(Deserialize)]
-                    struct BbBranchResponse { values: Vec<BbBranch> }
-                    #[derive(Deserialize)]
-                    struct BbBranch { name: String }
-                    r.json::<BbBranchResponse>()
-                        .await
-                        .map(|r| r.values.into_iter().map(|b| b.name).collect())
-                        .unwrap_or_default()
-                }
-                _ => vec![],
-            }
-        }
+        "bitbucket" => fetch_bitbucket_branches(&client, &token, &conn, &owner, &repo_name).await,
         _ => vec![],
     };
+
+    let mut seen = HashSet::new();
+    let mut branches: Vec<String> = branches
+        .into_iter()
+        .filter(|branch| seen.insert(branch.clone()))
+        .collect();
+    branches.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
 
     HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
         "branches": branches,
         "current": repo.default_branch,
     })))
+}
+
+const REMOTE_BRANCH_PAGE_SIZE: usize = 100;
+const REMOTE_BRANCH_MAX_PAGES: usize = 50;
+
+async fn fetch_github_branches(
+    client: &reqwest::Client,
+    token: &str,
+    owner: &str,
+    repo_name: &str,
+) -> Vec<String> {
+    #[derive(Deserialize)]
+    struct GithubBranch {
+        name: String,
+    }
+
+    let mut branches = Vec::new();
+
+    for page in 1..=REMOTE_BRANCH_MAX_PAGES {
+        let resp = client
+            .get(format!(
+                "https://api.github.com/repos/{owner}/{repo_name}/branches?per_page={REMOTE_BRANCH_PAGE_SIZE}&page={page}"
+            ))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("User-Agent", "Heimdall")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await;
+
+        let page_branches = match resp {
+            Ok(r) if r.status().is_success() => {
+                r.json::<Vec<GithubBranch>>().await.unwrap_or_default()
+            }
+            _ => break,
+        };
+
+        let page_len = page_branches.len();
+        if page_len == 0 {
+            break;
+        }
+
+        branches.extend(page_branches.into_iter().map(|branch| branch.name));
+        if page_len < REMOTE_BRANCH_PAGE_SIZE {
+            break;
+        }
+    }
+
+    branches
+}
+
+async fn fetch_gitlab_branches(
+    client: &reqwest::Client,
+    token: &str,
+    base_url: &str,
+    owner: &str,
+    repo_name: &str,
+) -> Vec<String> {
+    #[derive(Deserialize)]
+    struct GitlabBranch {
+        name: String,
+    }
+
+    let encoded = format!("{owner}%2F{repo_name}");
+    let base_url = base_url.trim_end_matches('/');
+    let mut branches = Vec::new();
+
+    for page in 1..=REMOTE_BRANCH_MAX_PAGES {
+        let resp = client
+            .get(format!(
+                "{base_url}/api/v4/projects/{encoded}/repository/branches?per_page={REMOTE_BRANCH_PAGE_SIZE}&page={page}"
+            ))
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await;
+
+        let page_branches = match resp {
+            Ok(r) if r.status().is_success() => {
+                r.json::<Vec<GitlabBranch>>().await.unwrap_or_default()
+            }
+            _ => break,
+        };
+
+        let page_len = page_branches.len();
+        if page_len == 0 {
+            break;
+        }
+
+        branches.extend(page_branches.into_iter().map(|branch| branch.name));
+        if page_len < REMOTE_BRANCH_PAGE_SIZE {
+            break;
+        }
+    }
+
+    branches
+}
+
+async fn fetch_bitbucket_branches(
+    client: &reqwest::Client,
+    token: &str,
+    conn: &crate::models::db_models::OauthConnection,
+    owner: &str,
+    repo_name: &str,
+) -> Vec<String> {
+    #[derive(Deserialize)]
+    struct BitbucketBranchResponse {
+        values: Vec<BitbucketBranch>,
+        next: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct BitbucketBranch {
+        name: String,
+    }
+
+    let mut branches = Vec::new();
+    let mut next_url = Some(format!(
+        "https://api.bitbucket.org/2.0/repositories/{owner}/{repo_name}/refs/branches?pagelen={REMOTE_BRANCH_PAGE_SIZE}"
+    ));
+
+    for _ in 0..REMOTE_BRANCH_MAX_PAGES {
+        let Some(url) = next_url.take() else {
+            break;
+        };
+
+        let mut req = client.get(url);
+        if conn.token_source == "pat" {
+            req = req.basic_auth(&conn.provider_user_id, Some(token));
+        } else {
+            req = req.header("Authorization", format!("Bearer {token}"));
+        }
+
+        let resp = req.send().await;
+        let payload = match resp {
+            Ok(r) if r.status().is_success() => r
+                .json::<BitbucketBranchResponse>()
+                .await
+                .unwrap_or(BitbucketBranchResponse {
+                    values: Vec::new(),
+                    next: None,
+                }),
+            _ => break,
+        };
+
+        let page_len = payload.values.len();
+        if page_len == 0 {
+            break;
+        }
+
+        branches.extend(payload.values.into_iter().map(|branch| branch.name));
+        next_url = payload.next;
+        if next_url.is_none() || page_len < REMOTE_BRANCH_PAGE_SIZE {
+            break;
+        }
+    }
+
+    branches
 }
 
 /// Extract owner/repo from a remote URL like https://github.com/owner/repo.git
@@ -585,10 +690,7 @@ async fn update_repo_branch(
 }
 
 /// GET /repos/{id}/check-issue-tracker — check if Bitbucket issue tracker is enabled.
-async fn check_issue_tracker(
-    state: web::Data<AppState>,
-    path: web::Path<Uuid>,
-) -> HttpResponse {
+async fn check_issue_tracker(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
     let repo_id = path.into_inner();
     let repo = match state.db.get_repo_by_id(repo_id).await {
         Ok(Some(r)) => r,
@@ -596,8 +698,10 @@ async fn check_issue_tracker(
             return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Repo not found"));
         }
         Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("Failed to fetch repo: {e}")));
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch repo: {e}"),
+            ));
         }
     };
 
@@ -951,7 +1055,10 @@ async fn list_remote_repos(
 
     info!(
         "[{provider}] list_remote_repos: token_source={}, provider_user_id={}, token_len={}, token_prefix={}...",
-        conn.token_source, conn.provider_user_id, token.len(), &token[..token.len().min(4)]
+        conn.token_source,
+        conn.provider_user_id,
+        token.len(),
+        &token[..token.len().min(4)]
     );
 
     // Bitbucket App Passwords require Basic auth with the account email.
@@ -964,7 +1071,9 @@ async fn list_remote_repos(
                 provider,
                 &[],
                 Some(&connected_urls),
-                Some("Bitbucket App Passwords require your account email for authentication. Please re-save your credentials in Settings with your Bitbucket account email."),
+                Some(
+                    "Bitbucket App Passwords require your account email for authentication. Please re-save your credentials in Settings with your Bitbucket account email.",
+                ),
             );
         }
     }
@@ -1124,15 +1233,15 @@ async fn list_remote_repos(
         Err(e) => {
             error!("[{provider}] network error: {e}");
             render_remote_repo_list(
-            &state,
-            provider,
-            &[],
-            Some(&connected_urls),
-            Some(&format!(
-                "Failed to reach {}: {e}",
-                provider_display_name(provider)
-            )),
-        )
+                &state,
+                provider,
+                &[],
+                Some(&connected_urls),
+                Some(&format!(
+                    "Failed to reach {}: {e}",
+                    provider_display_name(provider)
+                )),
+            )
         }
     }
 }

@@ -50,12 +50,12 @@ async fn main() -> std::io::Result<()> {
     // Apply schema idempotently from the DSL — no file-based migration tracking.
     // Every statement uses IF NOT EXISTS / IF NOT EXISTS so this is safe on every startup.
     let ddl = heimdall::db::schema::generate_ddl(heimdall::db::schema::DbDriver::Postgres);
-    sqlx::raw_sql(&ddl)
-        .execute(&db_pool)
-        .await
-        .map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Schema apply failed: {e}"))
-        })?;
+    sqlx::raw_sql(&ddl).execute(&db_pool).await.map_err(|e| {
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Schema apply failed: {e}"),
+        )
+    })?;
 
     info!("Schema applied");
 

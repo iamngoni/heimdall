@@ -116,9 +116,7 @@ async fn cancel_scan(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpR
 
     // Emit SSE events so the UI updates immediately
     state.sse.emit_status_change(scan_id, "cancelled");
-    state
-        .sse
-        .emit_error(scan_id, "Scan was cancelled by user");
+    state.sse.emit_error(scan_id, "Scan was cancelled by user");
 
     // Clean up the SSE channel after a short delay
     let sse = Arc::clone(&state.sse);

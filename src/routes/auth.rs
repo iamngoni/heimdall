@@ -1363,12 +1363,16 @@ async fn bitbucket_callback(
 
     let config = &state.config.bitbucket_oauth;
     let Some(client_id) = &config.client_id else {
-        return HttpResponse::InternalServerError()
-            .json(ApiResponse::<()>::error(500, "Bitbucket OAuth not configured"));
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            "Bitbucket OAuth not configured",
+        ));
     };
     let Some(client_secret) = &config.client_secret else {
-        return HttpResponse::InternalServerError()
-            .json(ApiResponse::<()>::error(500, "Bitbucket OAuth not configured"));
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            "Bitbucket OAuth not configured",
+        ));
     };
 
     let http = reqwest::Client::new();
@@ -1467,10 +1471,10 @@ async fn bitbucket_callback(
 
         match emails_resp {
             Ok(resp) => {
-                let email_data: BitbucketEmailResponse =
-                    resp.json().await.unwrap_or(BitbucketEmailResponse {
-                        values: Vec::new(),
-                    });
+                let email_data: BitbucketEmailResponse = resp
+                    .json()
+                    .await
+                    .unwrap_or(BitbucketEmailResponse { values: Vec::new() });
                 email_data
                     .values
                     .iter()
@@ -1492,7 +1496,10 @@ async fn bitbucket_callback(
     };
 
     // Bitbucket UUID comes wrapped in braces like {uuid} — strip them for storage.
-    let provider_user_id = bb_user.uuid.trim_matches(|c| c == '{' || c == '}').to_string();
+    let provider_user_id = bb_user
+        .uuid
+        .trim_matches(|c| c == '{' || c == '}')
+        .to_string();
     let display_name = bb_user
         .display_name
         .as_deref()
@@ -1513,11 +1520,8 @@ async fn bitbucket_callback(
             .await
         {
             Ok(Some(owner)) if owner.id != current_user.id => {
-                let redirect_target = with_query_param(
-                    "/settings",
-                    "integration_error",
-                    "bitbucket-account-in-use",
-                );
+                let redirect_target =
+                    with_query_param("/settings", "integration_error", "bitbucket-account-in-use");
                 return HttpResponse::Found()
                     .cookie(clear_cookie(OAUTH_STATE_COOKIE))
                     .cookie(clear_cookie(OAUTH_NEXT_COOKIE))

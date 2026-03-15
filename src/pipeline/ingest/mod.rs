@@ -299,10 +299,7 @@ impl IngestStage {
                 if entries.len() == 1 && entries[0].file_type().map(|t| t.is_dir()).unwrap_or(false)
                 {
                     let inner = entries[0].path();
-                    let tmp_name = work_dir.with_file_name(format!(
-                        "{}-inner",
-                        self.scan_id
-                    ));
+                    let tmp_name = work_dir.with_file_name(format!("{}-inner", self.scan_id));
                     std::fs::rename(&inner, &tmp_name)?;
                     std::fs::remove_dir_all(&work_dir)?;
                     std::fs::rename(&tmp_name, &work_dir)?;
@@ -455,9 +452,7 @@ fn embed_token_in_clone_url(
         "gitlab" => "oauth2".into(),
         // Bitbucket App Passwords use the Bitbucket username (not email) for Basic auth.
         // The clone URL from the API already contains it (e.g. https://username@bitbucket.org/...).
-        "bitbucket" if token_source == "pat" => {
-            embedded_user.unwrap_or(provider_user_id).into()
-        }
+        "bitbucket" if token_source == "pat" => embedded_user.unwrap_or(provider_user_id).into(),
         "bitbucket" => "x-token-auth".into(),
         _ => return url.to_string(),
     };

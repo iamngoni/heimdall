@@ -468,7 +468,9 @@ async fn repo_detail_page(
                         repo.remote_url.as_deref().unwrap_or(""),
                         &token,
                         &conn,
-                    ).await {
+                    )
+                    .await
+                    {
                         bb_issue_tracker_disabled = true;
                     }
                 }

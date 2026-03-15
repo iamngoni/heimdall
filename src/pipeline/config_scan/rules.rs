@@ -237,7 +237,12 @@ pub const CONFIG_RULES: &[ConfigRule] = &[
         severity: "critical",
         cwe: "CWE-798",
         description: "Plaintext secret in CI/CD configuration — use encrypted secrets",
-        file_patterns: &[".github/workflows/", ".gitlab-ci.yml", "Jenkinsfile", ".circleci/"],
+        file_patterns: &[
+            ".github/workflows/",
+            ".gitlab-ci.yml",
+            "Jenkinsfile",
+            ".circleci/",
+        ],
         whole_file: false,
     },
     ConfigRule {
@@ -303,7 +308,14 @@ pub const CONFIG_RULES: &[ConfigRule] = &[
         severity: "high",
         cwe: "CWE-798",
         description: "Database connection string with embedded credentials in config file",
-        file_patterns: &[".env", ".env.production", "*.env", "*.conf", "*.cfg", "*.ini"],
+        file_patterns: &[
+            ".env",
+            ".env.production",
+            "*.env",
+            "*.conf",
+            "*.cfg",
+            "*.ini",
+        ],
         whole_file: false,
     },
     ConfigRule {
@@ -312,7 +324,16 @@ pub const CONFIG_RULES: &[ConfigRule] = &[
         severity: "high",
         cwe: "CWE-798",
         description: "Default or weak credentials in configuration file",
-        file_patterns: &[".env", "*.env", "*.conf", "*.cfg", "*.ini", "*.yml", "*.yaml", "*.properties"],
+        file_patterns: &[
+            ".env",
+            "*.env",
+            "*.conf",
+            "*.cfg",
+            "*.ini",
+            "*.yml",
+            "*.yaml",
+            "*.properties",
+        ],
         whole_file: false,
     },
     ConfigRule {
@@ -339,7 +360,17 @@ pub const CONFIG_RULES: &[ConfigRule] = &[
         severity: "high",
         cwe: "CWE-798",
         description: "Secret or API key hardcoded in configuration file",
-        file_patterns: &[".env", "*.env", "*.conf", "*.cfg", "*.ini", "*.properties", "config.yml", "config.yaml", "settings.yml"],
+        file_patterns: &[
+            ".env",
+            "*.env",
+            "*.conf",
+            "*.cfg",
+            "*.ini",
+            "*.properties",
+            "config.yml",
+            "config.yaml",
+            "settings.yml",
+        ],
         whole_file: false,
     },
     // -----------------------------------------------------------------------
@@ -351,7 +382,12 @@ pub const CONFIG_RULES: &[ConfigRule] = &[
         severity: "medium",
         cwe: "CWE-798",
         description: "Helm chart has default value for secret — ensure override in production",
-        file_patterns: &["values.yml", "values.yaml", "*/templates/*.yml", "*/templates/*.yaml"],
+        file_patterns: &[
+            "values.yml",
+            "values.yaml",
+            "*/templates/*.yml",
+            "*/templates/*.yaml",
+        ],
         whole_file: false,
     },
     ConfigRule {
@@ -428,7 +464,14 @@ mod tests {
 
     #[test]
     fn test_dockerfile_latest_tag_matches() {
-        let re = regex::Regex::new(CONFIG_RULES.iter().find(|r| r.name == "docker-latest-tag").unwrap().pattern).unwrap();
+        let re = regex::Regex::new(
+            CONFIG_RULES
+                .iter()
+                .find(|r| r.name == "docker-latest-tag")
+                .unwrap()
+                .pattern,
+        )
+        .unwrap();
         assert!(re.is_match("FROM node:latest"));
         assert!(re.is_match("FROM python:latest AS builder"));
         assert!(!re.is_match("FROM node:18-alpine"));
@@ -436,21 +479,42 @@ mod tests {
 
     #[test]
     fn test_k8s_privileged_matches() {
-        let re = regex::Regex::new(CONFIG_RULES.iter().find(|r| r.name == "k8s-privileged-container").unwrap().pattern).unwrap();
+        let re = regex::Regex::new(
+            CONFIG_RULES
+                .iter()
+                .find(|r| r.name == "k8s-privileged-container")
+                .unwrap()
+                .pattern,
+        )
+        .unwrap();
         assert!(re.is_match("    privileged: true"));
         assert!(!re.is_match("    privileged: false"));
     }
 
     #[test]
     fn test_tf_wide_open_sg_matches() {
-        let re = regex::Regex::new(CONFIG_RULES.iter().find(|r| r.name == "tf-security-group-wide-open").unwrap().pattern).unwrap();
+        let re = regex::Regex::new(
+            CONFIG_RULES
+                .iter()
+                .find(|r| r.name == "tf-security-group-wide-open")
+                .unwrap()
+                .pattern,
+        )
+        .unwrap();
         assert!(re.is_match(r#"  cidr_blocks = ["0.0.0.0/0"]"#));
         assert!(!re.is_match(r#"  cidr_blocks = ["10.0.0.0/8"]"#));
     }
 
     #[test]
     fn test_env_debug_matches() {
-        let re = regex::Regex::new(CONFIG_RULES.iter().find(|r| r.name == "env-debug-enabled").unwrap().pattern).unwrap();
+        let re = regex::Regex::new(
+            CONFIG_RULES
+                .iter()
+                .find(|r| r.name == "env-debug-enabled")
+                .unwrap()
+                .pattern,
+        )
+        .unwrap();
         assert!(re.is_match("DEBUG=true"));
         assert!(re.is_match("FLASK_DEBUG=1"));
         assert!(re.is_match("NODE_ENV=development"));
