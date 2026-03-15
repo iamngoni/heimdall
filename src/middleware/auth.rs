@@ -156,7 +156,8 @@ where
         Box::pin(async move {
             // Skip auth for public API routes (OAuth callbacks, login, register, webhooks)
             if is_auth_exempt(&path) {
-                let res = service.borrow_mut().call(req).await?;
+                let fut = service.borrow_mut().call(req);
+                let res = fut.await?;
                 return Ok(res.map_into_left_body());
             }
 
@@ -212,7 +213,8 @@ where
             req.extensions_mut().insert(authenticated);
 
             // 7. Call the inner service
-            let res = service.borrow_mut().call(req).await?;
+            let fut = service.borrow_mut().call(req);
+            let res = fut.await?;
             Ok(res.map_into_left_body())
         })
     }

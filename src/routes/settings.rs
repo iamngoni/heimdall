@@ -684,15 +684,16 @@ async fn save_pat(
             .json(ApiResponse::<()>::error(400, "Token must not be empty."));
     }
 
-    // Bitbucket App Passwords require a username for Basic auth.
+    // Bitbucket App Passwords require the account email for Basic auth.
     if provider == "bitbucket" {
-        let username = body.username.as_deref().unwrap_or("").trim();
-        if username.is_empty() {
+        let email = body.username.as_deref().map(|u| u.trim()).unwrap_or("");
+        if email.is_empty() || !email.contains('@') {
+            let msg = "Bitbucket requires your account email (used for Basic auth with App Passwords).";
             if is_hx_request(&req) {
-                return inline_feedback_html(false, "Bitbucket username is required for App Passwords.");
+                return inline_feedback_html(false, msg);
             }
             return HttpResponse::BadRequest()
-                .json(ApiResponse::<()>::error(400, "Bitbucket username is required."));
+                .json(ApiResponse::<()>::error(400, msg));
         }
     }
 

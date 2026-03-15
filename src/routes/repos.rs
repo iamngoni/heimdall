@@ -636,6 +636,26 @@ async fn list_remote_repos(
     };
     let client = reqwest::Client::new();
 
+    info!(
+        "[{provider}] list_remote_repos: token_source={}, provider_user_id={}, token_len={}, token_prefix={}...",
+        conn.token_source, conn.provider_user_id, token.len(), &token[..token.len().min(4)]
+    );
+
+    // Bitbucket App Passwords require Basic auth with the account email.
+    // If the stored provider_user_id doesn't look like an email, the user
+    // needs to re-save their credentials with the correct email.
+    if provider == "bitbucket" && conn.token_source == "pat" {
+        if conn.provider_user_id == "pat" || !conn.provider_user_id.contains('@') {
+            return render_remote_repo_list(
+                &state,
+                provider,
+                &[],
+                Some(&connected_urls),
+                Some("Bitbucket App Passwords require your account email for authentication. Please re-save your credentials in Settings with your Bitbucket account email."),
+            );
+        }
+    }
+
     let response = match provider {
         "github" => client
             .get("https://api.github.com/user/repos?sort=updated&per_page=100")
@@ -652,12 +672,12 @@ async fn list_remote_repos(
         "bitbucket" => {
             let mut req = client
                 .get("https://api.bitbucket.org/2.0/repositories?role=member&sort=-updated_on&pagelen=100");
-            // Bitbucket App Passwords use Basic auth (username:app_password).
-            // OAuth tokens use Bearer. We distinguish via token_source.
             if conn.token_source == "pat" {
                 let username = &conn.provider_user_id;
+                info!("[bitbucket] listing repos with Basic auth, username={username}");
                 req = req.basic_auth(username, Some(&token));
             } else {
+                info!("[bitbucket] listing repos with Bearer auth");
                 req = req.header("Authorization", format!("Bearer {token}"));
             }
             req.send().await
@@ -668,9 +688,12 @@ async fn list_remote_repos(
     match response {
         Ok(resp) => {
             let status = resp.status();
+            info!("[{provider}] repos API response: {status}");
             if status == reqwest::StatusCode::UNAUTHORIZED
                 || status == reqwest::StatusCode::FORBIDDEN
             {
+                let body = resp.text().await.unwrap_or_default();
+                error!("[{provider}] auth failed ({status}): {body}");
                 return render_remote_repo_list(
                     &state,
                     provider,
@@ -785,7 +808,9 @@ async fn list_remote_repos(
             let filtered = filter_remote_repos(repos, query.q.as_deref());
             render_remote_repo_list(&state, provider, &filtered, Some(&connected_urls), None)
         }
-        Err(e) => render_remote_repo_list(
+        Err(e) => {
+            error!("[{provider}] network error: {e}");
+            render_remote_repo_list(
             &state,
             provider,
             &[],
@@ -794,7 +819,8 @@ async fn list_remote_repos(
                 "Failed to reach {}: {e}",
                 provider_display_name(provider)
             )),
-        ),
+        )
+        }
     }
 }
 
@@ -925,10 +951,10 @@ async fn import_repo(
     let user_id = extract_user_id(&req);
 
     let provider = body.provider.as_str();
-    if provider != "github" && provider != "gitlab" {
+    if !matches!(provider, "github" | "gitlab" | "bitbucket") {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
-            "Provider must be 'github' or 'gitlab'",
+            "Provider must be 'github', 'gitlab', or 'bitbucket'.",
         ));
     }
 

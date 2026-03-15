@@ -213,11 +213,11 @@
                                               hx-target="#bitbucket-pat-feedback"
                                               hx-swap="innerHTML"
                                               class="flex flex-col gap-3">
+                                            <input type="email" name="username" required
+                                                   class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                   placeholder="Bitbucket account email (you@example.com)">
                                             <div class="flex gap-3">
-                                                <input type="text" name="username"
-                                                       class="w-44 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                                       placeholder="Bitbucket username">
-                                                <input type="password" name="token"
+                                                <input type="password" name="token" required
                                                        class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                                        placeholder="App password">
                                                 <button type="submit"
@@ -227,7 +227,7 @@
                                             </div>
                                         </form>
                                         <div id="bitbucket-pat-feedback" class="mt-2"></div>
-                                        <p class="mt-2 text-xs text-slate-400">Required permission: <code class="rounded bg-slate-200 px-1 py-0.5">Repositories: Read</code></p>
+                                        <p class="mt-2 text-xs text-slate-400">Required scopes: <code class="rounded bg-slate-200 px-1 py-0.5">Repositories: Read</code> <code class="rounded bg-slate-200 px-1 py-0.5">Account: Read</code> <code class="rounded bg-slate-200 px-1 py-0.5">Pull requests: Read</code></p>
                                     </div>
 
                                     <details class="mt-3">
