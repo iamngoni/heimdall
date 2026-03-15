@@ -33,6 +33,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
                 "/{id}/issue-automation",
                 web::patch().to(update_repo_issue_automation),
             )
+            .route(
+                "/{id}/check-issue-tracker",
+                web::get().to(check_issue_tracker),
+            )
             .route("/upload", web::post().to(upload_zip))
             .route("/github/list", web::get().to(list_github_repos))
             .route("/gitlab/list", web::get().to(list_gitlab_repos))
@@ -350,6 +354,87 @@ async fn update_repo_issue_automation(
             500,
             format!("Failed to update repository issue automation: {error}"),
         )),
+    }
+}
+
+/// GET /repos/{id}/check-issue-tracker — check if Bitbucket issue tracker is enabled.
+async fn check_issue_tracker(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let repo_id = path.into_inner();
+    let repo = match state.db.get_repo_by_id(repo_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Repo not found"));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, format!("Failed to fetch repo: {e}")));
+        }
+    };
+
+    if repo.source_type != "bitbucket" {
+        return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+            "issue_tracker_enabled": true,
+            "message": "Issue tracker check is only needed for Bitbucket repositories.",
+            "issue_support_message": "New findings can create or sync BITBUCKET issues automatically.",
+        })));
+    }
+
+    let conn_id = match repo.oauth_connection_id {
+        Some(id) => id,
+        None => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "issue_tracker_enabled": false,
+                "message": "No provider connection found for this repository.",
+                "issue_support_message": "Issue creation becomes available once this repository is connected through the provider integration.",
+            })));
+        }
+    };
+
+    let conn = match state.db.get_oauth_connection_by_id(conn_id).await {
+        Ok(Some(c)) => c,
+        _ => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "issue_tracker_enabled": false,
+                "message": "Provider connection could not be loaded.",
+                "issue_support_message": "Issue creation becomes available once this repository is connected through the provider integration.",
+            })));
+        }
+    };
+
+    let token = match crate::crypto::decode_stored_secret(
+        conn.access_token_enc.as_deref().unwrap_or(""),
+        state.encryption_key.as_ref(),
+    ) {
+        Ok(t) => t,
+        Err(_) => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "issue_tracker_enabled": false,
+                "message": "Failed to decode stored credentials.",
+                "issue_support_message": "Issue creation becomes available once this repository is connected through the provider integration.",
+            })));
+        }
+    };
+
+    let remote_url = repo.remote_url.as_deref().unwrap_or("");
+    match crate::integrations::issues::check_bitbucket_issue_tracker(remote_url, &token, &conn).await {
+        Ok(true) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+            "issue_tracker_enabled": true,
+            "message": "Bitbucket issue tracker is enabled.",
+            "issue_support_message": "New findings can create or sync BITBUCKET issues automatically.",
+        }))),
+        Ok(false) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+            "issue_tracker_enabled": false,
+            "message": "Issue tracker is still not enabled. Enable it in Bitbucket repository settings.",
+            "issue_support_message": "Bitbucket issue tracker is not enabled for this repository. Enable it in Bitbucket repo settings, then recheck.",
+        }))),
+        Err(e) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+            "issue_tracker_enabled": false,
+            "message": format!("Failed to check issue tracker: {e}"),
+            "issue_support_message": "Bitbucket issue tracker could not be verified right now.",
+        }))),
     }
 }
 

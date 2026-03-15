@@ -449,11 +449,38 @@ async fn repo_detail_page(
         }),
     };
     let issue_provider = issues::issue_provider(&repo);
+    let base_supported = issues::supports_issue_creation(&repo);
+
+    // For Bitbucket repos, check whether the issue tracker is actually enabled.
+    let mut bb_issue_tracker_disabled = false;
+    if base_supported && repo.source_type == "bitbucket" {
+        if let Some(conn_id) = repo.oauth_connection_id {
+            if let Ok(Some(conn)) = state.db.get_oauth_connection_by_id(conn_id).await {
+                if let Ok(token) = crate::crypto::decode_stored_secret(
+                    conn.access_token_enc.as_deref().unwrap_or(""),
+                    state.encryption_key.as_ref(),
+                ) {
+                    if let Ok(false) = issues::check_bitbucket_issue_tracker(
+                        repo.remote_url.as_deref().unwrap_or(""),
+                        &token,
+                        &conn,
+                    ).await {
+                        bb_issue_tracker_disabled = true;
+                    }
+                }
+            }
+        }
+    }
+
+    let effective_supported = base_supported && !bb_issue_tracker_disabled;
     let issue_support = serde_json::json!({
-        "supported": issues::supports_issue_creation(&repo),
+        "supported": effective_supported,
         "provider": issue_provider,
         "provider_label": issue_provider.map(str::to_uppercase),
-        "message": if issues::supports_issue_creation(&repo) {
+        "bb_issue_tracker_disabled": bb_issue_tracker_disabled,
+        "message": if bb_issue_tracker_disabled {
+            "Bitbucket issue tracker is not enabled for this repository. Enable it in Bitbucket repo settings, then recheck.".to_string()
+        } else if effective_supported {
             format!(
                 "New findings can create or sync {} issues automatically.",
                 issue_provider.unwrap_or("repository").to_uppercase()

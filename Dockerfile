@@ -1,3 +1,13 @@
+# Stage 0: Build CSS
+FROM node:22-slim AS css-builder
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci --production
+COPY tailwind.config.js ./
+COPY assets ./assets
+COPY templates ./templates
+RUN npm run build:css
+
 # Stage 1: Build
 FROM rust:1.88-bookworm AS builder
 
@@ -14,6 +24,9 @@ RUN cargo build --release 2>/dev/null || true
 
 # Copy source
 COPY . .
+
+# Copy built CSS from css-builder stage
+COPY --from=css-builder /app/static/css/app.css /app/static/css/app.css
 
 # Build schema_gen first, then generate migrations before building heimdall
 # (sqlx::migrate! is a compile-time macro — migrations must exist before build)

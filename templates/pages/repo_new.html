@@ -43,8 +43,6 @@
                         </a>
                     </div>
 
-                    <div id="repo-connect-feedback" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
-
                     {% if active_source == "github" or active_source == "gitlab" or active_source == "bitbucket" %}
                     {% if active_source == "github" %}
                         {% set provider = integrations.github %}
@@ -188,7 +186,6 @@
 <script>
 window.HeimdallRepoConnect = {
     handleCreateResponse(event) {
-        const banner = document.getElementById('repo-connect-feedback');
         const xhr = event.detail.xhr;
         let payload = null;
 
@@ -211,9 +208,9 @@ window.HeimdallRepoConnect = {
             ? (payload.error.message || payload.error)
             : 'Something went wrong while connecting the repository.';
 
-        banner.textContent = message;
-        banner.className = 'rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700';
-        banner.classList.remove('hidden');
+        if (window.HeimdallUI && typeof window.HeimdallUI.notify === 'function') {
+            window.HeimdallUI.notify({ message, tone: 'error' });
+        }
     }
 };
 </script>

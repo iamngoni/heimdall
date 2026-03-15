@@ -68,8 +68,6 @@
                     </div>
                     {% endif %}
 
-                    <div id="repo-action-feedback" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
-
                     <div class="grid gap-4 xl:grid-cols-4">
                         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                             <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Source</p>
@@ -185,8 +183,35 @@
                                     </span>
                                 </div>
 
-                                <div class="mt-4 rounded-xl border {{ 'border-emerald-200 bg-emerald-50' if issue_support.supported else 'border-amber-200 bg-amber-50' }} px-4 py-3 text-sm {{ 'text-emerald-800' if issue_support.supported else 'text-amber-800' }}">
-                                    {{ issue_support.message }}
+                                <div id="repo-issue-support-card"
+                                     class="mt-4 rounded-xl border {{ 'border-emerald-200 bg-emerald-50' if issue_support.supported else 'border-amber-200 bg-amber-50' }} px-4 py-3 text-sm {{ 'text-emerald-800' if issue_support.supported else 'text-amber-800' }}">
+                                    <p id="repo-issue-support-message">{{ issue_support.message }}</p>
+                                </div>
+
+                                <div id="bb-issue-recheck-controls"
+                                     class="mt-3 flex items-center gap-3 {% if not issue_support.bb_issue_tracker_disabled %}hidden{% endif %}">
+                                    <button type="button"
+                                            onclick="HeimdallRepoDetail.recheckIssueTracker('{{ repo.id }}', this)"
+                                            class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+                                        <svg class="h-4 w-4"
+                                             data-idle-icon
+                                             xmlns="http://www.w3.org/2000/svg"
+                                             fill="none"
+                                             viewBox="0 0 24 24"
+                                             stroke-width="1.5"
+                                             stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                                        </svg>
+                                        <svg class="hidden h-4 w-4 animate-spin"
+                                             data-loading-icon
+                                             xmlns="http://www.w3.org/2000/svg"
+                                             fill="none"
+                                             viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+                                            <path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-3a7 7 0 0 0-7-7V2z"></path>
+                                        </svg>
+                                        <span data-button-label>Recheck</span>
+                                    </button>
                                 </div>
 
                                 <form id="repo-issue-automation-form" class="mt-5 space-y-4">
@@ -217,6 +242,7 @@
                                     </label>
 
                                     <button type="button"
+                                            id="repo-issue-save-button"
                                             onclick="HeimdallRepoDetail.saveIssueAutomation('{{ repo.id }}', this)"
                                             {% if not issue_support.supported %}disabled{% endif %}
                                             class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
@@ -242,7 +268,6 @@
 <script>
 window.HeimdallRepoDetail = {
     async triggerScan(repoId, button) {
-        const banner = document.getElementById('repo-action-feedback');
         const csrfCookie = document.cookie.split('; ').find((cookie) => cookie.startsWith('_csrf='));
         const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
         const originalLabel = button.innerHTML;
@@ -264,7 +289,7 @@ window.HeimdallRepoDetail = {
             const payload = await response.json().catch(() => null);
             this.handleScanResponse(response, payload);
         } catch (_) {
-            this.showBanner('Unable to start the scan right now.', 'warning');
+            this.notify('Unable to start the scan right now.', 'warning');
         } finally {
             button.disabled = false;
             button.classList.remove('cursor-not-allowed', 'opacity-70');
@@ -285,16 +310,130 @@ window.HeimdallRepoDetail = {
             ? (payload.error.message || payload.error)
             : 'Unable to start the scan right now.';
 
-        this.showBanner(message, 'warning');
+        this.notify(message, 'warning');
     },
 
-    showBanner(message, tone) {
-        const banner = document.getElementById('repo-action-feedback');
-        banner.textContent = message;
-        banner.className = tone === 'success'
-            ? 'rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800'
-            : 'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800';
-        banner.classList.remove('hidden');
+    notify(message, tone = 'info') {
+        if (!window.HeimdallUI || typeof window.HeimdallUI.notify !== 'function') {
+            return;
+        }
+        window.HeimdallUI.notify({ message, tone });
+    },
+
+    async recheckIssueTracker(repoId, button) {
+        const label = button.querySelector('[data-button-label]');
+        const idleIcon = button.querySelector('[data-idle-icon]');
+        const loadingIcon = button.querySelector('[data-loading-icon]');
+        const originalLabel = label ? label.textContent : button.textContent;
+
+        button.disabled = true;
+        button.classList.add('cursor-wait', 'opacity-80');
+        if (label) {
+            label.textContent = 'Checking...';
+        }
+        if (idleIcon) {
+            idleIcon.classList.add('hidden');
+        }
+        if (loadingIcon) {
+            loadingIcon.classList.remove('hidden');
+        }
+
+        try {
+            const response = await fetch(`/api/repos/${repoId}/check-issue-tracker`, {
+                headers: {
+                    'Accept': 'application/json'
+                },
+                credentials: 'same-origin'
+            });
+
+            const payload = await response.json().catch(() => null);
+            const data = payload && payload.data ? payload.data : null;
+            if (!response.ok || !data) {
+                const message = payload && payload.error
+                    ? (payload.error.message || payload.error)
+                    : 'Unable to check the Bitbucket issue tracker right now.';
+                this.notify(message, 'warning');
+                return;
+            }
+
+            if (data.issue_tracker_enabled) {
+                this.syncIssueAutomationSupport(
+                    true,
+                    data.issue_support_message || 'New findings can create or sync BITBUCKET issues automatically.'
+                );
+                this.notify(
+                    data.message || 'Bitbucket issue tracker is enabled. Issue automation is ready to use.',
+                    'success'
+                );
+                return;
+            }
+
+            this.notify(
+                data.message || 'Issue tracker is still not enabled. Enable it in Bitbucket repository settings.',
+                'warning'
+            );
+        } catch (_) {
+            this.notify('Unable to check the Bitbucket issue tracker right now.', 'warning');
+        } finally {
+            button.disabled = false;
+            button.classList.remove('cursor-wait', 'opacity-80');
+            if (label) {
+                label.textContent = originalLabel;
+            }
+            if (idleIcon) {
+                idleIcon.classList.remove('hidden');
+            }
+            if (loadingIcon) {
+                loadingIcon.classList.add('hidden');
+            }
+        }
+    },
+
+    syncIssueAutomationSupport(isSupported, message) {
+        const pill = document.getElementById('repo-issue-provider-pill');
+        const card = document.getElementById('repo-issue-support-card');
+        const cardMessage = document.getElementById('repo-issue-support-message');
+        const autoEnabled = document.getElementById('repo-issue-auto-enabled');
+        const minSeverity = document.getElementById('repo-issue-min-severity');
+        const saveButton = document.getElementById('repo-issue-save-button');
+        const recheckControls = document.getElementById('bb-issue-recheck-controls');
+
+        if (pill) {
+            pill.classList.remove('bg-slate-100', 'text-slate-600', 'bg-emerald-50', 'text-emerald-700');
+            pill.classList.add(isSupported ? 'bg-emerald-50' : 'bg-slate-100');
+            pill.classList.add(isSupported ? 'text-emerald-700' : 'text-slate-600');
+        }
+
+        if (card) {
+            card.classList.remove(
+                'border-emerald-200',
+                'bg-emerald-50',
+                'text-emerald-800',
+                'border-amber-200',
+                'bg-amber-50',
+                'text-amber-800'
+            );
+            card.classList.add(isSupported ? 'border-emerald-200' : 'border-amber-200');
+            card.classList.add(isSupported ? 'bg-emerald-50' : 'bg-amber-50');
+            card.classList.add(isSupported ? 'text-emerald-800' : 'text-amber-800');
+        }
+
+        if (cardMessage) {
+            cardMessage.textContent = message;
+        }
+
+        if (autoEnabled) {
+            autoEnabled.disabled = !isSupported;
+        }
+        if (minSeverity) {
+            minSeverity.disabled = !isSupported;
+        }
+        if (saveButton) {
+            saveButton.disabled = !isSupported;
+        }
+        if (recheckControls) {
+            recheckControls.classList.toggle('hidden', isSupported);
+        }
     },
 
     async deleteRepo(repoId, repoName) {
@@ -323,9 +462,9 @@ window.HeimdallRepoDetail = {
             const message = payload && payload.error
                 ? (payload.error.message || payload.error)
                 : 'Unable to remove repository.';
-            this.showBanner(message, 'warning');
+            this.notify(message, 'warning');
         } catch (_) {
-            this.showBanner('Unable to remove repository right now.', 'warning');
+            this.notify('Unable to remove repository right now.', 'warning');
         }
     },
 
@@ -359,18 +498,18 @@ window.HeimdallRepoDetail = {
                 const message = payload && payload.error
                     ? (payload.error.message || payload.error)
                     : 'Unable to update repository issue automation.';
-                this.showBanner(message, 'warning');
+                this.notify(message, 'warning');
                 return;
             }
 
-            this.showBanner(
+            this.notify(
                 enabled
                     ? `Issue automation enabled from ${minSeverity.toUpperCase()} severity and above.`
                     : 'Issue automation disabled for this repository.',
                 'success'
             );
         } catch (_) {
-            this.showBanner('Unable to update repository issue automation right now.', 'warning');
+            this.notify('Unable to update repository issue automation right now.', 'warning');
         } finally {
             button.disabled = false;
             button.innerHTML = originalLabel;

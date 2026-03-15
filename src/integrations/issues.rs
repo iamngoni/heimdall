@@ -1,10 +1,11 @@
 use anyhow::{Context, Result, anyhow};
+use log::{info, warn};
 use reqwest::Client;
 use serde::Deserialize;
 
 use crate::crypto;
 use crate::db::DatabaseOperations;
-use crate::models::db_models::{Finding, Repo, RepoIssue};
+use crate::models::db_models::{Finding, OauthConnection, Repo, RepoIssue};
 
 pub fn issue_provider(repo: &Repo) -> Option<&'static str> {
     match repo.source_type.as_str() {
@@ -19,6 +20,54 @@ pub fn supports_issue_creation(repo: &Repo) -> bool {
     issue_provider(repo).is_some()
         && repo.oauth_connection_id.is_some()
         && repo.remote_url.is_some()
+}
+
+/// Check whether a Bitbucket repository has its issue tracker enabled.
+/// Returns `Ok(true)` if enabled, `Ok(false)` if disabled, `Err` on network/auth errors.
+pub async fn check_bitbucket_issue_tracker(
+    remote_url: &str,
+    token: &str,
+    connection: &OauthConnection,
+) -> Result<bool> {
+    let (_, path) = split_remote(remote_url)?;
+    if path.len() < 2 {
+        return Err(anyhow!("Unable to determine Bitbucket workspace/repository from remote URL"));
+    }
+    let workspace = &path[0];
+    let repo_slug = &path[1];
+    let url = format!(
+        "https://api.bitbucket.org/2.0/repositories/{workspace}/{repo_slug}/issues?pagelen=1"
+    );
+
+    let client = Client::new();
+    let mut req = client.get(&url).header("User-Agent", "Heimdall");
+    if connection.token_source == "pat" {
+        req = req.basic_auth(&connection.provider_user_id, Some(token));
+    } else {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+
+    let resp = req.send().await.context("Failed to reach Bitbucket issues API")?;
+    let status = resp.status();
+
+    if status.is_success() {
+        info!("[bitbucket] issue tracker is enabled for {workspace}/{repo_slug}");
+        return Ok(true);
+    }
+
+    let body = resp.text().await.unwrap_or_default();
+    if status.as_u16() == 404 && body.contains("no issue tracker") {
+        info!("[bitbucket] issue tracker is disabled for {workspace}/{repo_slug}");
+        return Ok(false);
+    }
+
+    if status.as_u16() == 401 || status.as_u16() == 403 {
+        warn!("[bitbucket] auth error checking issue tracker for {workspace}/{repo_slug}: {body}");
+        return Err(anyhow!("Authentication failed checking Bitbucket issue tracker"));
+    }
+
+    warn!("[bitbucket] unexpected response checking issue tracker ({status}): {body}");
+    Ok(false)
 }
 
 pub fn severity_meets_threshold(severity: &str, minimum: &str) -> bool {
@@ -68,7 +117,7 @@ pub async fn create_or_link_issue(
     let created_issue = match provider {
         "github" => create_github_issue(remote_url, &token, finding).await?,
         "gitlab" => create_gitlab_issue(remote_url, &token, finding).await?,
-        "bitbucket" => create_bitbucket_issue(remote_url, &token, finding).await?,
+        "bitbucket" => create_bitbucket_issue(remote_url, &token, &connection, finding).await?,
         _ => unreachable!(),
     };
 
@@ -233,6 +282,7 @@ struct BitbucketHref {
 async fn create_bitbucket_issue(
     remote_url: &str,
     token: &str,
+    connection: &OauthConnection,
     finding: &Finding,
 ) -> Result<CreatedIssue> {
     let (_, path) = split_remote(remote_url)?;
@@ -244,12 +294,17 @@ async fn create_bitbucket_issue(
     let workspace = &path[0];
     let repo_slug = &path[1];
     let client = Client::new();
-    let response = client
+    let mut req = client
         .post(format!(
             "https://api.bitbucket.org/2.0/repositories/{workspace}/{repo_slug}/issues"
         ))
-        .header("Authorization", format!("Bearer {token}"))
-        .header("User-Agent", "Heimdall")
+        .header("User-Agent", "Heimdall");
+    if connection.token_source == "pat" {
+        req = req.basic_auth(&connection.provider_user_id, Some(token));
+    } else {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let response = req
         .json(&serde_json::json!({
             "title": issue_title(finding),
             "content": {
