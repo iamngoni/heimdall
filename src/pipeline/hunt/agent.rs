@@ -13,6 +13,7 @@ use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
 
 use crate::ai::ModelProvider;
+use crate::util::{sat_i32, sat_i32_u128};
 use crate::ai::types::{CompletionRequest, Message, StopReason};
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
@@ -209,10 +210,10 @@ impl HuntAgent {
                     Some(&response.model),
                     None,
                     None,
-                    Some(response.usage.prompt_tokens as i32),
-                    Some(response.usage.completion_tokens as i32),
-                    Some(response.usage.total_tokens as i32),
-                    Some(duration.as_millis() as i32),
+                    Some(sat_i32(response.usage.prompt_tokens.into())),
+                    Some(sat_i32(response.usage.completion_tokens.into())),
+                    Some(sat_i32(response.usage.total_tokens.into())),
+                    Some(sat_i32_u128(duration.as_millis())),
                     None,
                 )
                 .await;
@@ -252,8 +253,8 @@ impl HuntAgent {
                                     .as_str()
                                     .unwrap_or("")
                                     .to_string(),
-                                line_start: tc.arguments["line_start"].as_i64().unwrap_or(1) as i32,
-                                line_end: tc.arguments["line_end"].as_i64().map(|v| v as i32),
+                                line_start: crate::util::sat_i32_i64(tc.arguments["line_start"].as_i64().unwrap_or(1)),
+                                line_end: tc.arguments["line_end"].as_i64().map(crate::util::sat_i32_i64),
                                 description: tc.arguments["description"]
                                     .as_str()
                                     .unwrap_or("")
@@ -362,7 +363,7 @@ impl HuntAgent {
                                     None,
                                     None,
                                     None,
-                                    Some(tool_duration.as_millis() as i32),
+                                    Some(sat_i32_u128(duration.as_millis())),
                                     if result.success { None } else { Some(&result.output) },
                                 )
                                 .await;
@@ -389,7 +390,7 @@ impl HuntAgent {
                                 Some(&serde_json::json!({
                                     "surface": surface.name,
                                     "tool": tc.name,
-                                    "duration_ms": tool_duration.as_millis() as i32,
+                                    "duration_ms": sat_i32_u128(duration.as_millis()),
                                 })),
                             )
                             .await;

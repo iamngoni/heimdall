@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 
 use crate::db::DatabaseOperations;
 use crate::models::HeimdallResult;
+use crate::util::sat_i32;
 
 /// Semgrep integration for enhanced static analysis.
 /// Runs semgrep as a subprocess and parses JSON output into findings.
@@ -108,7 +109,7 @@ impl SemgrepStage {
                 .unwrap_or(&result.path)
                 .trim_start_matches('/');
 
-            let line = result.start.line as i32;
+            let line = sat_i32(result.start.line as u64);
             let fingerprint = make_semgrep_fingerprint(&result.check_id, rel_path, line);
 
             // Deduplicate against existing findings
@@ -152,7 +153,7 @@ impl SemgrepStage {
                     cwe,
                     rel_path,
                     line,
-                    Some(result.end.line as i32),
+                    Some(sat_i32(result.end.line as u64)),
                     None,
                     &fingerprint,
                     None,

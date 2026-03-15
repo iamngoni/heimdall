@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
+use crate::util::sat_i32_usize;
 
 use rules::CONFIG_RULES;
 
@@ -106,7 +107,7 @@ impl ConfigScanStage {
                 // Line-by-line matching
                 for (line_idx, line) in indexed_file.content.lines().enumerate() {
                     if re.is_match(line) {
-                        let line_num = (line_idx + 1) as i32;
+                        let line_num = sat_i32_usize(line_idx + 1);
                         let snippet = extract_snippet(&indexed_file.content, line_idx, 2);
                         let fingerprint = make_fingerprint(rule.name, file_path, line_num);
 

@@ -22,6 +22,7 @@ use crate::index::{CodeIndex, IndexedFile};
 use crate::models::HeimdallResult;
 use crate::models::db_models::Repo;
 use crate::sse::ScanBroadcaster;
+use crate::util::sat_i32_usize;
 
 /// Handles repository ingestion: clone/download, file enumeration, language detection,
 /// symbol extraction, and building the in-memory CodeIndex.
@@ -492,8 +493,8 @@ impl IngestStage {
                     &content_hash,
                     &content,
                     language.as_deref(),
-                    line_count as i32,
-                    byte_size as i32,
+                    sat_i32_usize(line_count),
+                    sat_i32_usize(byte_size),
                 )
                 .await;
 

@@ -40,13 +40,13 @@ FROM debian:bookworm-slim
 # Optional: install semgrep for enhanced static analysis
 ARG INSTALL_SEMGREP=true
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     curl \
     git \
     && if [ "$INSTALL_SEMGREP" = "true" ]; then \
-        apt-get install -y python3 python3-pip && \
+        apt-get install -y --no-install-recommends python3 python3-pip && \
         pip3 install semgrep --break-system-packages; \
     fi \
     && rm -rf /var/lib/apt/lists/*

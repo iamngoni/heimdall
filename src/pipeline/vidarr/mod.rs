@@ -17,6 +17,7 @@ use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
 use crate::models::db_models::Finding;
+use crate::util::{sat_i32, sat_i32_usize};
 
 /// Víðarr — the adversarial verification stage.
 /// For each finding, it asks an AI agent to *try to disprove* it by examining
@@ -103,7 +104,7 @@ impl VidarrStage {
         let mut dismissed = 0usize;
 
         for (i, finding) in findings.iter().enumerate() {
-            let progress = ((i as f64 / total as f64) * 100.0) as i32;
+            let progress = sat_i32_usize(((i as f64 / total as f64) * 100.0) as usize);
 
             self.record_event(
                 Some("challenge-finding"),
@@ -341,9 +342,9 @@ impl VidarrStage {
                 Some(&response.model),
                 Some(&input_json),
                 Some(&output_json),
-                Some(response.usage.prompt_tokens as i32),
-                Some(response.usage.completion_tokens as i32),
-                Some(response.usage.total_tokens as i32),
+                Some(sat_i32(response.usage.prompt_tokens.into())),
+                Some(sat_i32(response.usage.completion_tokens.into())),
+                Some(sat_i32(response.usage.total_tokens.into())),
                 None,
                 None,
             )
@@ -436,7 +437,7 @@ impl VidarrStage {
         // Find symbols defined in the finding file near the finding line
         let symbols = index.symbols.symbols_in_file(&finding.file_path);
         for symbol in symbols {
-            let sym_line = symbol.line as i32;
+            let sym_line = sat_i32_usize(symbol.line);
             let finding_end = finding.line_end.unwrap_or(finding.line_start);
             // Symbol is near the finding
             if sym_line >= finding.line_start - 5 && sym_line <= finding_end + 5 {

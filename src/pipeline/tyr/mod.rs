@@ -17,6 +17,7 @@ use crate::ai::types::{CompletionRequest, Message};
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
+use crate::util::{sat_i32, sat_i32_u128};
 
 /// Tyr: The threat model engine. Analyses the codebase to identify
 /// attack surfaces, trust boundaries, data flows, and risk ratings.
@@ -248,10 +249,10 @@ impl TyrStage {
                 Some(&response.model),
                 None,
                 None,
-                Some(response.usage.prompt_tokens as i32),
-                Some(response.usage.completion_tokens as i32),
-                Some(response.usage.total_tokens as i32),
-                Some(duration.as_millis() as i32),
+                Some(sat_i32(response.usage.prompt_tokens.into())),
+                Some(sat_i32(response.usage.completion_tokens.into())),
+                Some(sat_i32(response.usage.total_tokens.into())),
+                Some(sat_i32_u128(duration.as_millis())),
                 None,
             )
             .await;
@@ -287,7 +288,7 @@ impl TyrStage {
                 "surfaces": threat_model.surfaces.len(),
                 "boundaries": threat_model.boundaries.len(),
                 "data_flows": threat_model.data_flows.len(),
-                "duration_ms": duration.as_millis() as i32,
+                "duration_ms": sat_i32_u128(duration.as_millis()),
                 "context_mode": context_mode.label(),
             })),
         )
@@ -1333,10 +1334,10 @@ impl TyrStage {
                 Some(&response.model),
                 None,
                 None,
-                Some(response.usage.prompt_tokens as i32),
-                Some(response.usage.completion_tokens as i32),
-                Some(response.usage.total_tokens as i32),
-                Some(duration.as_millis() as i32),
+                Some(sat_i32(response.usage.prompt_tokens.into())),
+                Some(sat_i32(response.usage.completion_tokens.into())),
+                Some(sat_i32(response.usage.total_tokens.into())),
+                Some(sat_i32_u128(duration.as_millis())),
                 None,
             )
             .await;

@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
+use crate::util::sat_i32_usize;
 
 // ---- Types ----
 
@@ -566,8 +567,8 @@ impl TaintAnalysisStage {
                     &title,
                     Some(&description),
                     &flow.file_path,
-                    flow.source_line as i32,
-                    Some(flow.sink_line as i32),
+                    sat_i32_usize(flow.source_line),
+                    Some(sat_i32_usize(flow.sink_line)),
                     &format!(
                         "taint-{}-{}-{}",
                         flow.file_path, flow.source_line, flow.sink_line

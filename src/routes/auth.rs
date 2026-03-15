@@ -70,7 +70,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
 pub struct RegisterRequest {
     #[validate(email(message = "Invalid email address"))]
     pub email: String,
-    #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
+    #[validate(length(min = 8, message = "Password must be at least 8 characters"), custom(function = "validate_password_strength"))]
     pub password: String,
     pub display_name: Option<String>,
 }
@@ -81,6 +81,29 @@ pub struct LoginRequest {
     pub email: String,
     #[validate(length(min = 1, message = "Password is required"))]
     pub password: String,
+}
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+/// Enforce password complexity: at least one uppercase, one lowercase,
+/// one digit, and one special character.
+fn validate_password_strength(password: &str) -> Result<(), validator::ValidationError> {
+    let has_upper = password.chars().any(|c| c.is_uppercase());
+    let has_lower = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_ascii_digit());
+    let has_special = password.chars().any(|c| !c.is_alphanumeric());
+
+    if has_upper && has_lower && has_digit && has_special {
+        Ok(())
+    } else {
+        let mut err = validator::ValidationError::new("password_strength");
+        err.message = Some(std::borrow::Cow::Borrowed(
+            "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character",
+        ));
+        Err(err)
+    }
 }
 
 // ---------------------------------------------------------------------------

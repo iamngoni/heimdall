@@ -23,6 +23,7 @@ use crate::models::ScanStage;
 use crate::models::{ApiResponse, PaginatedResponse, PaginationParams};
 use crate::sse::{ScanBroadcaster, ScanEvent, ScanEventType};
 use crate::state::AppState;
+use crate::util::sat_i32_i64;
 
 #[derive(Debug, Deserialize)]
 struct FindingsQuery {
@@ -229,26 +230,31 @@ async fn build_initial_state(db: &DatabaseOperations, scan_id: Uuid) -> String {
     let mut scan_snapshot = None;
 
     if let Ok(Some(scan)) = db.get_scan_by_id(scan_id).await {
-        let finding_count = db
-            .count_findings_by_scan(scan_id, None, None)
-            .await
-            .unwrap_or(scan.finding_count as i64) as i32;
-        let critical = db
-            .count_findings_by_scan(scan_id, Some("critical"), None)
-            .await
-            .unwrap_or(scan.critical_count as i64) as i32;
-        let high = db
-            .count_findings_by_scan(scan_id, Some("high"), None)
-            .await
-            .unwrap_or(scan.high_count as i64) as i32;
-        let medium = db
-            .count_findings_by_scan(scan_id, Some("medium"), None)
-            .await
-            .unwrap_or(scan.medium_count as i64) as i32;
-        let low = db
-            .count_findings_by_scan(scan_id, Some("low"), None)
-            .await
-            .unwrap_or(scan.low_count as i64) as i32;
+        let finding_count = sat_i32_i64(
+            db.count_findings_by_scan(scan_id, None, None)
+                .await
+                .unwrap_or(scan.finding_count as i64),
+        );
+        let critical = sat_i32_i64(
+            db.count_findings_by_scan(scan_id, Some("critical"), None)
+                .await
+                .unwrap_or(scan.critical_count as i64),
+        );
+        let high = sat_i32_i64(
+            db.count_findings_by_scan(scan_id, Some("high"), None)
+                .await
+                .unwrap_or(scan.high_count as i64),
+        );
+        let medium = sat_i32_i64(
+            db.count_findings_by_scan(scan_id, Some("medium"), None)
+                .await
+                .unwrap_or(scan.medium_count as i64),
+        );
+        let low = sat_i32_i64(
+            db.count_findings_by_scan(scan_id, Some("low"), None)
+                .await
+                .unwrap_or(scan.low_count as i64),
+        );
 
         scan_snapshot = Some(serde_json::json!({
             "status": scan.status,
@@ -361,19 +367,23 @@ pub async fn build_scan_live_snapshot(
         return Ok(None);
     };
 
-    let total = db.count_findings_by_scan(scan_id, None, None).await? as i32;
-    let critical = db
-        .count_findings_by_scan(scan_id, Some("critical"), None)
-        .await? as i32;
-    let high = db
-        .count_findings_by_scan(scan_id, Some("high"), None)
-        .await? as i32;
-    let medium = db
-        .count_findings_by_scan(scan_id, Some("medium"), None)
-        .await? as i32;
-    let low = db
-        .count_findings_by_scan(scan_id, Some("low"), None)
-        .await? as i32;
+    let total = sat_i32_i64(db.count_findings_by_scan(scan_id, None, None).await?);
+    let critical = sat_i32_i64(
+        db.count_findings_by_scan(scan_id, Some("critical"), None)
+            .await?,
+    );
+    let high = sat_i32_i64(
+        db.count_findings_by_scan(scan_id, Some("high"), None)
+            .await?,
+    );
+    let medium = sat_i32_i64(
+        db.count_findings_by_scan(scan_id, Some("medium"), None)
+            .await?,
+    );
+    let low = sat_i32_i64(
+        db.count_findings_by_scan(scan_id, Some("low"), None)
+            .await?,
+    );
 
     let stages = db.list_scan_stages(scan_id).await?;
     let mut latest_stage_by_name: HashMap<String, ScanStage> = HashMap::new();
@@ -694,26 +704,32 @@ async fn create_all_issues(
         }
     };
 
+    // Group findings by rule title so we create one issue per vulnerability pattern
+    let groups = issues::group_findings_by_rule(&findings);
+
     let mut created_count = 0u32;
     let mut linked_count = 0u32;
     let mut failed_count = 0u32;
+    let mut findings_covered = 0u32;
 
-    for finding in &findings {
-        match issues::create_or_link_issue(
+    for (title, group_findings) in &groups {
+        match issues::create_or_link_grouped_issue(
             &state.db,
             state.encryption_key.as_ref(),
             &repo,
-            finding,
+            title,
+            group_findings,
             false,
         )
         .await
         {
-            Ok((repo_issue, created)) => {
+            Ok((repo_issue, created, count)) => {
                 if created {
                     created_count += 1;
                 } else {
                     linked_count += 1;
                 }
+                findings_covered += count as u32;
 
                 let metadata = serde_json::json!({
                     "provider": repo_issue.provider,
@@ -722,36 +738,43 @@ async fn create_all_issues(
                     "auto_created": false,
                     "created": created,
                     "bulk": true,
+                    "grouped": true,
+                    "finding_count": count,
                 });
-                let _ = state
-                    .db
-                    .create_finding_event_with_metadata(
-                        finding.id,
-                        Some(user.id),
-                        "issue_linked",
-                        None,
-                        repo_issue.external_issue_number.as_deref(),
-                        Some(if created {
-                            "Issue created via bulk action from the findings list."
-                        } else {
-                            "Linked to existing issue via bulk action from the findings list."
-                        }),
-                        Some(&metadata),
-                    )
-                    .await;
+                // Record an event on each finding in the group
+                for finding in group_findings {
+                    let _ = state
+                        .db
+                        .create_finding_event_with_metadata(
+                            finding.id,
+                            Some(user.id),
+                            "issue_linked",
+                            None,
+                            repo_issue.external_issue_number.as_deref(),
+                            Some(if created {
+                                "Issue created via grouped bulk action from the findings list."
+                            } else {
+                                "Linked to existing grouped issue via bulk action."
+                            }),
+                            Some(&metadata),
+                        )
+                        .await;
+                }
             }
             Err(e) => {
                 warn!(
-                    "Failed to create issue for finding {} ({}): {e}",
-                    finding.id, finding.title
+                    "Failed to create grouped issue for rule '{}' ({} findings): {e}",
+                    title,
+                    group_findings.len()
                 );
-                failed_count += 1;
+                failed_count += group_findings.len() as u32;
             }
         }
     }
 
     let summary = format!(
-        "{created_count} created, {linked_count} already linked, {failed_count} failed"
+        "{created_count} issues created, {linked_count} already linked, {failed_count} failed ({findings_covered} findings across {} groups)",
+        groups.len()
     );
 
     if req.headers().contains_key("HX-Request") {
@@ -766,6 +789,8 @@ async fn create_all_issues(
         "linked": linked_count,
         "failed": failed_count,
         "total_findings": findings.len(),
+        "total_groups": groups.len(),
+        "findings_covered": findings_covered,
         "summary": summary,
     })))
 }

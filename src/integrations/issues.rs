@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
 use reqwest::Client;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use crate::crypto;
 use crate::db::DatabaseOperations;
@@ -436,6 +439,362 @@ fn issue_body(finding: &Finding) -> String {
     }
 
     body
+}
+
+/// Group findings by their title (rule name) for bulk issue creation.
+/// Returns a map of title → list of findings, preserving the highest severity per group.
+pub fn group_findings_by_rule(findings: &[Finding]) -> BTreeMap<String, Vec<&Finding>> {
+    let mut groups: BTreeMap<String, Vec<&Finding>> = BTreeMap::new();
+    for finding in findings {
+        groups.entry(finding.title.clone()).or_default().push(finding);
+    }
+    groups
+}
+
+/// Compute a stable group fingerprint from the rule title.
+fn group_fingerprint(title: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"heimdall-group:");
+    hasher.update(title.as_bytes());
+    format!("group:{:x}", hasher.finalize())
+}
+
+/// Determine the highest severity among a group of findings.
+fn max_severity(findings: &[&Finding]) -> String {
+    findings
+        .iter()
+        .max_by_key(|f| severity_rank(&f.severity))
+        .map(|f| f.severity.clone())
+        .unwrap_or_else(|| "medium".to_string())
+}
+
+fn grouped_issue_title(title: &str, severity: &str, count: usize) -> String {
+    format!(
+        "[{}] {} ({} location{})",
+        severity.to_uppercase(),
+        title,
+        count,
+        if count == 1 { "" } else { "s" }
+    )
+}
+
+fn grouped_issue_body(title: &str, findings: &[&Finding]) -> String {
+    let mut body = String::new();
+    body.push_str("## Heimdall Grouped Finding\n\n");
+
+    let severity = max_severity(findings);
+    body.push_str(&format!("- Rule: **{}**\n", title));
+    body.push_str(&format!("- Severity: `{}`\n", severity));
+    body.push_str(&format!("- Locations: **{}**\n", findings.len()));
+
+    if let Some(cwe) = findings.iter().find_map(|f| f.cwe_id.as_ref()) {
+        body.push_str(&format!("- CWE: `{cwe}`\n"));
+    }
+    body.push('\n');
+
+    if let Some(description) = findings.iter().find_map(|f| f.description.as_ref()) {
+        body.push_str("### Summary\n\n");
+        body.push_str(description.trim());
+        body.push_str("\n\n");
+    }
+
+    body.push_str("### Affected Locations\n\n");
+    body.push_str("| File | Line | Confidence |\n");
+    body.push_str("|------|------|------------|\n");
+    for f in findings {
+        let line = if let Some(end) = f.line_end {
+            format!("{}-{}", f.line_start, end)
+        } else {
+            f.line_start.to_string()
+        };
+        body.push_str(&format!(
+            "| `{}` | {} | {} |\n",
+            f.file_path, line, f.confidence
+        ));
+    }
+    body.push('\n');
+
+    // Include one representative code snippet
+    if let Some(snippet) = findings.iter().find_map(|f| f.code_snippet.as_ref()) {
+        body.push_str("### Example Evidence\n\n```text\n");
+        let snippet = if snippet.len() > 1200 {
+            format!("{}...", &snippet[..1200])
+        } else {
+            snippet.clone()
+        };
+        body.push_str(snippet.trim());
+        body.push_str("\n```\n\n");
+    }
+
+    if let Some(patch) = findings.iter().find_map(|f| f.suggested_patch.as_ref()) {
+        body.push_str("### Suggested Patch\n\n```diff\n");
+        let patch = if patch.len() > 1600 {
+            format!("{}...", &patch[..1600])
+        } else {
+            patch.clone()
+        };
+        body.push_str(patch.trim());
+        body.push_str("\n```\n");
+    }
+
+    body
+}
+
+/// Create or link a single issue for a *group* of findings that share the same rule/title.
+/// Returns `(RepoIssue, created: bool, linked_finding_count)`.
+pub async fn create_or_link_grouped_issue(
+    db: &DatabaseOperations,
+    encryption_key: Option<&[u8; 32]>,
+    repo: &Repo,
+    title: &str,
+    findings: &[&Finding],
+    auto_created: bool,
+) -> Result<(RepoIssue, bool, usize)> {
+    let provider = issue_provider(repo)
+        .ok_or_else(|| anyhow!("Issue creation is not supported for this repository"))?;
+
+    let fp = group_fingerprint(title);
+
+    // Check if a grouped issue already exists for this rule
+    if let Some(existing) = db
+        .get_repo_issue_by_fingerprint(repo.id, provider, &fp)
+        .await?
+    {
+        return Ok((existing, false, findings.len()));
+    }
+
+    let connection_id = repo
+        .oauth_connection_id
+        .ok_or_else(|| anyhow!("This repository does not have a connected provider account"))?;
+    let connection = db
+        .get_oauth_connection_by_id(connection_id)
+        .await?
+        .ok_or_else(|| anyhow!("Provider connection for repository could not be found"))?;
+
+    let encoded = connection
+        .access_token_enc
+        .as_deref()
+        .ok_or_else(|| anyhow!("Connected provider is missing an access token"))?;
+    let token = crypto::decode_stored_secret(encoded, encryption_key)?;
+
+    let remote_url = repo
+        .remote_url
+        .as_deref()
+        .ok_or_else(|| anyhow!("Repository has no remote URL"))?;
+
+    let severity = max_severity(findings);
+    let issue_title_str = grouped_issue_title(title, &severity, findings.len());
+    let issue_body_str = grouped_issue_body(title, findings);
+
+    // Build a temporary Finding-like struct for the provider functions isn't needed;
+    // we'll call the provider APIs directly with our grouped title/body.
+    let created_issue = match provider {
+        "github" => {
+            create_github_grouped_issue(remote_url, &token, &issue_title_str, &issue_body_str, &severity)
+                .await?
+        }
+        "gitlab" => {
+            create_gitlab_grouped_issue(remote_url, &token, &issue_title_str, &issue_body_str, &severity)
+                .await?
+        }
+        "bitbucket" => {
+            create_bitbucket_grouped_issue(
+                remote_url,
+                &token,
+                &connection,
+                &issue_title_str,
+                &issue_body_str,
+                &severity,
+            )
+            .await?
+        }
+        _ => unreachable!(),
+    };
+
+    let repo_issue = db
+        .upsert_repo_issue(
+            repo.id,
+            None, // no single finding_id for a group
+            provider,
+            &created_issue.external_issue_id,
+            created_issue.external_issue_number.as_deref(),
+            &created_issue.issue_url,
+            &created_issue.title,
+            &fp,
+            &severity,
+            "open",
+            auto_created,
+        )
+        .await?;
+
+    Ok((repo_issue, true, findings.len()))
+}
+
+async fn create_github_grouped_issue(
+    remote_url: &str,
+    token: &str,
+    title: &str,
+    body: &str,
+    severity: &str,
+) -> Result<CreatedIssue> {
+    let (_, path) = split_remote(remote_url)?;
+    if path.len() < 2 {
+        return Err(anyhow!(
+            "Unable to determine GitHub owner/repository from remote URL"
+        ));
+    }
+    let owner = &path[0];
+    let repo = &path[1];
+    let client = Client::new();
+    let response = client
+        .post(format!(
+            "https://api.github.com/repos/{owner}/{repo}/issues"
+        ))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("User-Agent", "Heimdall")
+        .header("Accept", "application/vnd.github+json")
+        .json(&serde_json::json!({
+            "title": title,
+            "body": body,
+            "labels": ["heimdall", "security", severity.to_lowercase()],
+        }))
+        .send()
+        .await
+        .context("Failed to reach GitHub issues API")?;
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("GitHub issue creation failed: {body}"));
+    }
+
+    let issue = response
+        .json::<GitHubIssueResponse>()
+        .await
+        .context("Failed to parse GitHub issue response")?;
+
+    Ok(CreatedIssue {
+        external_issue_id: issue.id.to_string(),
+        external_issue_number: Some(issue.number.to_string()),
+        issue_url: issue.html_url,
+        title: issue.title,
+    })
+}
+
+async fn create_gitlab_grouped_issue(
+    remote_url: &str,
+    token: &str,
+    title: &str,
+    body: &str,
+    severity: &str,
+) -> Result<CreatedIssue> {
+    let (host, path) = split_remote(remote_url)?;
+    if path.len() < 2 {
+        return Err(anyhow!(
+            "Unable to determine GitLab project path from remote URL"
+        ));
+    }
+
+    let client = Client::new();
+    let project_path = path.join("/");
+    let encoded_project = encode_path_component(&project_path);
+    let response = client
+        .post(format!(
+            "https://{host}/api/v4/projects/{encoded_project}/issues"
+        ))
+        .header("Authorization", format!("Bearer {token}"))
+        .form(&[
+            ("title", title.to_string()),
+            ("description", body.to_string()),
+            (
+                "labels",
+                format!("heimdall,security,{}", severity.to_lowercase()),
+            ),
+        ])
+        .send()
+        .await
+        .context("Failed to reach GitLab issues API")?;
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("GitLab issue creation failed: {body}"));
+    }
+
+    let issue = response
+        .json::<GitLabIssueResponse>()
+        .await
+        .context("Failed to parse GitLab issue response")?;
+
+    Ok(CreatedIssue {
+        external_issue_id: issue.id.to_string(),
+        external_issue_number: Some(issue.iid.to_string()),
+        issue_url: issue.web_url,
+        title: issue.title,
+    })
+}
+
+async fn create_bitbucket_grouped_issue(
+    remote_url: &str,
+    token: &str,
+    connection: &OauthConnection,
+    title: &str,
+    body: &str,
+    severity: &str,
+) -> Result<CreatedIssue> {
+    let (_, path) = split_remote(remote_url)?;
+    if path.len() < 2 {
+        return Err(anyhow!(
+            "Unable to determine Bitbucket workspace/repository from remote URL"
+        ));
+    }
+    let workspace = &path[0];
+    let repo_slug = &path[1];
+    let client = Client::new();
+    let mut req = client
+        .post(format!(
+            "https://api.bitbucket.org/2.0/repositories/{workspace}/{repo_slug}/issues"
+        ))
+        .header("User-Agent", "Heimdall");
+    if connection.token_source == "pat" {
+        req = req.basic_auth(&connection.provider_user_id, Some(token));
+    } else {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let response = req
+        .json(&serde_json::json!({
+            "title": title,
+            "content": {
+                "raw": body,
+                "markup": "markdown"
+            },
+            "kind": "bug",
+            "priority": match severity.to_lowercase().as_str() {
+                "critical" => "critical",
+                "high" => "major",
+                "medium" => "minor",
+                "low" => "trivial",
+                _ => "minor",
+            },
+        }))
+        .send()
+        .await
+        .context("Failed to reach Bitbucket issues API")?;
+
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("Bitbucket issue creation failed: {body}"));
+    }
+
+    let issue = response
+        .json::<BitbucketIssueResponse>()
+        .await
+        .context("Failed to parse Bitbucket issue response")?;
+
+    Ok(CreatedIssue {
+        external_issue_id: issue.id.to_string(),
+        external_issue_number: Some(issue.id.to_string()),
+        issue_url: issue.links.html.href,
+        title: issue.title,
+    })
 }
 
 fn severity_rank(severity: &str) -> i32 {

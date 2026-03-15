@@ -19,6 +19,7 @@ use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
 use crate::pipeline::deps_audit::DepsAuditStage;
+use crate::util::sat_i32_usize;
 
 pub mod semgrep;
 
@@ -503,7 +504,7 @@ impl StaticAnalysisStage {
                     }
 
                     if re.is_match(line) {
-                        let line_num = (line_idx + 1) as i32;
+                        let line_num = sat_i32_usize(line_idx + 1);
                         let snippet = extract_snippet(&indexed_file.content, line_idx, 2);
                         let fingerprint = make_fingerprint(rule.name, file_path, line_num);
 
@@ -730,7 +731,7 @@ impl StaticAnalysisStage {
 
             for (line_idx, line) in file.content.lines().enumerate() {
                 if let Some(secret_literal) = find_secret_candidate(line) {
-                    let line_num = (line_idx + 1) as i32;
+                    let line_num = sat_i32_usize(line_idx + 1);
                     let fingerprint = make_fingerprint("high-entropy-secret", file_path, line_num);
                     let detail = format!(
                         "Potential hardcoded secret-like literal detected: `{secret_literal}`"
@@ -929,8 +930,8 @@ fn is_test_line_context(content: &str, line_idx: usize) -> bool {
         }
 
         if in_cfg_test {
-            cfg_test_brace_depth += trimmed.matches('{').count() as i32;
-            cfg_test_brace_depth -= trimmed.matches('}').count() as i32;
+            cfg_test_brace_depth += sat_i32_usize(trimmed.matches('{').count());
+            cfg_test_brace_depth -= sat_i32_usize(trimmed.matches('}').count());
         }
     }
 

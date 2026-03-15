@@ -22,4 +22,5 @@ pub mod routes;
 pub mod sse;
 pub mod state;
 pub mod templates;
+pub mod util;
 pub mod worker;
