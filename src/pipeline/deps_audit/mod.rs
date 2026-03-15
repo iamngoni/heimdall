@@ -69,12 +69,40 @@ impl DepsAuditStage {
             manifests.len()
         );
 
-        // Parse all dependencies
+        // Parse all dependencies, preferring lock files over manifests
+        // for the same ecosystem (lock files have exact resolved versions).
         let mut all_deps: Vec<(Dependency, String)> = Vec::new(); // (dep, manifest_path)
+        let mut ecosystems_with_lockfile: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
+        // First pass: identify which ecosystems have lock files
+        for (path, _) in &manifests {
+            if is_lock_file(path) {
+                if let Some(eco) = detect_ecosystem(path) {
+                    ecosystems_with_lockfile.insert(eco);
+                }
+            }
+        }
+
+        // Second pass: parse lock files first, skip manifests when lock exists
         for (path, content) in &manifests {
             let ecosystem = detect_ecosystem(path);
-            if let Some(eco) = ecosystem {
-                let deps = parsers::parse_manifest(&eco, content);
+            if let Some(ref eco) = ecosystem {
+                let is_lock = is_lock_file(path);
+                // Skip manifest if we have a lock file for this ecosystem
+                if !is_lock && ecosystems_with_lockfile.contains(eco.as_str()) {
+                    info!(
+                        "[{}] Skipping {} (lock file available for {})",
+                        self.scan_id, path, eco
+                    );
+                    continue;
+                }
+
+                let filename = std::path::Path::new(path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let deps = parsers::parse_manifest(eco, &filename, content);
                 for dep in deps {
                     all_deps.push((dep, path.clone()));
                 }
@@ -210,6 +238,22 @@ fn detect_ecosystem(path: &str) -> Option<String> {
         "composer.json" | "composer.lock" => Some("Packagist".to_string()),
         _ => None,
     }
+}
+
+/// Check if a manifest path is a lock file (has exact resolved versions).
+fn is_lock_file(path: &str) -> bool {
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    matches!(
+        filename.as_str(),
+        "Cargo.lock"
+            | "package-lock.json"
+            | "Gemfile.lock"
+            | "composer.lock"
+            | "go.sum"
+    )
 }
 
 /// Classify severity from OSV vulnerability data.

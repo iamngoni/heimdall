@@ -9,9 +9,9 @@ services:
     image: postgres:17-alpine
     container_name: heimdall-dev-postgres
     environment:
-      POSTGRES_USER: heimdall
-      POSTGRES_PASSWORD: heimdall
-      POSTGRES_DB: heimdall
+      POSTGRES_USER: ${POSTGRES_USER:-heimdall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-heimdall}
+      POSTGRES_DB: ${POSTGRES_DB:-heimdall}
     ports:
       - "5432:5432"
     volumes:

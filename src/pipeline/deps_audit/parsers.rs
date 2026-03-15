@@ -6,13 +6,15 @@
 use super::Dependency;
 
 /// Parse a manifest file and extract dependencies.
-pub fn parse_manifest(ecosystem: &str, content: &str) -> Vec<Dependency> {
-    match ecosystem {
-        "crates.io" => parse_cargo_toml(content),
-        "npm" => parse_package_json(content),
-        "PyPI" => parse_requirements_txt(content),
-        "Go" => parse_go_mod(content),
-        "Maven" => parse_pom_xml(content),
+pub fn parse_manifest(ecosystem: &str, filename: &str, content: &str) -> Vec<Dependency> {
+    match (ecosystem, filename) {
+        ("crates.io", "Cargo.lock") => parse_cargo_lock(content),
+        ("crates.io", _) => parse_cargo_toml(content),
+        ("npm", "package-lock.json") => parse_package_lock_json(content),
+        ("npm", _) => parse_package_json(content),
+        ("PyPI", _) => parse_requirements_txt(content),
+        ("Go", _) => parse_go_mod(content),
+        ("Maven", _) => parse_pom_xml(content),
         _ => vec![],
     }
 }
@@ -58,6 +60,116 @@ fn parse_cargo_toml(content: &str) -> Vec<Dependency> {
                 });
             }
         }
+    }
+
+    deps
+}
+
+/// Parse Cargo.lock [[package]] blocks for exact resolved versions.
+fn parse_cargo_lock(content: &str) -> Vec<Dependency> {
+    let mut deps = Vec::new();
+    let mut name = String::new();
+    let mut version = String::new();
+    let mut in_package = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "[[package]]" {
+            // Emit previous package if complete
+            if in_package && !name.is_empty() && !version.is_empty() {
+                deps.push(Dependency {
+                    name: std::mem::take(&mut name),
+                    version: std::mem::take(&mut version),
+                    ecosystem: "crates.io".to_string(),
+                });
+            }
+            in_package = true;
+            name.clear();
+            version.clear();
+            continue;
+        }
+
+        if !in_package {
+            continue;
+        }
+
+        if let Some((key, val)) = trimmed.split_once('=') {
+            let key = key.trim();
+            let val = val.trim().trim_matches('"');
+            match key {
+                "name" => name = val.to_string(),
+                "version" => version = val.to_string(),
+                _ => {}
+            }
+        }
+    }
+
+    // Emit last package
+    if in_package && !name.is_empty() && !version.is_empty() {
+        deps.push(Dependency {
+            name,
+            version,
+            ecosystem: "crates.io".to_string(),
+        });
+    }
+
+    deps
+}
+
+/// Parse package-lock.json for exact resolved versions.
+fn parse_package_lock_json(content: &str) -> Vec<Dependency> {
+    let mut deps = Vec::new();
+
+    let json: serde_json::Value = match serde_json::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return deps,
+    };
+
+    // package-lock.json v2/v3 uses "packages" with "" as root
+    if let Some(packages) = json.get("packages").and_then(|v| v.as_object()) {
+        for (path, info) in packages {
+            // Skip the root package (empty path)
+            if path.is_empty() {
+                continue;
+            }
+            // Extract name from the path (e.g., "node_modules/express")
+            let name = path
+                .rsplit("node_modules/")
+                .next()
+                .unwrap_or(path);
+            let version = info
+                .get("version")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            if !name.is_empty() && !version.is_empty() {
+                deps.push(Dependency {
+                    name: name.to_string(),
+                    version: version.to_string(),
+                    ecosystem: "npm".to_string(),
+                });
+            }
+        }
+    }
+    // Fallback: package-lock.json v1 uses "dependencies"
+    else if let Some(dependencies) = json.get("dependencies").and_then(|v| v.as_object()) {
+        fn walk_v1_deps(obj: &serde_json::Map<String, serde_json::Value>, deps: &mut Vec<Dependency>) {
+            for (name, info) in obj {
+                if let Some(version) = info.get("version").and_then(|v| v.as_str()) {
+                    deps.push(Dependency {
+                        name: name.clone(),
+                        version: version.to_string(),
+                        ecosystem: "npm".to_string(),
+                    });
+                }
+                // Recurse into nested dependencies
+                if let Some(nested) = info.get("dependencies").and_then(|v| v.as_object()) {
+                    walk_v1_deps(nested, deps);
+                }
+            }
+        }
+        walk_v1_deps(dependencies, &mut deps);
     }
 
     deps

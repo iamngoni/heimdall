@@ -478,6 +478,12 @@ impl StaticAnalysisStage {
             };
 
             for (file_path, indexed_file) in &index.files {
+                // Skip test files, spec files, and lock files — they contain
+                // intentional patterns that would cause false positives.
+                if is_test_or_generated_file(file_path) {
+                    continue;
+                }
+
                 // Check language filter
                 if !rule.languages.is_empty() {
                     if let Some(ref lang) = indexed_file.language {
@@ -490,6 +496,12 @@ impl StaticAnalysisStage {
                 }
 
                 for (line_idx, line) in indexed_file.content.lines().enumerate() {
+                    // Skip lines inside test blocks (Rust #[cfg(test)] / #[test],
+                    // Python def test_, JS describe/it, etc.)
+                    if is_test_line_context(&indexed_file.content, line_idx) {
+                        continue;
+                    }
+
                     if re.is_match(line) {
                         let line_num = (line_idx + 1) as i32;
                         let snippet = extract_snippet(&indexed_file.content, line_idx, 2);
@@ -855,6 +867,90 @@ fn shannon_entropy(literal: &str) -> f64 {
             -probability * probability.log2()
         })
         .sum()
+}
+
+/// Check if a file path is a test, spec, fixture, or generated file
+/// that should be excluded from static analysis pattern matching.
+fn is_test_or_generated_file(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+
+    // Lock files contain crate/package names that match vulnerability patterns
+    if lower.ends_with(".lock") || lower.ends_with("-lock.json") {
+        return true;
+    }
+
+    // Test/spec directories
+    let test_dirs = [
+        "/test/", "/tests/", "/__tests__/", "/spec/", "/specs/",
+        "/fixtures/", "/testdata/", "/test_data/", "/mock/", "/mocks/",
+    ];
+    if test_dirs.iter().any(|d| lower.contains(d)) {
+        return true;
+    }
+
+    // Test file naming conventions
+    let filename = lower.rsplit('/').next().unwrap_or(&lower);
+    if filename.starts_with("test_")
+        || filename.ends_with("_test.rs")
+        || filename.ends_with("_test.go")
+        || filename.ends_with("_test.py")
+        || filename.ends_with(".test.js")
+        || filename.ends_with(".test.ts")
+        || filename.ends_with(".test.tsx")
+        || filename.ends_with(".spec.js")
+        || filename.ends_with(".spec.ts")
+        || filename.ends_with(".spec.tsx")
+    {
+        return true;
+    }
+
+    false
+}
+
+/// Check if a line is inside a test block (e.g., Rust #[cfg(test)] module,
+/// or preceded by #[test]). This catches inline tests in the same file.
+fn is_test_line_context(content: &str, line_idx: usize) -> bool {
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Look backwards from this line for test markers
+    let start = line_idx.saturating_sub(30);
+    let mut in_cfg_test = false;
+    let mut cfg_test_brace_depth: i32 = 0;
+
+    for i in start..=line_idx {
+        if i >= lines.len() {
+            break;
+        }
+        let trimmed = lines[i].trim();
+
+        if trimmed.contains("#[cfg(test)]") {
+            in_cfg_test = true;
+            cfg_test_brace_depth = 0;
+        }
+
+        if in_cfg_test {
+            cfg_test_brace_depth += trimmed.matches('{').count() as i32;
+            cfg_test_brace_depth -= trimmed.matches('}').count() as i32;
+        }
+    }
+
+    // If we're inside a #[cfg(test)] block that hasn't closed, this is test code
+    if in_cfg_test && cfg_test_brace_depth > 0 {
+        return true;
+    }
+
+    // Check for #[test] attribute on nearby function
+    let check_start = line_idx.saturating_sub(5);
+    for i in check_start..line_idx {
+        if i < lines.len() {
+            let trimmed = lines[i].trim();
+            if trimmed == "#[test]" || trimmed.starts_with("#[test]") {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 fn extract_snippet(content: &str, center_line: usize, context: usize) -> String {

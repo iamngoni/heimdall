@@ -144,7 +144,7 @@ impl AppConfig {
 impl DatabaseConfig {
     fn from_env() -> Result<Self> {
         let url = env::var("DATABASE_URL").context(
-            "DATABASE_URL must be set (e.g., postgres://user:pass@localhost:5432/heimdall)",
+            "DATABASE_URL must be set (e.g., postgres://user:<password>@localhost:5432/heimdall)",
         )?;
         Ok(DatabaseConfig { url })
     }

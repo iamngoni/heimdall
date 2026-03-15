@@ -40,15 +40,15 @@ services:
     container_name: heimdall-postgres
     profiles: ["postgres"]
     environment:
-      POSTGRES_USER: heimdall
-      POSTGRES_PASSWORD: heimdall
-      POSTGRES_DB: heimdall
+      POSTGRES_USER: ${POSTGRES_USER:-heimdall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-heimdall}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U heimdall"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-heimdall}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -59,10 +59,10 @@ services:
     container_name: heimdall-mysql
     profiles: ["mysql"]
     environment:
-      MYSQL_ROOT_PASSWORD: heimdall
-      MYSQL_DATABASE: heimdall
-      MYSQL_USER: heimdall
-      MYSQL_PASSWORD: heimdall
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+      MYSQL_DATABASE: ${MYSQL_DB:-heimdall}
+      MYSQL_USER: ${MYSQL_USER:-heimdall}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set}
     ports:
       - "${MYSQL_PORT:-3306}:3306"
     volumes:
@@ -79,9 +79,9 @@ services:
     container_name: heimdall-mongo
     profiles: ["mongo"]
     environment:
-      MONGO_INITDB_ROOT_USERNAME: heimdall
-      MONGO_INITDB_ROOT_PASSWORD: heimdall
-      MONGO_INITDB_DATABASE: heimdall
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-heimdall}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD must be set}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-heimdall}
     ports:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
