@@ -21,6 +21,7 @@ pub mod tyr;
 use std::sync::Arc;
 
 use log::{error, info, warn};
+use tokio_util::sync::CancellationToken;
 
 use crate::ai::ModelProvider;
 use crate::db::DatabaseOperations;
@@ -39,6 +40,7 @@ pub struct ScanPipeline {
     pub sse: Arc<ScanBroadcaster>,
     pub encryption_key: Option<[u8; 32]>,
     pub data_dir: String,
+    pub cancel_token: CancellationToken,
 }
 
 impl ScanPipeline {
@@ -50,6 +52,7 @@ impl ScanPipeline {
         sse: Arc<ScanBroadcaster>,
         encryption_key: Option<[u8; 32]>,
         data_dir: String,
+        cancel_token: CancellationToken,
     ) -> Self {
         Self {
             scan_id,
@@ -59,6 +62,7 @@ impl ScanPipeline {
             sse,
             encryption_key,
             data_dir,
+            cancel_token,
         }
     }
 
@@ -282,28 +286,22 @@ impl ScanPipeline {
         )
         .await;
 
-        // Cleanup SSE channel after a short delay to let clients receive final events
+        // Cleanup SSE channel and cancellation token after a short delay
         let sse = Arc::clone(&self.sse);
         let scan_id = self.scan_id;
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             sse.cleanup(scan_id);
+            sse.cleanup_cancellation_token(scan_id);
         });
 
         info!("Scan pipeline completed for scan_id={}", self.scan_id);
         Ok(())
     }
 
-    /// Check if the scan has been cancelled (e.g., by user request via the API).
-    async fn is_cancelled(&self) -> bool {
-        if let Ok(Some(scan)) = self.db.get_scan_by_id(self.scan_id).await {
-            scan.status == "cancelled"
-        } else {
-            false
-        }
-    }
-
     /// Run a pipeline stage with proper status tracking, error handling, and SSE events.
+    /// The stage future races against the cancellation token — if the user cancels,
+    /// the in-progress work is dropped immediately.
     async fn run_stage<T, F>(
         &self,
         stage_name: &str,
@@ -315,7 +313,7 @@ impl ScanPipeline {
         F: std::future::Future<Output = HeimdallResult<T>>,
     {
         // Check for cancellation before starting a new stage
-        if self.is_cancelled().await {
+        if self.cancel_token.is_cancelled() {
             info!(
                 "[{}] Scan cancelled — skipping stage {stage_name}",
                 self.scan_id
@@ -352,7 +350,16 @@ impl ScanPipeline {
         )
         .await;
 
-        match future.await {
+        // Race the stage work against the cancellation token
+        let result = tokio::select! {
+            biased;
+            _ = self.cancel_token.cancelled() => {
+                Err(anyhow::anyhow!("Scan was cancelled"))
+            }
+            result = future => result,
+        };
+
+        match result {
             Ok(result) => {
                 self.db
                     .update_scan_stage_status(scan_stage.id, "completed", None)
@@ -382,24 +389,35 @@ impl ScanPipeline {
             }
             Err(e) => {
                 let err_msg = format!("{e:#}");
-                error!("[{}] Stage {stage_name} failed: {err_msg}", self.scan_id);
+
+                // If cancelled, mark stage as cancelled rather than failed
+                let stage_status = if self.cancel_token.is_cancelled() {
+                    "cancelled"
+                } else {
+                    "failed"
+                };
+
+                error!("[{}] Stage {stage_name} {stage_status}: {err_msg}", self.scan_id);
                 self.db
-                    .update_scan_stage_status(scan_stage.id, "failed", Some(&err_msg))
+                    .update_scan_stage_status(scan_stage.id, stage_status, Some(&err_msg))
                     .await?;
-                self.db
-                    .update_scan_status(self.scan_id, "failed", Some(&err_msg))
-                    .await?;
+
+                if !self.cancel_token.is_cancelled() {
+                    self.db
+                        .update_scan_status(self.scan_id, "failed", Some(&err_msg))
+                        .await?;
+                }
 
                 // Emit SSE events: stage failed + error
                 self.sse
-                    .emit_stage_update(self.scan_id, stage_name, "failed", Some(&err_msg));
+                    .emit_stage_update(self.scan_id, stage_name, stage_status, Some(&err_msg));
                 self.sse.emit_error(self.scan_id, &err_msg);
                 self.record_scan_event(
                     Some(stage_name),
                     Some(stage_name),
                     "stage",
-                    Some("failed"),
-                    format!("{} failed", humanize_stage_name(stage_name)).as_str(),
+                    Some(stage_status),
+                    format!("{} {stage_status}", humanize_stage_name(stage_name)).as_str(),
                     Some(&err_msg),
                     None,
                     None,

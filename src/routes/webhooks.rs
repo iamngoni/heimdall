@@ -290,15 +290,19 @@ async fn trigger_scan_for_webhook(
         let encryption_key = state.encryption_key;
         let data_dir = state.config.app.data_dir.clone();
 
+        let cancel_token = sse.register_cancellation_token(scan_id);
         tokio::spawn(async move {
             let pipeline =
-                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key, data_dir);
+                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key, data_dir, cancel_token);
             if let Err(e) = pipeline.run(&repo).await {
                 error!("Scan pipeline failed for {scan_id}: {e:#}");
-                sse.emit_error(scan_id, &format!("{e:#}"));
-                let _ = db
-                    .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
-                    .await;
+                if !pipeline.cancel_token.is_cancelled() {
+                    sse.emit_error(scan_id, &format!("{e:#}"));
+                    let _ = db
+                        .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
+                        .await;
+                }
+                sse.cleanup_cancellation_token(scan_id);
             }
         });
 

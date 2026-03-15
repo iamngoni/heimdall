@@ -111,6 +111,9 @@ async fn cancel_scan(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpR
         ));
     }
 
+    // Signal the cancellation token to abort the running pipeline task
+    state.sse.cancel_scan(scan_id);
+
     // Emit SSE events so the UI updates immediately
     state.sse.emit_status_change(scan_id, "cancelled");
     state

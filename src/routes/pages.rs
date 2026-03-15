@@ -213,10 +213,14 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
                 "id": repo.id,
                 "name": repo.name,
                 "host": match repo.source_type.as_str() {
-                    "github" | "gitlab" | "git_url" => repo
+                    "github" | "gitlab" | "bitbucket" | "git_url" => repo
                         .remote_url
                         .as_deref()
-                        .and_then(|remote| remote.split('/').nth(2))
+                        .and_then(|remote| {
+                            let host = remote.split('/').nth(2)?;
+                            // Strip user@ prefix (e.g. Bitbucket URLs include username@)
+                            Some(host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host))
+                        })
                         .unwrap_or("Unknown host"),
                     "zip" => "ZIP Upload",
                     _ => "Local / Upload",
@@ -505,10 +509,13 @@ async fn repo_detail_page(
             "issue_auto_create_enabled": repo.issue_auto_create_enabled,
             "issue_auto_create_min_severity": repo.issue_auto_create_min_severity,
             "host": match repo.source_type.as_str() {
-                "github" | "gitlab" | "git_url" => repo
+                "github" | "gitlab" | "bitbucket" | "git_url" => repo
                     .remote_url
                     .as_deref()
-                    .and_then(|remote| remote.split('/').nth(2))
+                    .and_then(|remote| {
+                        let host = remote.split('/').nth(2)?;
+                        Some(host.rsplit_once('@').map(|(_, h)| h).unwrap_or(host))
+                    })
                     .unwrap_or("Unknown host"),
                 "zip" => "ZIP Upload",
                 _ => "Local / Upload",

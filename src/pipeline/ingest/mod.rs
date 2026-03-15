@@ -205,7 +205,7 @@ impl IngestStage {
         let work_dir = work_base.join(self.scan_id.to_string());
 
         match repo.source_type.as_str() {
-            "github" | "gitlab" | "git_url" => {
+            "github" | "gitlab" | "bitbucket" | "git_url" => {
                 if work_dir.exists() {
                     info!(
                         "[{}] Removing stale scan work directory {:?} before clone",
@@ -228,11 +228,13 @@ impl IngestStage {
                     work_dir
                 );
 
-                let output = tokio::process::Command::new("git")
-                    .args(["clone", "--depth", "1", &clone_url])
-                    .arg(&work_dir)
-                    .output()
-                    .await?;
+                let mut cmd = tokio::process::Command::new("git");
+                cmd.args(["clone", "--depth", "1"]);
+                if let Some(ref branch) = repo.default_branch {
+                    cmd.args(["--branch", branch]);
+                }
+                cmd.arg(&clone_url).arg(&work_dir);
+                let output = cmd.output().await?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -441,12 +443,22 @@ fn embed_token_in_clone_url(
         return url.to_string();
     };
 
-    let username = match provider {
-        "github" => "x-access-token",
-        "gitlab" => "oauth2",
-        // Bitbucket App Passwords use the actual username, not x-token-auth.
-        "bitbucket" if token_source == "pat" => provider_user_id,
-        "bitbucket" => "x-token-auth",
+    // Strip any existing username@ from the URL (Bitbucket clone URLs include it)
+    // and capture the embedded username for Bitbucket App Password auth.
+    let (embedded_user, rest) = match rest.find('@') {
+        Some(at) if rest[..at].find('/').is_none() => (Some(&rest[..at]), &rest[at + 1..]),
+        _ => (None, rest),
+    };
+
+    let username: std::borrow::Cow<'_, str> = match provider {
+        "github" => "x-access-token".into(),
+        "gitlab" => "oauth2".into(),
+        // Bitbucket App Passwords use the Bitbucket username (not email) for Basic auth.
+        // The clone URL from the API already contains it (e.g. https://username@bitbucket.org/...).
+        "bitbucket" if token_source == "pat" => {
+            embedded_user.unwrap_or(provider_user_id).into()
+        }
+        "bitbucket" => "x-token-auth".into(),
         _ => return url.to_string(),
     };
 

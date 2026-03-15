@@ -1541,6 +1541,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "tree-sitter",
  "tree-sitter-go",
  "tree-sitter-java",

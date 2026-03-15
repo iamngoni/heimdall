@@ -76,8 +76,49 @@
                         </div>
                         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                             <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Default Branch</p>
-                            <p class="mt-3 text-lg font-semibold text-slate-900">{{ repo.default_branch or "main" }}</p>
-                            <p class="mt-2 text-sm text-slate-500">Primary branch used when scans start from this repository.</p>
+                            <div class="mt-3 flex items-center gap-2" id="branch-display">
+                                <div class="flex items-center gap-2">
+                                    <svg class="h-4 w-4 text-slate-400" viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25z"/></svg>
+                                    <p class="text-lg font-semibold text-slate-900" id="branch-value">{{ repo.default_branch or "—" }}</p>
+                                </div>
+                                {% if repo.source_type in ["github", "gitlab", "bitbucket"] %}
+                                <button type="button"
+                                        onclick="HeimdallRepoDetail.openBranchPicker('{{ repo.id }}')"
+                                        id="branch-edit-btn"
+                                        class="inline-flex h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+                                        title="Change branch">
+                                    <svg class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z"/></svg>
+                                    Change
+                                </button>
+                                {% endif %}
+                            </div>
+                            {# ── Custom searchable branch picker ── #}
+                            <div class="mt-3 hidden" id="branch-picker">
+                                <div class="flex items-center rounded-xl border border-slate-200 bg-white shadow-sm focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100"
+                                     id="branch-search-anchor">
+                                    <svg class="ml-3 h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd"/></svg>
+                                    <input type="text"
+                                           id="branch-search"
+                                           autocomplete="off"
+                                           spellcheck="false"
+                                           placeholder="Search branches..."
+                                           class="w-full border-0 bg-transparent px-3 py-2.5 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-0">
+                                    <div id="branch-spinner" class="mr-3 hidden">
+                                        <svg class="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-3a7 7 0 0 0-7-7V2z"/></svg>
+                                    </div>
+                                    <button type="button"
+                                            onclick="HeimdallRepoDetail.closeBranchPicker()"
+                                            class="mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+                                        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l8 8M14 6l-8 8"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            {# Dropdown portal — rendered outside card to avoid overflow clip #}
+                            <div id="branch-dropdown"
+                                 class="fixed z-50 hidden max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                                 style="scrollbar-width:thin">
+                            </div>
+                            <p class="mt-2 text-sm text-slate-500">Branch cloned when scans run on this repository.</p>
                         </div>
                         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                             <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Latest Status</p>
@@ -433,6 +474,184 @@ window.HeimdallRepoDetail = {
         }
         if (recheckControls) {
             recheckControls.classList.toggle('hidden', isSupported);
+        }
+    },
+
+    // ── Branch picker state ──
+    _branches: [],
+    _branchRepoId: null,
+    _highlightIdx: -1,
+
+    async openBranchPicker(repoId) {
+        this._branchRepoId = repoId;
+        const display  = document.getElementById('branch-display');
+        const picker   = document.getElementById('branch-picker');
+        const search   = document.getElementById('branch-search');
+        const spinner  = document.getElementById('branch-spinner');
+        const dropdown = document.getElementById('branch-dropdown');
+        const current  = document.getElementById('branch-value').textContent.trim();
+
+        display.classList.add('hidden');
+        picker.classList.remove('hidden');
+        search.value = '';
+        search.focus();
+        dropdown.classList.add('hidden');
+        spinner.classList.remove('hidden');
+
+        // Fetch branches
+        try {
+            const resp = await fetch(`/api/repos/${repoId}/branches`, {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+            });
+            const payload = await resp.json().catch(() => null);
+            this._branches = payload && payload.data ? payload.data.branches : [];
+        } catch (_) {
+            this._branches = [];
+        }
+        spinner.classList.add('hidden');
+
+        if (this._branches.length === 0) {
+            this.notify('Could not load branches from remote.', 'warning');
+            this.closeBranchPicker();
+            return;
+        }
+
+        // Sort: current branch first, then alphabetical
+        this._branches.sort((a, b) => {
+            if (a === current) return -1;
+            if (b === current) return 1;
+            return a.localeCompare(b);
+        });
+
+        this._renderBranchList('', current);
+        this._positionDropdown();
+        dropdown.classList.remove('hidden');
+
+        // Wire up search input (debounced)
+        search.oninput = () => {
+            this._highlightIdx = -1;
+            this._renderBranchList(search.value.trim(), current);
+        };
+
+        // Keyboard navigation
+        search.onkeydown = (e) => {
+            const items = dropdown.querySelectorAll('[data-branch]');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                this._highlightIdx = Math.min(this._highlightIdx + 1, items.length - 1);
+                this._applyHighlight(items);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                this._highlightIdx = Math.max(this._highlightIdx - 1, 0);
+                this._applyHighlight(items);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (this._highlightIdx >= 0 && items[this._highlightIdx]) {
+                    this._selectBranch(items[this._highlightIdx].dataset.branch);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this.closeBranchPicker();
+            }
+        };
+
+        // Close on outside click
+        this._branchOutsideClick = (e) => {
+            const dd = document.getElementById('branch-dropdown');
+            if (!picker.contains(e.target) && !dd.contains(e.target) && e.target !== document.getElementById('branch-edit-btn')) {
+                this.closeBranchPicker();
+            }
+        };
+        setTimeout(() => document.addEventListener('click', this._branchOutsideClick), 0);
+    },
+
+    _renderBranchList(query, current) {
+        const dropdown = document.getElementById('branch-dropdown');
+        const needle = query.toLowerCase();
+        const filtered = needle
+            ? this._branches.filter(b => b.toLowerCase().includes(needle))
+            : this._branches;
+
+        if (filtered.length === 0) {
+            dropdown.innerHTML = '<div class="px-4 py-6 text-center text-sm text-slate-400">No branches match your search.</div>';
+            return;
+        }
+
+        dropdown.innerHTML = filtered.map((branch, i) => {
+            const isCurrent = branch === current;
+            const isHighlighted = i === this._highlightIdx;
+            return `<button type="button"
+                data-branch="${branch}"
+                class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition
+                    ${isHighlighted ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'}"
+                onclick="HeimdallRepoDetail._selectBranch('${branch.replace(/'/g, "\\'")}')">
+                <svg class="h-4 w-4 shrink-0 ${isCurrent ? 'text-blue-500' : 'text-transparent'}" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/></svg>
+                <span class="truncate ${isCurrent ? 'font-semibold' : 'font-medium'}">${branch}</span>
+                ${isCurrent ? '<span class="ml-auto shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-600">current</span>' : ''}
+            </button>`;
+        }).join('');
+    },
+
+    _applyHighlight(items) {
+        items.forEach((el, i) => {
+            el.classList.toggle('bg-blue-50', i === this._highlightIdx);
+            el.classList.toggle('text-blue-700', i === this._highlightIdx);
+            if (i === this._highlightIdx) el.scrollIntoView({ block: 'nearest' });
+        });
+    },
+
+    async _selectBranch(branch) {
+        const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+
+        // Optimistic UI update
+        document.getElementById('branch-value').textContent = branch;
+        this.closeBranchPicker();
+
+        try {
+            const response = await fetch(`/api/repos/${this._branchRepoId}/branch`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': csrfToken,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ branch }),
+            });
+
+            const payload = await response.json().catch(() => null);
+            if (response.ok) {
+                this.notify(`Default branch set to "${branch}".`, 'success');
+            } else {
+                const message = payload && payload.error
+                    ? (payload.error.message || payload.error)
+                    : 'Failed to update branch.';
+                this.notify(message, 'warning');
+            }
+        } catch (_) {
+            this.notify('Unable to update branch right now.', 'warning');
+        }
+    },
+
+    _positionDropdown() {
+        const anchor = document.getElementById('branch-search-anchor');
+        const dropdown = document.getElementById('branch-dropdown');
+        if (!anchor || !dropdown) return;
+        const rect = anchor.getBoundingClientRect();
+        dropdown.style.top = (rect.bottom + 4) + 'px';
+        dropdown.style.left = rect.left + 'px';
+        dropdown.style.width = rect.width + 'px';
+    },
+
+    closeBranchPicker() {
+        document.getElementById('branch-picker').classList.add('hidden');
+        document.getElementById('branch-dropdown').classList.add('hidden');
+        document.getElementById('branch-display').classList.remove('hidden');
+        if (this._branchOutsideClick) {
+            document.removeEventListener('click', this._branchOutsideClick);
+            this._branchOutsideClick = null;
         }
     },
 

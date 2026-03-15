@@ -33,6 +33,11 @@ pub fn init(cfg: &mut web::ServiceConfig) {
                 "/{id}/issue-automation",
                 web::patch().to(update_repo_issue_automation),
             )
+            .route("/{id}/branches", web::get().to(list_repo_branches))
+            .route(
+                "/{id}/branch",
+                web::patch().to(update_repo_branch),
+            )
             .route(
                 "/{id}/check-issue-tracker",
                 web::get().to(check_issue_tracker),
@@ -260,15 +265,20 @@ async fn trigger_scan(
         let scan_id = scan.id;
         let repo_name = repo.name.clone();
 
+        let cancel_token = sse.register_cancellation_token(scan_id);
         tokio::spawn(async move {
             let pipeline =
-                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key, data_dir);
+                ScanPipeline::new(scan_id, db.clone(), ai, model, sse.clone(), encryption_key, data_dir, cancel_token);
             if let Err(e) = pipeline.run(&repo).await {
                 error!("Scan pipeline failed for {scan_id}: {e:#}");
-                sse.emit_error(scan_id, &format!("{e:#}"));
-                let _ = db
-                    .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
-                    .await;
+                if !pipeline.cancel_token.is_cancelled() {
+                    sse.emit_error(scan_id, &format!("{e:#}"));
+                    let _ = db
+                        .update_scan_status(scan_id, "failed", Some(&format!("{e:#}")))
+                        .await;
+                }
+                // Cleanup on error
+                sse.cleanup_cancellation_token(scan_id);
             }
         });
 
@@ -353,6 +363,223 @@ async fn update_repo_issue_automation(
         Err(error) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,
             format!("Failed to update repository issue automation: {error}"),
+        )),
+    }
+}
+
+/// GET /repos/{id}/branches — list remote branches for a repo.
+async fn list_repo_branches(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let repo_id = path.into_inner();
+
+    let repo = match state.db.get_repo_by_id(repo_id).await {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .json(ApiResponse::<()>::error(404, "Repo not found"));
+        }
+        Err(e) => {
+            return HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, format!("{e}")));
+        }
+    };
+
+    let remote_url = match repo.remote_url.as_deref() {
+        Some(url) => url,
+        None => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "branches": serde_json::Value::Array(vec![]),
+                "message": "No remote URL configured.",
+            })));
+        }
+    };
+
+    let conn_id = match repo.oauth_connection_id {
+        Some(id) => id,
+        None => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "branches": serde_json::Value::Array(vec![]),
+                "message": "No provider connection found.",
+            })));
+        }
+    };
+
+    let conn = match state.db.get_oauth_connection_by_id(conn_id).await {
+        Ok(Some(c)) => c,
+        _ => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "branches": serde_json::Value::Array(vec![]),
+                "message": "Provider connection could not be loaded.",
+            })));
+        }
+    };
+
+    let token = match connection_access_token(&state, &conn) {
+        Ok(t) => t,
+        Err(msg) => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "branches": serde_json::Value::Array(vec![]),
+                "message": msg,
+            })));
+        }
+    };
+
+    // Extract owner/repo from remote URL
+    let (owner, repo_name) = match extract_owner_repo(remote_url) {
+        Some(pair) => pair,
+        None => {
+            return HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "branches": serde_json::Value::Array(vec![]),
+                "message": "Could not determine repository path from remote URL.",
+            })));
+        }
+    };
+
+    let client = reqwest::Client::new();
+    let provider = repo.source_type.as_str();
+
+    let branches: Vec<String> = match provider {
+        "github" => {
+            let resp = client
+                .get(format!(
+                    "https://api.github.com/repos/{owner}/{repo_name}/branches?per_page=100"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("User-Agent", "Heimdall")
+                .header("Accept", "application/vnd.github+json")
+                .send()
+                .await;
+
+            match resp {
+                Ok(r) if r.status().is_success() => {
+                    #[derive(Deserialize)]
+                    struct GhBranch { name: String }
+                    r.json::<Vec<GhBranch>>()
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|b| b.name)
+                        .collect()
+                }
+                _ => vec![],
+            }
+        }
+        "gitlab" => {
+            let encoded = format!("{owner}%2F{repo_name}");
+            let resp = client
+                .get(format!(
+                    "https://gitlab.com/api/v4/projects/{encoded}/repository/branches?per_page=100"
+                ))
+                .header("Authorization", format!("Bearer {token}"))
+                .send()
+                .await;
+
+            match resp {
+                Ok(r) if r.status().is_success() => {
+                    #[derive(Deserialize)]
+                    struct GlBranch { name: String }
+                    r.json::<Vec<GlBranch>>()
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|b| b.name)
+                        .collect()
+                }
+                _ => vec![],
+            }
+        }
+        "bitbucket" => {
+            let mut req = client.get(format!(
+                "https://api.bitbucket.org/2.0/repositories/{owner}/{repo_name}/refs/branches?pagelen=100"
+            ));
+            if conn.token_source == "pat" {
+                req = req.basic_auth(&conn.provider_user_id, Some(&token));
+            } else {
+                req = req.header("Authorization", format!("Bearer {token}"));
+            }
+            let resp = req.send().await;
+
+            match resp {
+                Ok(r) if r.status().is_success() => {
+                    #[derive(Deserialize)]
+                    struct BbBranchResponse { values: Vec<BbBranch> }
+                    #[derive(Deserialize)]
+                    struct BbBranch { name: String }
+                    r.json::<BbBranchResponse>()
+                        .await
+                        .map(|r| r.values.into_iter().map(|b| b.name).collect())
+                        .unwrap_or_default()
+                }
+                _ => vec![],
+            }
+        }
+        _ => vec![],
+    };
+
+    HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+        "branches": branches,
+        "current": repo.default_branch,
+    })))
+}
+
+/// Extract owner/repo from a remote URL like https://github.com/owner/repo.git
+fn extract_owner_repo(remote_url: &str) -> Option<(String, String)> {
+    let trimmed = remote_url.trim().trim_end_matches(".git");
+    let without_scheme = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .unwrap_or(trimmed);
+    // Strip user@ prefix (e.g. Bitbucket URLs)
+    let without_auth = without_scheme
+        .rsplit_once('@')
+        .map(|(_, rest)| rest)
+        .unwrap_or(without_scheme);
+    let mut parts = without_auth.split('/').filter(|s| !s.is_empty());
+    let _host = parts.next()?; // github.com, gitlab.com, bitbucket.org
+    let owner = parts.next()?.to_string();
+    let repo = parts.next()?.to_string();
+    Some((owner, repo))
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateBranchRequest {
+    branch: String,
+}
+
+/// PATCH /repos/{id}/branch — update the default branch for a repo.
+async fn update_repo_branch(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    body: Either<web::Json<UpdateBranchRequest>, web::Form<UpdateBranchRequest>>,
+) -> HttpResponse {
+    let repo_id = path.into_inner();
+    let body = match body {
+        Either::Left(json) => json.into_inner(),
+        Either::Right(form) => form.into_inner(),
+    };
+
+    let branch = body.branch.trim();
+    if branch.is_empty() {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Branch name cannot be empty.",
+        ));
+    }
+
+    match state.db.update_repo_default_branch(repo_id, branch).await {
+        Ok(Some(repo)) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+            "id": repo.id,
+            "default_branch": repo.default_branch,
+        }))),
+        Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
+            404,
+            format!("Repo '{repo_id}' not found"),
+        )),
+        Err(error) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            format!("Failed to update branch: {error}"),
         )),
     }
 }
@@ -566,6 +793,7 @@ struct ImportRepoRequest {
     full_name: String,
     clone_url: String,
     name: Option<String>,
+    default_branch: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1067,7 +1295,7 @@ async fn import_repo(
             repo_name,
             provider,
             Some(&body.clone_url),
-            None,
+            body.default_branch.as_deref(),
             Some(conn.id),
         )
         .await

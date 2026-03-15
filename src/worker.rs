@@ -179,6 +179,7 @@ impl ScanWorker {
         };
 
         // Run the pipeline
+        let cancel_token = self.state.sse.register_cancellation_token(scan_id);
         let pipeline = ScanPipeline::new(
             scan_id,
             Arc::clone(&self.state.db),
@@ -187,6 +188,7 @@ impl ScanWorker {
             Arc::clone(&self.state.sse),
             self.state.encryption_key,
             self.state.config.app.data_dir.clone(),
+            cancel_token,
         );
 
         match pipeline.run(&repo).await {

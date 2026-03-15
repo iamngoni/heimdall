@@ -311,6 +311,22 @@ impl DatabaseOperations {
         .context("Failed to update repo issue settings")
     }
 
+    pub async fn update_repo_default_branch(
+        &self,
+        repo_id: Uuid,
+        branch: &str,
+    ) -> HeimdallResult<Option<Repo>> {
+        sqlx::query_as::<_, Repo>(
+            "UPDATE repos SET default_branch = $1, updated_at = now() \
+             WHERE id = $2 AND deleted_at IS NULL RETURNING *",
+        )
+        .bind(branch)
+        .bind(repo_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to update repo default branch")
+    }
+
     pub async fn count_repos_by_user(&self, user_id: Uuid) -> HeimdallResult<i64> {
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM repos WHERE user_id = $1 AND deleted_at IS NULL",
