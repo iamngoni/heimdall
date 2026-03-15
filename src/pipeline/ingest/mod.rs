@@ -8,10 +8,12 @@
 //
 
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
 
 use log::{debug, info};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 use walkdir::WalkDir;
 
 use crate::crypto;
@@ -19,12 +21,14 @@ use crate::db::DatabaseOperations;
 use crate::index::{CodeIndex, IndexedFile};
 use crate::models::HeimdallResult;
 use crate::models::db_models::Repo;
+use crate::sse::ScanBroadcaster;
 
 /// Handles repository ingestion: clone/download, file enumeration, language detection,
 /// symbol extraction, and building the in-memory CodeIndex.
 pub struct IngestStage {
     pub scan_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
+    pub sse: Arc<ScanBroadcaster>,
     pub encryption_key: Option<[u8; 32]>,
     pub data_dir: String,
 }
@@ -61,12 +65,14 @@ impl IngestStage {
     pub fn new(
         scan_id: uuid::Uuid,
         db: Arc<DatabaseOperations>,
+        sse: Arc<ScanBroadcaster>,
         encryption_key: Option<[u8; 32]>,
         data_dir: String,
     ) -> Self {
         Self {
             scan_id,
             db,
+            sse,
             encryption_key,
             data_dir,
         }
@@ -196,6 +202,8 @@ impl IngestStage {
                 metadata_json,
             )
             .await;
+        self.sse
+            .emit_stage_update(self.scan_id, "ingest", "running", None);
     }
 
     /// Clone or locate the repo source.
@@ -229,17 +237,16 @@ impl IngestStage {
                 );
 
                 let mut cmd = tokio::process::Command::new("git");
-                cmd.args(["clone", "--depth", "1"]);
+                cmd.args(["clone", "--depth", "1", "--progress"]);
                 if let Some(ref branch) = repo.default_branch {
                     cmd.args(["--branch", branch]);
                 }
-                cmd.arg(&clone_url).arg(&work_dir);
-                let output = cmd.output().await?;
+                cmd.arg(&clone_url)
+                    .arg(&work_dir)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped());
 
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    anyhow::bail!("git clone failed: {stderr}");
-                }
+                self.stream_clone_progress(cmd).await?;
             }
             "zip" => {
                 // remote_url holds the path to the uploaded .zip file
@@ -317,6 +324,86 @@ impl IngestStage {
         }
 
         Ok(work_dir)
+    }
+
+    async fn stream_clone_progress(&self, mut cmd: tokio::process::Command) -> HeimdallResult<()> {
+        let mut child = cmd.spawn()?;
+        let mut stderr = child.stderr.take().ok_or_else(|| {
+            anyhow::anyhow!("git clone did not expose stderr for progress capture")
+        })?;
+
+        let mut buffer = [0u8; 4096];
+        let mut pending = String::new();
+        let mut last_progress: Option<CloneProgressUpdate> = None;
+
+        loop {
+            let bytes_read = stderr.read(&mut buffer).await?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            pending.push_str(&String::from_utf8_lossy(&buffer[..bytes_read]));
+
+            while let Some(idx) = pending.find(['\r', '\n']) {
+                let segment = pending[..idx].trim().to_string();
+                pending.drain(..=idx);
+                self.handle_clone_progress_segment(&segment, &mut last_progress)
+                    .await;
+            }
+        }
+
+        if !pending.trim().is_empty() {
+            self.handle_clone_progress_segment(pending.trim(), &mut last_progress)
+                .await;
+        }
+
+        let status = child.wait().await?;
+        if !status.success() {
+            let stderr_summary = last_progress
+                .as_ref()
+                .map(|update| update.detail.clone())
+                .filter(|detail| !detail.is_empty())
+                .unwrap_or_else(|| {
+                    "git clone failed without additional progress output.".to_string()
+                });
+            anyhow::bail!("git clone failed: {stderr_summary}");
+        }
+
+        Ok(())
+    }
+
+    async fn handle_clone_progress_segment(
+        &self,
+        segment: &str,
+        last_progress: &mut Option<CloneProgressUpdate>,
+    ) {
+        let Some(update) = parse_clone_progress(segment) else {
+            return;
+        };
+
+        let should_emit = match last_progress {
+            Some(previous) => previous.phase != update.phase || previous.bucket != update.bucket,
+            None => true,
+        };
+
+        if !should_emit {
+            return;
+        }
+
+        *last_progress = Some(update.clone());
+        self.record_event(
+            Some("source-acquisition"),
+            "running",
+            update.title.as_str(),
+            Some(update.detail.as_str()),
+            Some(update.progress_pct),
+            Some(&serde_json::json!({
+                "phase": update.phase,
+                "progress_bucket": update.bucket,
+                "raw": update.raw,
+            })),
+        )
+        .await;
     }
 
     async fn resolve_clone_url(&self, repo: &Repo, remote_url: &str) -> HeimdallResult<String> {
@@ -429,6 +516,103 @@ impl IngestStage {
     }
 }
 
+#[derive(Clone)]
+struct CloneProgressUpdate {
+    phase: &'static str,
+    title: String,
+    detail: String,
+    progress_pct: i32,
+    bucket: i32,
+    raw: String,
+}
+
+fn parse_clone_progress(segment: &str) -> Option<CloneProgressUpdate> {
+    let normalized = segment.trim().trim_start_matches("remote: ").trim();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let phase = if normalized.starts_with("Cloning into") {
+        "connect"
+    } else if normalized.starts_with("Enumerating objects") {
+        "enumerating"
+    } else if normalized.starts_with("Counting objects") {
+        "counting"
+    } else if normalized.starts_with("Compressing objects") {
+        "compressing"
+    } else if normalized.starts_with("Receiving objects") {
+        "receiving"
+    } else if normalized.starts_with("Resolving deltas") {
+        "resolving"
+    } else if normalized.starts_with("Updating files")
+        || normalized.starts_with("Checking out files")
+    {
+        "checkout"
+    } else {
+        return None;
+    };
+
+    let percentage = extract_percentage(normalized);
+    let progress_pct = match phase {
+        "connect" => 3,
+        "enumerating" => 6,
+        "counting" => interpolate_progress(8, 12, percentage.unwrap_or(100)),
+        "compressing" => interpolate_progress(12, 16, percentage.unwrap_or(100)),
+        "receiving" => interpolate_progress(16, 62, percentage.unwrap_or(100)),
+        "resolving" => interpolate_progress(62, 86, percentage.unwrap_or(100)),
+        "checkout" => interpolate_progress(86, 99, percentage.unwrap_or(100)),
+        _ => 5,
+    };
+    let bucket = (percentage.unwrap_or(progress_pct).max(0) / 5) * 5;
+
+    Some(CloneProgressUpdate {
+        phase,
+        title: clone_progress_title(phase, normalized),
+        detail: normalized.to_string(),
+        progress_pct,
+        bucket,
+        raw: segment.to_string(),
+    })
+}
+
+fn clone_progress_title(phase: &str, normalized: &str) -> String {
+    match phase {
+        "connect" => "Connecting to remote".to_string(),
+        "enumerating" => "Enumerating repository objects".to_string(),
+        "counting" => "Counting objects".to_string(),
+        "compressing" => "Compressing objects".to_string(),
+        "receiving" => "Receiving objects".to_string(),
+        "resolving" => "Resolving deltas".to_string(),
+        "checkout" => {
+            if normalized.starts_with("Checking out files") {
+                "Checking out files".to_string()
+            } else {
+                "Updating working tree".to_string()
+            }
+        }
+        _ => "Cloning repository".to_string(),
+    }
+}
+
+fn extract_percentage(line: &str) -> Option<i32> {
+    let percent_index = line.find('%')?;
+    let digits: String = line[..percent_index]
+        .chars()
+        .rev()
+        .take_while(|ch| ch.is_ascii_whitespace() || ch.is_ascii_digit())
+        .collect::<String>()
+        .chars()
+        .rev()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect();
+    digits.parse::<i32>().ok()
+}
+
+fn interpolate_progress(start: i32, end: i32, percentage: i32) -> i32 {
+    let clamped = percentage.clamp(0, 100);
+    start + (((end - start) as f32) * (clamped as f32 / 100.0)).round() as i32
+}
+
 fn embed_token_in_clone_url(
     provider: &str,
     url: &str,
@@ -490,4 +674,37 @@ fn sha256_hex(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_percentage, parse_clone_progress};
+
+    #[test]
+    fn parses_receiving_objects_progress() {
+        let update =
+            parse_clone_progress("Receiving objects:  42% (420/1000), 1.23 MiB | 2.10 MiB/s")
+                .expect("expected clone progress update");
+
+        assert_eq!(update.phase, "receiving");
+        assert_eq!(update.title, "Receiving objects");
+        assert_eq!(update.bucket, 40);
+        assert!(update.progress_pct >= 16);
+    }
+
+    #[test]
+    fn parses_checkout_phase_progress() {
+        let update =
+            parse_clone_progress("Updating files:  80% (800/1000)").expect("expected update");
+
+        assert_eq!(update.phase, "checkout");
+        assert_eq!(update.title, "Updating working tree");
+        assert_eq!(extract_percentage(&update.detail), Some(80));
+    }
+
+    #[test]
+    fn ignores_irrelevant_clone_output() {
+        assert!(parse_clone_progress("done.").is_none());
+        assert!(parse_clone_progress("").is_none());
+    }
 }

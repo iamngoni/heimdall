@@ -398,7 +398,7 @@ pub async fn build_scan_live_snapshot(
     })
     .collect::<Vec<_>>();
 
-    let scan_events = db.list_scan_events(scan_id, 30).await?;
+    let scan_events = db.list_scan_events(scan_id, 80).await?;
     let activity = scan_events
         .iter()
         .map(|event| {

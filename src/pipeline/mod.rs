@@ -90,6 +90,7 @@ impl ScanPipeline {
                 let stage = ingest::IngestStage::new(
                     self.scan_id,
                     Arc::clone(&self.db),
+                    Arc::clone(&self.sse),
                     self.encryption_key,
                     self.data_dir.clone(),
                 );
