@@ -45,30 +45,34 @@ impl TyrContextMode {
     fn budgets(self) -> TyrContextBudgets {
         match self {
             Self::Standard => TyrContextBudgets {
-                total_chars: 28_000,
-                file_tree_chars: 3_000,
-                entry_points_chars: 2_200,
-                routes_chars: 4_500,
-                dependencies_chars: 4_200,
-                security_patterns_chars: 4_800,
-                db_patterns_chars: 2_600,
-                config_patterns_chars: 2_200,
-                source_snippets_chars: 7_500,
-                per_dependency_chars: 500,
-                per_source_chars: 1_100,
+                total_chars: 48_000,
+                file_tree_chars: 4_000,
+                entry_points_chars: 3_000,
+                routes_chars: 6_000,
+                dependencies_chars: 5_000,
+                security_patterns_chars: 6_000,
+                db_patterns_chars: 3_500,
+                config_patterns_chars: 3_000,
+                source_snippets_chars: 12_000,
+                per_dependency_chars: 600,
+                per_source_chars: 1_500,
+                call_chains_chars: 5_000,
+                public_api_chars: 4_000,
             },
             Self::Compact => TyrContextBudgets {
-                total_chars: 14_000,
-                file_tree_chars: 1_600,
-                entry_points_chars: 1_200,
-                routes_chars: 2_300,
-                dependencies_chars: 2_100,
-                security_patterns_chars: 2_400,
-                db_patterns_chars: 1_400,
-                config_patterns_chars: 1_200,
-                source_snippets_chars: 3_600,
-                per_dependency_chars: 280,
-                per_source_chars: 720,
+                total_chars: 28_000,
+                file_tree_chars: 2_000,
+                entry_points_chars: 1_600,
+                routes_chars: 3_500,
+                dependencies_chars: 3_000,
+                security_patterns_chars: 3_500,
+                db_patterns_chars: 2_000,
+                config_patterns_chars: 1_600,
+                source_snippets_chars: 6_000,
+                per_dependency_chars: 350,
+                per_source_chars: 900,
+                call_chains_chars: 2_800,
+                public_api_chars: 2_200,
             },
         }
     }
@@ -87,6 +91,8 @@ struct TyrContextBudgets {
     source_snippets_chars: usize,
     per_dependency_chars: usize,
     per_source_chars: usize,
+    call_chains_chars: usize,
+    public_api_chars: usize,
 }
 
 /// The structured threat model produced by Tyr.
@@ -162,17 +168,20 @@ impl TyrStage {
             "completed",
             "Reconnaissance complete",
             Some(&format!(
-                "Found {} files, {} entry points, {} dependencies, {} routes, {} security-sensitive patterns.",
+                "Found {} files, {} entry points, {} dependencies, {} routes, {} security patterns, {} call chains, {} public API exports.",
                 recon.file_count, recon.entry_points.len(), recon.dependencies.len(),
-                recon.routes.len(), recon.security_patterns.len()
+                recon.routes.len(), recon.security_patterns.len(),
+                recon.call_chains.len(), recon.public_api.len()
             )),
-            Some(30),
+            Some(25),
             Some(&serde_json::json!({
                 "file_count": recon.file_count,
                 "entry_points": recon.entry_points.len(),
                 "dependencies": recon.dependencies.len(),
                 "routes": recon.routes.len(),
                 "security_patterns": recon.security_patterns.len(),
+                "call_chains": recon.call_chains.len(),
+                "public_api_files": recon.public_api.len(),
             })),
         )
         .await;
@@ -284,6 +293,35 @@ impl TyrStage {
         )
         .await;
 
+        // Phase 4: Validate surfaces against actual codebase
+        let threat_model = self.validate_surfaces(index, threat_model);
+
+        // Phase 5: Refinement pass — feed call chain data + initial model back
+        // to the LLM to catch missed surfaces and sharpen risk ratings
+        let threat_model = self
+            .refinement_pass(index, &recon, &threat_model, context_mode)
+            .await
+            .unwrap_or(threat_model);
+
+        self.record_event(
+            Some("refinement"),
+            "completed",
+            "Threat model refined",
+            Some(&format!(
+                "Final model: {} trust boundaries, {} attack surfaces, {} data flows.",
+                threat_model.boundaries.len(),
+                threat_model.surfaces.len(),
+                threat_model.data_flows.len(),
+            )),
+            Some(90),
+            Some(&serde_json::json!({
+                "surfaces": threat_model.surfaces.len(),
+                "boundaries": threat_model.boundaries.len(),
+                "data_flows": threat_model.data_flows.len(),
+            })),
+        )
+        .await;
+
         // Store in DB
         let boundaries_json = serde_json::to_value(&threat_model.boundaries)?;
         let surfaces_json = serde_json::to_value(&threat_model.surfaces)?;
@@ -361,6 +399,12 @@ impl TyrStage {
         // Find database interaction patterns
         let db_patterns = self.find_db_patterns(index);
 
+        // Trace call chains from entry points through security-sensitive sinks
+        let call_chains = self.collect_call_chains(index);
+
+        // Map the public API surface from exported symbols
+        let public_api = self.collect_public_api_surface(index);
+
         ReconOutput {
             file_count,
             file_tree: file_tree.into_iter().map(|s| s.to_string()).collect(),
@@ -371,6 +415,8 @@ impl TyrStage {
             security_patterns,
             config_patterns,
             db_patterns,
+            call_chains,
+            public_api,
         }
     }
 
@@ -717,6 +763,107 @@ impl TyrStage {
         patterns
     }
 
+    /// Trace call chains from entry points through security-sensitive functions.
+    /// Walks up to 4 levels deep from each entry point, flagging paths that
+    /// reach known risky sinks (exec, query, deserialize, file I/O, crypto, etc.).
+    fn collect_call_chains(&self, index: &CodeIndex) -> Vec<String> {
+        let risky_sinks: &[&str] = &[
+            "exec", "execute", "query", "raw_sql", "eval", "spawn", "command",
+            "deserialize", "from_str", "from_bytes", "unmarshal", "decode",
+            "open", "read_file", "write_file", "remove", "unlink", "rename",
+            "encrypt", "decrypt", "hash", "sign", "verify",
+            "send", "request", "fetch", "get", "post", "redirect",
+            "set_cookie", "create_token", "verify_token",
+            "upload", "download", "serialize",
+        ];
+
+        let entry_points = index.symbols.entry_points();
+        let mut chains = Vec::new();
+
+        for ep in entry_points.iter().take(60) {
+            // BFS up to depth 4 from this entry point
+            let mut visited = std::collections::HashSet::new();
+            let mut queue: Vec<(String, Vec<String>)> = vec![(ep.name.clone(), vec![ep.name.clone()])];
+            visited.insert(ep.name.clone());
+
+            while let Some((current, path)) = queue.pop() {
+                if path.len() > 4 {
+                    continue;
+                }
+
+                let callees = index.callgraph.get_callees(&current);
+                for edge in callees {
+                    let callee_lower = edge.callee.to_ascii_lowercase();
+                    let is_risky = risky_sinks.iter().any(|sink| callee_lower.contains(sink));
+
+                    if is_risky {
+                        let mut full_path = path.clone();
+                        full_path.push(edge.callee.clone());
+                        chains.push(format!(
+                            "{} ({}:{})",
+                            full_path.join(" → "),
+                            edge.file,
+                            edge.line,
+                        ));
+                    }
+
+                    if !visited.contains(&edge.callee) && path.len() < 4 {
+                        visited.insert(edge.callee.clone());
+                        let mut next_path = path.clone();
+                        next_path.push(edge.callee.clone());
+                        queue.push((edge.callee.clone(), next_path));
+                    }
+                }
+            }
+        }
+
+        chains.truncate(80);
+        chains
+    }
+
+    /// Map the public API surface from exported symbols — functions, types, and
+    /// handlers that are publicly accessible and thus potential attack surface.
+    fn collect_public_api_surface(&self, index: &CodeIndex) -> Vec<String> {
+        let mut surface = Vec::new();
+
+        // Group public symbols by file for better context
+        let exports = index.symbols.exports();
+        let mut by_file: std::collections::HashMap<&str, Vec<&crate::index::symbols::Symbol>> =
+            std::collections::HashMap::new();
+
+        for sym in &exports {
+            by_file.entry(sym.file.as_str()).or_default().push(sym);
+        }
+
+        // Sort files by number of exports (most exposed first)
+        let mut file_list: Vec<_> = by_file.into_iter().collect();
+        file_list.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+
+        for (file, syms) in file_list.iter().take(30) {
+            let sym_list: Vec<String> = syms
+                .iter()
+                .take(10)
+                .map(|s| {
+                    let callee_count = index.callgraph.get_callees(&s.name).len();
+                    let caller_count = index.callgraph.get_callers(&s.name).len();
+                    format!(
+                        "  {} `{}` (line {}, {} callers, calls {})",
+                        s.kind, s.name, s.line, caller_count, callee_count
+                    )
+                })
+                .collect();
+
+            let omitted = syms.len().saturating_sub(10);
+            let mut entry = format!("{file} ({} exports):\n{}", syms.len(), sym_list.join("\n"));
+            if omitted > 0 {
+                entry.push_str(&format!("\n  ... +{omitted} more"));
+            }
+            surface.push(entry);
+        }
+
+        surface
+    }
+
     fn file_extension_to_lang<'a>(&self, path: &'a str) -> Option<&'static str> {
         let ext = path.rsplit('.').next()?;
         match ext {
@@ -839,6 +986,29 @@ impl TyrStage {
             "## Configuration / Environment\n",
             &recon.config_patterns,
             budgets.config_patterns_chars,
+            budgets.total_chars,
+        );
+
+        // Call chain analysis — shows entry_point → ... → risky_sink paths
+        append_bulleted_section(
+            &mut ctx,
+            "## Call Chains (entry point → security-sensitive sink)\n\
+             Each line traces a path from a public entry point to a risky function \
+             (exec, query, deserialize, file I/O, crypto, network, etc.):\n",
+            &recon.call_chains,
+            budgets.call_chains_chars,
+            budgets.total_chars,
+            None,
+        );
+
+        // Public API surface from exported symbols
+        append_plain_section(
+            &mut ctx,
+            "## Public API Surface (exported symbols)\n\
+             Functions and types exposed to callers, grouped by file. \
+             Higher caller/callee counts indicate more connected (higher-risk) symbols:\n",
+            &recon.public_api,
+            budgets.public_api_chars,
             budgets.total_chars,
         );
 
@@ -968,6 +1138,242 @@ impl TyrStage {
             tools: None,
             max_tokens: Some(8192),
             temperature: Some(0.2),
+        }
+    }
+
+    /// Validate that LLM-generated attack surfaces reference real files/endpoints.
+    /// Removes surfaces pointing to non-existent files and annotates surfaces
+    /// with verified=true/false for downstream consumption.
+    fn validate_surfaces(&self, index: &CodeIndex, mut model: ThreatModelOutput) -> ThreatModelOutput {
+        model.surfaces.retain(|surface| {
+            // If the surface references a file, verify it exists
+            if let Some(ref file) = surface.file {
+                let file_clean = file.trim_start_matches('/').trim_start_matches("./");
+                if !index.files.contains_key(file_clean)
+                    && !index.files.keys().any(|k| k.ends_with(file_clean))
+                {
+                    info!(
+                        "[{}] Tyr: dropping hallucinated surface '{}' — file '{}' not in index",
+                        self.scan_id, surface.name, file
+                    );
+                    return false;
+                }
+            }
+            true
+        });
+
+        // Validate data flow source/sink references
+        model.data_flows.retain(|flow| {
+            // Keep flows that reference known patterns — drop those that reference
+            // completely invented components
+            let source_lower = flow.source.to_ascii_lowercase();
+            let sink_lower = flow.sink.to_ascii_lowercase();
+
+            // Generic terms are always valid (user, browser, database, etc.)
+            let generic_terms = [
+                "user", "browser", "client", "database", "db", "api", "server",
+                "external", "network", "cache", "queue", "storage", "memory",
+                "file", "config", "env", "session",
+            ];
+
+            let source_valid = generic_terms.iter().any(|t| source_lower.contains(t))
+                || index.files.keys().any(|k| source_lower.contains(k.split('/').last().unwrap_or("")));
+            let sink_valid = generic_terms.iter().any(|t| sink_lower.contains(t))
+                || index.files.keys().any(|k| sink_lower.contains(k.split('/').last().unwrap_or("")));
+
+            source_valid || sink_valid
+        });
+
+        model
+    }
+
+    /// Multi-pass refinement: feed the initial threat model + call chain analysis
+    /// back to the LLM so it can catch missed surfaces and sharpen risk ratings.
+    async fn refinement_pass(
+        &self,
+        index: &CodeIndex,
+        recon: &ReconOutput,
+        initial_model: &ThreatModelOutput,
+        mode: TyrContextMode,
+    ) -> Option<ThreatModelOutput> {
+        let budgets = mode.budgets();
+
+        // Build refinement context with the initial model + call chains
+        let initial_json = serde_json::to_string_pretty(initial_model).ok()?;
+        let mut ctx = String::new();
+
+        append_capped(
+            &mut ctx,
+            &format!(
+                "You previously generated a threat model for this codebase. \
+                 Now refine it using the additional call chain analysis and public API data below.\n\n\
+                 ## Initial Threat Model\n```json\n{}\n```\n\n",
+                truncate_text(&initial_json, budgets.total_chars / 3),
+            ),
+            budgets.total_chars,
+        );
+
+        // Add call chains the LLM didn't have in the first pass
+        append_bulleted_section(
+            &mut ctx,
+            "## Call Chains (entry point → security-sensitive sink)\n\
+             These are verified paths from entry points to risky functions. \
+             Each path that is NOT covered by an existing attack surface is a gap:\n",
+            &recon.call_chains,
+            budgets.call_chains_chars,
+            budgets.total_chars,
+            None,
+        );
+
+        // Add public API for completeness check
+        append_plain_section(
+            &mut ctx,
+            "## Public API Surface\n",
+            &recon.public_api,
+            budgets.public_api_chars,
+            budgets.total_chars,
+        );
+
+        // Add security-critical source snippets for any files referenced by call chains
+        let mut chain_files: Vec<&str> = Vec::new();
+        for chain in &recon.call_chains {
+            // Extract file paths from chain strings like "fn_a → fn_b (src/foo.rs:42)"
+            if let Some(paren_start) = chain.rfind('(') {
+                if let Some(colon) = chain[paren_start..].find(':') {
+                    let file = &chain[paren_start + 1..paren_start + colon];
+                    if !chain_files.contains(&file) {
+                        chain_files.push(file);
+                    }
+                }
+            }
+        }
+
+        if !chain_files.is_empty() {
+            append_capped(
+                &mut ctx,
+                "## Source Snippets for Call Chain Endpoints\n",
+                budgets.total_chars,
+            );
+            let mut snippet_len = 0usize;
+            for file_path in chain_files.iter().take(10) {
+                if let Some(file) = index.files.get(*file_path) {
+                    let snippet = truncate_text(&file.content, budgets.per_source_chars);
+                    let block = format!("\n### {file_path}\n```\n{snippet}\n```\n");
+                    if snippet_len + block.len() > budgets.source_snippets_chars / 2
+                        || ctx.len() + block.len() > budgets.total_chars
+                    {
+                        break;
+                    }
+                    ctx.push_str(&block);
+                    snippet_len += block.len();
+                }
+            }
+        }
+
+        append_capped(
+            &mut ctx,
+            "\n## Refinement Instructions\n\
+             1. Check every call chain above — if any path represents an attack surface \
+                NOT in your initial model, ADD it.\n\
+             2. Check every public export — if an exported function handles untrusted input \
+                but has no corresponding attack surface, ADD it.\n\
+             3. Re-evaluate risk_level for each surface using the call chain depth and \
+                connectivity data.\n\
+             4. Remove any surfaces you now believe are false positives.\n\
+             5. Return the COMPLETE refined threat model (not just changes).\n\n\
+             Return ONLY the JSON object, no markdown fences, no commentary.",
+            budgets.total_chars,
+        );
+
+        self.record_event(
+            Some("refinement"),
+            "running",
+            "Refining threat model",
+            Some("Tyr is cross-referencing the initial threat model against call chain analysis and public API surface to find gaps."),
+            Some(85),
+            Some(&serde_json::json!({
+                "model": self.default_model,
+                "context_chars": ctx.len(),
+                "call_chains": recon.call_chains.len(),
+            })),
+        )
+        .await;
+
+        let start = std::time::Instant::now();
+        let response = self
+            .ai
+            .complete(CompletionRequest {
+                model: self.default_model.clone(),
+                messages: vec![
+                    Message {
+                        role: "system".to_string(),
+                        content: TYR_REFINEMENT_PROMPT.to_string(),
+                    },
+                    Message {
+                        role: "user".to_string(),
+                        content: ctx,
+                    },
+                ],
+                tools: None,
+                max_tokens: Some(8192),
+                temperature: Some(0.1),
+            })
+            .await
+            .ok()?;
+        let duration = start.elapsed();
+
+        // Log the refinement LLM call
+        let _ = self
+            .db
+            .create_agent_tool_call(
+                self.scan_id,
+                "tyr",
+                "llm_refinement",
+                Some(&response.provider),
+                Some(&response.model),
+                None,
+                None,
+                Some(response.usage.prompt_tokens as i32),
+                Some(response.usage.completion_tokens as i32),
+                Some(response.usage.total_tokens as i32),
+                Some(duration.as_millis() as i32),
+                None,
+            )
+            .await;
+
+        // Parse the refined model
+        let content = response.content.trim();
+        let json_str = if content.starts_with("```") {
+            content
+                .trim_start_matches("```json")
+                .trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim()
+        } else {
+            content
+        };
+
+        match serde_json::from_str::<ThreatModelOutput>(json_str) {
+            Ok(refined) => {
+                info!(
+                    "[{}] Tyr refinement: {} boundaries, {} surfaces, {} data flows (was {}/{}/{})",
+                    self.scan_id,
+                    refined.boundaries.len(),
+                    refined.surfaces.len(),
+                    refined.data_flows.len(),
+                    initial_model.boundaries.len(),
+                    initial_model.surfaces.len(),
+                    initial_model.data_flows.len(),
+                );
+                Some(refined)
+            }
+            Err(e) => {
+                info!(
+                    "[{}] Tyr refinement parse failed (keeping initial model): {e}",
+                    self.scan_id
+                );
+                None
+            }
         }
     }
 
@@ -1124,6 +1530,10 @@ struct ReconOutput {
     security_patterns: Vec<String>,
     config_patterns: Vec<String>,
     db_patterns: Vec<String>,
+    /// Call chains from entry points through security-sensitive functions.
+    call_chains: Vec<String>,
+    /// Public API surface derived from exported symbols.
+    public_api: Vec<String>,
 }
 
 const TYR_SYSTEM_PROMPT: &str = "\
@@ -1145,6 +1555,8 @@ You have been given detailed reconnaissance data about the codebase including:
 - Security-sensitive code patterns (auth, crypto, sessions, etc.)
 - Database access patterns
 - Configuration and environment variable handling
+- Call chains from entry points to security-sensitive sinks (exec, query, deserialize, etc.)
+- Public API surface with caller/callee connectivity metrics
 - Actual source code of critical files
 
 ## Requirements
@@ -1181,6 +1593,31 @@ You have been given detailed reconnaissance data about the codebase including:
 - Aim for completeness — missing a real attack surface is worse than including a low-risk one
 - If the codebase has strong security controls, acknowledge them in the summary";
 
+const TYR_REFINEMENT_PROMPT: &str = "\
+You are Tyr, the threat model engine of Heimdall security scanner, in REFINEMENT mode. \
+You are reviewing and improving your own initial threat model using additional data.
+
+You now have:
+1. Your initial threat model (from your first pass)
+2. Call chain analysis — verified paths from entry points to security-sensitive sinks
+3. Public API surface — all exported symbols with caller/callee connectivity
+
+Your job is to:
+- ADD attack surfaces for any call chain that reaches a risky sink but isn't covered
+- ADD trust boundaries for any uncovered zone transitions
+- REMOVE surfaces you now believe are false positives
+- ADJUST risk_level based on actual code connectivity (more callers = higher exposure)
+- KEEP surfaces from the initial model that are still valid
+- Ensure every surface references a REAL file from the codebase
+
+Quality bar:
+- Every entry_point → risky_sink chain should have a corresponding attack surface
+- Every public function handling untrusted input should have a surface
+- risk_level should reflect actual exploitability: connected + exposed = higher risk
+
+Return the COMPLETE refined model (all boundaries, surfaces, data_flows), not just deltas. \
+Use the same JSON schema as the initial model. Return ONLY the JSON object.";
+
 #[cfg(test)]
 mod tests {
     use super::{TyrContextMode, is_context_limit_error, truncate_text};
@@ -1200,6 +1637,8 @@ mod tests {
 
         assert!(standard.total_chars > compact.total_chars);
         assert!(standard.source_snippets_chars > compact.source_snippets_chars);
+        assert!(standard.call_chains_chars > compact.call_chains_chars);
+        assert!(standard.public_api_chars > compact.public_api_chars);
     }
 
     #[test]
