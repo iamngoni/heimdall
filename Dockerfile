@@ -2,7 +2,7 @@
 FROM node:22-slim AS css-builder
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --production
+RUN npm ci
 COPY tailwind.config.js ./
 COPY assets ./assets
 COPY templates ./templates

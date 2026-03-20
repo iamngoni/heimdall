@@ -4,6 +4,9 @@ target
 node_modules
 .playwright-cli
 output
+data
+.env
+excalidraw.log
 .DS_Store
 tmp
 dist

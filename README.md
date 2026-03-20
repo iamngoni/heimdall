@@ -157,7 +157,7 @@ cp .env.example .env
 Edit `.env` with your settings:
 
 ```bash
-# Required
+# Host-run Heimdall talking to local or Dockerized Postgres
 DATABASE_URL=postgres://heimdall:heimdall@localhost:5432/heimdall
 
 # At least one AI provider (BYOK)
@@ -188,7 +188,8 @@ Build and run the full stack with Docker Compose:
 ```bash
 # Copy and configure environment
 cp .env.example .env
-# Edit .env with your AI provider key(s)
+# For full Docker Compose, keep DATABASE_URL pointed at `postgres`
+# and edit .env with your AI provider key(s)
 
 # Start Heimdall + Postgres
 docker compose --profile postgres up -d
@@ -226,7 +227,9 @@ All configuration is via environment variables. Copy `.env.example` to `.env` an
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 
-Example: `postgres://heimdall:heimdall@localhost:5432/heimdall`
+Host-run app example: `postgres://heimdall:heimdall@localhost:5432/heimdall`
+
+Full Docker Compose example: `postgres://heimdall:heimdall@postgres:5432/heimdall`
 
 ### AI Providers (BYOK)
 
