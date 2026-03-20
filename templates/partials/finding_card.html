@@ -1,4 +1,5 @@
-<div class="group grid gap-4 px-6 py-4 transition hover:bg-slate-50 lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:items-center"
+<div class="group cursor-pointer grid gap-4 px-6 py-4 transition hover:bg-slate-50 lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:items-center"
+     onclick="if(!event.target.closest('.finding-checkbox')){window.location='/findings/{{ finding.id }}'}"
      data-finding-id="{{ finding.id }}"
      data-finding-title="{{ finding.title }}"
      data-finding-severity="{{ finding.severity }}"
@@ -20,7 +21,7 @@
                value="{{ finding.id }}"
                aria-label="Select finding">
     </div>
-    <a href="/findings/{{ finding.id }}" class="contents">
+
     <div class="flex items-center">
         {% with severity=finding.severity %}
             {% include "partials/severity_badge.html" %}
@@ -55,5 +56,4 @@
         </span>
         <span class="text-xs font-medium text-slate-400">{{ finding.updated_at }}</span>
     </div>
-    </a>
 </div>
