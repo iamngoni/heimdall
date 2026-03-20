@@ -45,14 +45,24 @@ services:
     container_name: heimdall-mcp
     profiles: ["mcp"]
     entrypoint: ["/app/heimdall-mcp"]
+    environment:
+      MCP_TRANSPORT: sse
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "45637"
+    ports:
+      - "${MCP_PORT:-45637}:45637"
     env_file:
       - .env
     depends_on:
       postgres:
         condition: service_healthy
         required: false
-    # Keep container running so MCP clients can attach via docker exec
-    stdin_open: true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:45637/sse"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   # --------------------------------------------------------------------------

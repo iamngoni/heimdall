@@ -18,7 +18,6 @@ use heimdall::mcp::HeimdallMcp;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // MCP servers communicate over stdio — logs go to stderr
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .target(env_logger::Target::Stderr)
         .init();
@@ -31,18 +30,32 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Connecting to database...");
     let pool = PgPoolOptions::new()
-        .max_connections(3)
+        .max_connections(5)
         .connect(&database_url)
         .await?;
 
     let db = Arc::new(DatabaseOperations::new(pool));
-    let server = HeimdallMcp::new(db);
 
-    info!("Starting Heimdall MCP server over stdio");
-    let service = server
-        .serve(rmcp::transport::io::stdio())
-        .await?;
+    let transport = std::env::var("MCP_TRANSPORT").unwrap_or_default();
 
-    service.waiting().await?;
+    if transport.eq_ignore_ascii_case("sse") {
+        let bind = std::env::var("MCP_HOST").unwrap_or_else(|_| "0.0.0.0".into());
+        let port = std::env::var("MCP_PORT").unwrap_or_else(|_| "45637".into());
+        let addr: std::net::SocketAddr = format!("{bind}:{port}").parse()?;
+
+        info!("Starting Heimdall MCP server over SSE at {addr}");
+        let ct = rmcp::transport::sse_server::SseServer::serve(addr)
+            .await?
+            .with_service(move || HeimdallMcp::new(db.clone()));
+
+        tokio::signal::ctrl_c().await?;
+        ct.cancel();
+    } else {
+        info!("Starting Heimdall MCP server over stdio");
+        let server = HeimdallMcp::new(db);
+        let service = server.serve(rmcp::transport::io::stdio()).await?;
+        service.waiting().await?;
+    }
+
     Ok(())
 }
