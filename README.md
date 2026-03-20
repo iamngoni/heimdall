@@ -880,7 +880,7 @@ Heimdall ships as an [MCP (Model Context Protocol)](https://modelcontextprotocol
 The MCP server runs as a separate binary (`heimdall-mcp`) that connects to the same PostgreSQL database. It supports two transport modes:
 
 - **stdio** (default) — for local development, communicates over stdin/stdout
-- **SSE** — for Docker/remote deployments, serves over HTTP with Server-Sent Events
+- **HTTP** — for Docker/remote deployments, serves over Streamable HTTP
 
 #### Local (stdio)
 
@@ -904,7 +904,7 @@ Add to your MCP client configuration (e.g., Claude Code `~/.claude.json`, Cursor
 }
 ```
 
-#### Docker (SSE)
+#### Docker (HTTP)
 
 ```bash
 # Start with MCP profile
@@ -917,7 +917,7 @@ The MCP server listens on port `45637` (configurable via `MCP_PORT`). Configure 
 {
   "mcpServers": {
     "heimdall": {
-      "url": "http://localhost:45637/sse"
+      "url": "http://localhost:45637/mcp"
     }
   }
 }

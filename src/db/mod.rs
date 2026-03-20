@@ -17,6 +17,25 @@ use uuid::Uuid;
 use crate::models::HeimdallResult;
 use crate::models::db_models::*;
 
+/// Shared ORDER BY clause for findings queries.
+/// Status first: active findings on top, triaged (false_positive/dismissed/fixed) at the bottom.
+/// Within each group, sorted by severity (critical → low) then newest first.
+const FINDINGS_ORDER_BY: &str = " ORDER BY \
+    CASE status \
+        WHEN 'open' THEN 0 \
+        WHEN 'confirmed' THEN 1 \
+        WHEN 'fixed' THEN 2 \
+        WHEN 'dismissed' THEN 3 \
+        WHEN 'false_positive' THEN 4 \
+        ELSE 5 END, \
+    CASE severity \
+        WHEN 'critical' THEN 0 \
+        WHEN 'high' THEN 1 \
+        WHEN 'medium' THEN 2 \
+        WHEN 'low' THEN 3 \
+        ELSE 4 END, \
+    created_at DESC";
+
 pub struct DatabaseOperations {
     pool: PgPool,
 }
@@ -575,14 +594,7 @@ impl DatabaseOperations {
         if status.is_some() {
             query.push_str(&format!(" AND status = ${param_idx}"));
         }
-        query.push_str(
-            " ORDER BY CASE severity \
-            WHEN 'critical' THEN 0 \
-            WHEN 'high' THEN 1 \
-            WHEN 'medium' THEN 2 \
-            WHEN 'low' THEN 3 \
-            ELSE 4 END, created_at DESC",
-        );
+        query.push_str(FINDINGS_ORDER_BY);
 
         let mut q = sqlx::query_as::<_, Finding>(&query).bind(scan_id);
         if let Some(sev) = severity {
@@ -616,14 +628,7 @@ impl DatabaseOperations {
             query.push_str(&format!(" AND status = ${param_idx}"));
             param_idx += 1;
         }
-        query.push_str(
-            " ORDER BY CASE severity \
-            WHEN 'critical' THEN 0 \
-            WHEN 'high' THEN 1 \
-            WHEN 'medium' THEN 2 \
-            WHEN 'low' THEN 3 \
-            ELSE 4 END, created_at DESC",
-        );
+        query.push_str(FINDINGS_ORDER_BY);
         query.push_str(&format!(" LIMIT ${param_idx} OFFSET ${}", param_idx + 1));
 
         let mut q = sqlx::query_as::<_, Finding>(&query).bind(scan_id);

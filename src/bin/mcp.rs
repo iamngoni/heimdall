@@ -11,7 +11,12 @@ use std::sync::Arc;
 
 use log::info;
 use rmcp::ServiceExt;
+use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
+use rmcp::transport::streamable_http_server::tower::{
+    StreamableHttpServerConfig, StreamableHttpService,
+};
 use sqlx::postgres::PgPoolOptions;
+use tokio_util::sync::CancellationToken;
 
 use heimdall::db::DatabaseOperations;
 use heimdall::mcp::HeimdallMcp;
@@ -38,18 +43,33 @@ async fn main() -> anyhow::Result<()> {
 
     let transport = std::env::var("MCP_TRANSPORT").unwrap_or_default();
 
-    if transport.eq_ignore_ascii_case("sse") {
+    if transport.eq_ignore_ascii_case("sse") || transport.eq_ignore_ascii_case("http") {
         let bind = std::env::var("MCP_HOST").unwrap_or_else(|_| "0.0.0.0".into());
         let port = std::env::var("MCP_PORT").unwrap_or_else(|_| "45637".into());
         let addr: std::net::SocketAddr = format!("{bind}:{port}").parse()?;
 
-        info!("Starting Heimdall MCP server over SSE at {addr}");
-        let ct = rmcp::transport::sse_server::SseServer::serve(addr)
-            .await?
-            .with_service(move || HeimdallMcp::new(db.clone()));
+        let ct = CancellationToken::new();
+        let service: StreamableHttpService<HeimdallMcp, LocalSessionManager> =
+            StreamableHttpService::new(
+                move || Ok(HeimdallMcp::new(db.clone())),
+                Default::default(),
+                StreamableHttpServerConfig {
+                    stateful_mode: true,
+                    cancellation_token: ct.child_token(),
+                    ..Default::default()
+                },
+            );
 
-        tokio::signal::ctrl_c().await?;
-        ct.cancel();
+        let router = axum::Router::new().nest_service("/mcp", service);
+        let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
+
+        info!("Starting Heimdall MCP server over Streamable HTTP at {addr}/mcp");
+        axum::serve(tcp_listener, router)
+            .with_graceful_shutdown(async move {
+                tokio::signal::ctrl_c().await.ok();
+                ct.cancel();
+            })
+            .await?;
     } else {
         info!("Starting Heimdall MCP server over stdio");
         let server = HeimdallMcp::new(db);

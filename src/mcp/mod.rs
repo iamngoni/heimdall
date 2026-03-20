@@ -9,10 +9,12 @@
 
 use std::sync::Arc;
 
-use rmcp::handler::server::tool::Parameters;
+use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
+use rmcp::schemars;
 use rmcp::schemars::JsonSchema;
-use rmcp::{ServerHandler, tool, tool_box};
+use rmcp::{ServerHandler, tool, tool_router};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DatabaseOperations;
@@ -22,6 +24,7 @@ use crate::db::DatabaseOperations;
 #[derive(Clone)]
 pub struct HeimdallMcp {
     db: Arc<DatabaseOperations>,
+    tool_router: ToolRouter<Self>,
 }
 
 // --- Request types ---
@@ -136,31 +139,47 @@ struct FindingInfo {
     poc_validated: bool,
 }
 
-fn parse_uuid(s: &str) -> Result<uuid::Uuid, String> {
-    uuid::Uuid::parse_str(s).map_err(|e| format!("Invalid UUID '{s}': {e}"))
+fn parse_uuid(s: &str) -> Result<uuid::Uuid, rmcp::ErrorData> {
+    uuid::Uuid::parse_str(s).map_err(|e| {
+        rmcp::ErrorData::new(
+            rmcp::model::ErrorCode::INVALID_PARAMS,
+            format!("Invalid UUID '{s}': {e}"),
+            None,
+        )
+    })
 }
 
-fn json_text<T: Serialize>(val: &T) -> Content {
-    Content::text(serde_json::to_string_pretty(val).unwrap_or_default())
+fn json_text<T: Serialize>(val: &T) -> String {
+    serde_json::to_string_pretty(val).unwrap_or_default()
+}
+
+fn internal_err(msg: String) -> rmcp::ErrorData {
+    rmcp::ErrorData::new(rmcp::model::ErrorCode::INTERNAL_ERROR, msg, None)
 }
 
 impl HeimdallMcp {
     pub fn new(db: Arc<DatabaseOperations>) -> Self {
-        Self { db }
+        Self {
+            db,
+            tool_router: Self::tool_router(),
+        }
     }
+}
 
+#[tool_router]
+impl HeimdallMcp {
     #[tool(description = "List all repositories connected to Heimdall")]
     async fn list_repositories(
         &self,
-        params: Parameters<ListReposRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let limit = params.0.limit.unwrap_or(50);
-        let offset = params.0.offset.unwrap_or(0);
+        Parameters(req): Parameters<ListReposRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let limit = req.limit.unwrap_or(50);
+        let offset = req.offset.unwrap_or(0);
         let repos = self
             .db
             .list_all_repos_paginated(limit, offset)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?;
+            .map_err(|e| internal_err(format!("Database error: {e}")))?;
 
         let infos: Vec<RepoInfo> = repos
             .into_iter()
@@ -173,53 +192,52 @@ impl HeimdallMcp {
             })
             .collect();
 
-        Ok(CallToolResult::success(vec![json_text(&infos)]))
+        Ok(json_text(&infos))
     }
 
     #[tool(description = "Get details of a specific repository by its ID")]
     async fn get_repository(
         &self,
-        params: Parameters<GetRepoRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let id = parse_uuid(&params.0.repo_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
+        Parameters(req): Parameters<GetRepoRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let id = parse_uuid(&req.repo_id)?;
         let repo = self
             .db
             .get_repo_by_id(id)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?
+            .map_err(|e| internal_err(format!("Database error: {e}")))?
             .ok_or_else(|| {
-                rmcp::Error::invalid_params(
-                    format!("Repository {} not found", params.0.repo_id),
+                rmcp::ErrorData::new(
+                    rmcp::model::ErrorCode::INVALID_PARAMS,
+                    format!("Repository {} not found", req.repo_id),
                     None,
                 )
             })?;
 
-        let info = RepoInfo {
+        Ok(json_text(&RepoInfo {
             id: repo.id.to_string(),
             name: repo.name,
             source_type: repo.source_type,
             remote_url: repo.remote_url,
             default_branch: repo.default_branch,
-        };
-        Ok(CallToolResult::success(vec![json_text(&info)]))
+        }))
     }
 
     #[tool(description = "Trigger a new security scan on a repository. The scan runs asynchronously — use get_scan_status to check progress.")]
     async fn trigger_scan(
         &self,
-        params: Parameters<TriggerScanRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let repo_id = parse_uuid(&params.0.repo_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
+        Parameters(req): Parameters<TriggerScanRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let repo_id = parse_uuid(&req.repo_id)?;
 
         self.db
             .get_repo_by_id(repo_id)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?
+            .map_err(|e| internal_err(format!("Database error: {e}")))?
             .ok_or_else(|| {
-                rmcp::Error::invalid_params(
-                    format!("Repository {} not found", params.0.repo_id),
+                rmcp::ErrorData::new(
+                    rmcp::model::ErrorCode::INVALID_PARAMS,
+                    format!("Repository {} not found", req.repo_id),
                     None,
                 )
             })?;
@@ -228,34 +246,31 @@ impl HeimdallMcp {
             .db
             .create_scan(repo_id, "full", None, None, None, None)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Failed to create scan: {e}"), None))?;
+            .map_err(|e| internal_err(format!("Failed to create scan: {e}")))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Scan queued: {} (status: {})",
-            scan.id, scan.status
-        ))]))
+        Ok(format!("Scan queued: {} (status: {})", scan.id, scan.status))
     }
 
     #[tool(description = "Get the current status and finding counts of a scan")]
     async fn get_scan_status(
         &self,
-        params: Parameters<GetScanRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let id = parse_uuid(&params.0.scan_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
+        Parameters(req): Parameters<GetScanRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let id = parse_uuid(&req.scan_id)?;
         let scan = self
             .db
             .get_scan_by_id(id)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?
+            .map_err(|e| internal_err(format!("Database error: {e}")))?
             .ok_or_else(|| {
-                rmcp::Error::invalid_params(
-                    format!("Scan {} not found", params.0.scan_id),
+                rmcp::ErrorData::new(
+                    rmcp::model::ErrorCode::INVALID_PARAMS,
+                    format!("Scan {} not found", req.scan_id),
                     None,
                 )
             })?;
 
-        let info = ScanInfo {
+        Ok(json_text(&ScanInfo {
             id: scan.id.to_string(),
             repo_id: scan.repo_id.to_string(),
             status: scan.status,
@@ -265,30 +280,28 @@ impl HeimdallMcp {
             high_count: scan.high_count,
             medium_count: scan.medium_count,
             low_count: scan.low_count,
-        };
-        Ok(CallToolResult::success(vec![json_text(&info)]))
+        }))
     }
 
     #[tool(description = "List security findings for a scan. Supports filtering by severity (critical/high/medium/low) and status (open/confirmed/dismissed/false_positive/fixed).")]
     async fn list_findings(
         &self,
-        params: Parameters<ListFindingsRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let scan_id = parse_uuid(&params.0.scan_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
-        let limit = params.0.limit.unwrap_or(50);
-        let offset = params.0.offset.unwrap_or(0);
+        Parameters(req): Parameters<ListFindingsRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let scan_id = parse_uuid(&req.scan_id)?;
+        let limit = req.limit.unwrap_or(50);
+        let offset = req.offset.unwrap_or(0);
         let findings = self
             .db
             .list_findings_by_scan_paginated(
                 scan_id,
-                params.0.severity.as_deref(),
-                params.0.status.as_deref(),
+                req.severity.as_deref(),
+                req.status.as_deref(),
                 limit,
                 offset,
             )
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?;
+            .map_err(|e| internal_err(format!("Database error: {e}")))?;
 
         let infos: Vec<FindingInfo> = findings
             .into_iter()
@@ -312,29 +325,29 @@ impl HeimdallMcp {
             })
             .collect();
 
-        Ok(CallToolResult::success(vec![json_text(&infos)]))
+        Ok(json_text(&infos))
     }
 
     #[tool(description = "Get full details of a specific finding including code snippet, suggested patch, analyst reasoning, and PoC validation status")]
     async fn get_finding(
         &self,
-        params: Parameters<GetFindingRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let id = parse_uuid(&params.0.finding_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
+        Parameters(req): Parameters<GetFindingRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let id = parse_uuid(&req.finding_id)?;
         let f = self
             .db
             .get_finding_by_id(id)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?
+            .map_err(|e| internal_err(format!("Database error: {e}")))?
             .ok_or_else(|| {
-                rmcp::Error::invalid_params(
-                    format!("Finding {} not found", params.0.finding_id),
+                rmcp::ErrorData::new(
+                    rmcp::model::ErrorCode::INVALID_PARAMS,
+                    format!("Finding {} not found", req.finding_id),
                     None,
                 )
             })?;
 
-        let info = FindingInfo {
+        Ok(json_text(&FindingInfo {
             id: f.id.to_string(),
             source: f.source,
             status: f.status,
@@ -351,25 +364,24 @@ impl HeimdallMcp {
             suggested_patch: f.suggested_patch,
             agent_reasoning: f.agent_reasoning,
             poc_validated: f.poc_validated,
-        };
-        Ok(CallToolResult::success(vec![json_text(&info)]))
+        }))
     }
 
     #[tool(description = "Get the STRIDE-based threat model for a scan, including trust boundaries, attack surfaces, and sensitive data flows")]
     async fn get_threat_model(
         &self,
-        params: Parameters<GetThreatModelRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let scan_id = parse_uuid(&params.0.scan_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
+        Parameters(req): Parameters<GetThreatModelRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let scan_id = parse_uuid(&req.scan_id)?;
         let tm = self
             .db
             .get_threat_model_by_scan(scan_id)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?
+            .map_err(|e| internal_err(format!("Database error: {e}")))?
             .ok_or_else(|| {
-                rmcp::Error::invalid_params(
-                    format!("No threat model found for scan {}", params.0.scan_id),
+                rmcp::ErrorData::new(
+                    rmcp::model::ErrorCode::INVALID_PARAMS,
+                    format!("No threat model found for scan {}", req.scan_id),
                     None,
                 )
             })?;
@@ -383,28 +395,26 @@ impl HeimdallMcp {
             data_flows: Option<serde_json::Value>,
         }
 
-        let info = TmInfo {
+        Ok(json_text(&TmInfo {
             id: tm.id.to_string(),
             summary: tm.summary,
             boundaries: tm.boundaries_json,
             surfaces: tm.surfaces_json,
             data_flows: tm.data_flows_json,
-        };
-        Ok(CallToolResult::success(vec![json_text(&info)]))
+        }))
     }
 
     #[tool(description = "Get all suggested patches for a scan as unified diffs")]
     async fn get_patches(
         &self,
-        params: Parameters<GetPatchesRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
-        let scan_id = parse_uuid(&params.0.scan_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
+        Parameters(req): Parameters<GetPatchesRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let scan_id = parse_uuid(&req.scan_id)?;
         let patches = self
             .db
             .list_patches_by_scan(scan_id)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?;
+            .map_err(|e| internal_err(format!("Database error: {e}")))?;
 
         #[derive(Serialize)]
         struct PInfo {
@@ -426,36 +436,37 @@ impl HeimdallMcp {
             })
             .collect();
 
-        Ok(CallToolResult::success(vec![json_text(&infos)]))
+        Ok(json_text(&infos))
     }
 
     #[tool(description = "Update the status of a finding (open, confirmed, dismissed, false_positive, fixed)")]
     async fn update_finding_status(
         &self,
-        params: Parameters<UpdateFindingStatusRequest>,
-    ) -> Result<CallToolResult, rmcp::Error> {
+        Parameters(req): Parameters<UpdateFindingStatusRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
         let valid = ["open", "confirmed", "dismissed", "false_positive", "fixed"];
-        if !valid.contains(&params.0.status.as_str()) {
-            return Err(rmcp::Error::invalid_params(
+        if !valid.contains(&req.status.as_str()) {
+            return Err(rmcp::ErrorData::new(
+                rmcp::model::ErrorCode::INVALID_PARAMS,
                 format!(
                     "Invalid status '{}'. Must be one of: {}",
-                    params.0.status,
+                    req.status,
                     valid.join(", ")
                 ),
                 None,
             ));
         }
 
-        let id = parse_uuid(&params.0.finding_id)
-            .map_err(|e| rmcp::Error::invalid_params(e, None))?;
+        let id = parse_uuid(&req.finding_id)?;
         let finding = self
             .db
             .get_finding_by_id(id)
             .await
-            .map_err(|e| rmcp::Error::internal_error(format!("Database error: {e}"), None))?
+            .map_err(|e| internal_err(format!("Database error: {e}")))?
             .ok_or_else(|| {
-                rmcp::Error::invalid_params(
-                    format!("Finding {} not found", params.0.finding_id),
+                rmcp::ErrorData::new(
+                    rmcp::model::ErrorCode::INVALID_PARAMS,
+                    format!("Finding {} not found", req.finding_id),
                     None,
                 )
             })?;
@@ -463,11 +474,9 @@ impl HeimdallMcp {
         let old_status = finding.status.clone();
 
         self.db
-            .update_finding_status(id, &params.0.status)
+            .update_finding_status(id, &req.status)
             .await
-            .map_err(|e| {
-                rmcp::Error::internal_error(format!("Failed to update status: {e}"), None)
-            })?;
+            .map_err(|e| internal_err(format!("Failed to update status: {e}")))?;
 
         let _ = self
             .db
@@ -476,52 +485,25 @@ impl HeimdallMcp {
                 None,
                 "status_change",
                 Some(&old_status),
-                Some(&params.0.status),
+                Some(&req.status),
                 Some("Updated via MCP"),
             )
             .await;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(format!(
             "Finding {} status updated: {} -> {}",
-            params.0.finding_id, old_status, params.0.status
-        ))]))
+            req.finding_id, old_status, req.status
+        ))
     }
-
-    tool_box!(HeimdallMcp {
-        list_repositories,
-        get_repository,
-        trigger_scan,
-        get_scan_status,
-        list_findings,
-        get_finding,
-        get_threat_model,
-        get_patches,
-        update_finding_status,
-    });
 }
 
 impl ServerHandler for HeimdallMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::LATEST,
-            capabilities: ServerCapabilities {
-                tools: Some(ToolsCapability {
-                    list_changed: None,
-                }),
-                ..Default::default()
-            },
-            server_info: Implementation {
-                name: "heimdall-mcp".into(),
-                version: env!("CARGO_PKG_VERSION").into(),
-            },
-            instructions: Some(
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(
                 "Heimdall is an agentic security scanner for source code repositories. \
                  Use these tools to list repositories, trigger scans, review findings, \
-                 read threat models, and manage finding statuses."
-                    .into(),
-            ),
-        }
+                 read threat models, and manage finding statuses.",
+            )
     }
-
-    tool_box!(@derive);
 }

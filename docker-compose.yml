@@ -46,7 +46,7 @@ services:
     profiles: ["mcp"]
     entrypoint: ["/app/heimdall-mcp"]
     environment:
-      MCP_TRANSPORT: sse
+      MCP_TRANSPORT: http
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "45637"
     ports:
@@ -58,7 +58,7 @@ services:
         condition: service_healthy
         required: false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:45637/sse"]
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:45637/mcp"]
       interval: 30s
       timeout: 10s
       retries: 3
