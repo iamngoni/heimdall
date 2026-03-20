@@ -96,6 +96,15 @@ impl DatabaseOperations {
             .context("Failed to fetch user by email")
     }
 
+    pub async fn get_default_user(&self) -> HeimdallResult<Option<User>> {
+        sqlx::query_as::<_, User>(
+            "SELECT * FROM users WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch default user")
+    }
+
     // -----------------------------------------------------------------------
     // OAuth connections
     // -----------------------------------------------------------------------

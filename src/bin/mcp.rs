@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use log::info;
+use log::{info, warn};
 use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::tower::{
@@ -18,8 +18,14 @@ use rmcp::transport::streamable_http_server::tower::{
 use sqlx::postgres::PgPoolOptions;
 use tokio_util::sync::CancellationToken;
 
+use heimdall::ai;
+use heimdall::config::Config;
 use heimdall::db::DatabaseOperations;
 use heimdall::mcp::HeimdallMcp;
+use heimdall::sse::ScanBroadcaster;
+use heimdall::state::AppState;
+use heimdall::templates;
+use heimdall::worker::ScanWorker;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,18 +34,60 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     dotenvy::dotenv().ok();
-
-    let database_url = std::env::var("DATABASE_URL").expect(
-        "DATABASE_URL must be set (e.g., postgres://user:password@localhost:5432/heimdall)",
-    );
+    let config = Config::from_env()?;
 
     info!("Connecting to database...");
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&database_url)
+        .connect(&config.database.url)
         .await?;
 
-    let db = Arc::new(DatabaseOperations::new(pool));
+    let ddl = heimdall::db::schema::generate_ddl(heimdall::db::schema::DbDriver::Postgres);
+    sqlx::raw_sql(&ddl).execute(&pool).await?;
+
+    let ai_provider = ai::build_provider(&config.ai);
+    if ai_provider.is_some() {
+        info!("AI provider configured for MCP server");
+    } else {
+        warn!("No environment AI provider configured for MCP server");
+    }
+
+    let db = DatabaseOperations::new(pool);
+    let worker_enabled = std::env::var("WORKER_ENABLED")
+        .unwrap_or_else(|_| "true".to_string())
+        .parse::<bool>()
+        .unwrap_or(true);
+    let state = Arc::new(AppState::init(
+        config.clone(),
+        db,
+        ai_provider,
+        ScanBroadcaster::new(),
+        templates::init_templates("templates"),
+        worker_enabled,
+    ));
+
+    if worker_enabled {
+        let poll_secs = std::env::var("WORKER_POLL_INTERVAL_SECS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(5u64);
+        let stale_mins = std::env::var("WORKER_STALE_TIMEOUT_MINS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(10i32);
+        let worker = Arc::new(ScanWorker::new(
+            Arc::clone(&state),
+            std::time::Duration::from_secs(poll_secs),
+            stale_mins,
+        ));
+        tokio::spawn(worker.run());
+        info!(
+            "Scan worker started inside MCP server (poll={}s, stale_timeout={}min)",
+            poll_secs, stale_mins
+        );
+    } else {
+        info!("Scan worker disabled for MCP server via WORKER_ENABLED=false");
+    }
 
     let transport = std::env::var("MCP_TRANSPORT").unwrap_or_default();
 
@@ -51,7 +99,10 @@ async fn main() -> anyhow::Result<()> {
         let ct = CancellationToken::new();
         let service: StreamableHttpService<HeimdallMcp, LocalSessionManager> =
             StreamableHttpService::new(
-                move || Ok(HeimdallMcp::new(db.clone())),
+                {
+                    let state = Arc::clone(&state);
+                    move || Ok(HeimdallMcp::new(Arc::clone(&state)))
+                },
                 Default::default(),
                 StreamableHttpServerConfig {
                     stateful_mode: true,
@@ -72,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
             .await?;
     } else {
         info!("Starting Heimdall MCP server over stdio");
-        let server = HeimdallMcp::new(db);
+        let server = HeimdallMcp::new(state);
         let service = server.serve(rmcp::transport::io::stdio()).await?;
         service.waiting().await?;
     }

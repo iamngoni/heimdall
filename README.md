@@ -895,7 +895,9 @@ Add to your MCP client configuration (e.g., Claude Code `~/.claude.json`, Cursor
 {
   "mcpServers": {
     "heimdall": {
+      "type": "stdio",
       "command": "/path/to/heimdall-mcp",
+      "args": [],
       "env": {
         "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
       }
@@ -917,25 +919,293 @@ The MCP server listens on port `45637` (configurable via `MCP_PORT`). Configure 
 {
   "mcpServers": {
     "heimdall": {
+      "type": "http",
       "url": "http://localhost:45637/mcp"
     }
   }
 }
 ```
 
+Some clients use a slightly different HTTP field name, such as `serverUrl`, or a different transport label, such as `streamableHttp`.
+
+### Client Setup Guide
+
+Heimdall works best over `http` for editor agents. Use `stdio` when you want the client to manage the MCP subprocess directly.
+
+#### Quick Reference
+
+| Client | Config location | Recommended transport | Notes |
+|------|------|------|------|
+| Claude Code | `~/.claude.json` or project `.mcp.json` | `http` | Use explicit `"type": "http"` |
+| Cursor | `~/.cursor/mcp.json` or project `.cursor/mcp.json` | `http` | Supports project-scoped MCP config |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `http` | Remote HTTP may use `serverUrl` |
+| Cline | Configure from the Cline MCP panel | `http` | Choose `Streamable HTTP` |
+| Continue | `.continue/mcpServers/*.json` | `http` | MCP is available in Agent mode |
+| Gemini CLI | `~/.gemini/settings.json` or project `.gemini/settings.json` | `http` | `gemini mcp add` works well |
+
+#### Claude Code
+
+Add Heimdall over HTTP:
+
+```bash
+claude mcp add -s user --transport http heimdall http://localhost:45637/mcp
+```
+
+Manual config:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "type": "http",
+      "url": "http://localhost:45637/mcp"
+    }
+  }
+}
+```
+
+Local stdio:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "type": "stdio",
+      "command": "/absolute/path/to/heimdall-mcp",
+      "args": [],
+      "env": {
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+      }
+    }
+  }
+}
+```
+
+#### Cursor
+
+Put the config in either `~/.cursor/mcp.json` for a global server or `<project-root>/.cursor/mcp.json` for a project-local server.
+
+HTTP:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "url": "http://localhost:45637/mcp"
+    }
+  }
+}
+```
+
+stdio:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "type": "stdio",
+      "command": "/absolute/path/to/heimdall-mcp",
+      "args": [],
+      "env": {
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+      }
+    }
+  }
+}
+```
+
+#### Windsurf
+
+Windsurf stores MCP servers in `~/.codeium/windsurf/mcp_config.json`.
+
+HTTP:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "serverUrl": "http://localhost:45637/mcp"
+    }
+  }
+}
+```
+
+stdio:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "command": "/absolute/path/to/heimdall-mcp",
+      "args": [],
+      "env": {
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+      }
+    }
+  }
+}
+```
+
+#### Cline
+
+The most reliable setup path in Cline is the MCP UI:
+
+1. Open the Cline panel.
+2. Open `MCP Servers`.
+3. Add a new remote server.
+4. Set the name to `heimdall`.
+5. Set the URL to `http://localhost:45637/mcp`.
+6. Choose `Streamable HTTP` as the transport.
+
+Raw remote config:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "url": "http://localhost:45637/mcp",
+      "type": "streamableHttp"
+    }
+  }
+}
+```
+
+Local stdio:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "command": "/absolute/path/to/heimdall-mcp",
+      "args": [],
+      "env": {
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+      }
+    }
+  }
+}
+```
+
+#### Continue
+
+Continue reads MCP server definitions from `<project-root>/.continue/mcpServers/`.
+
+Create `<project-root>/.continue/mcpServers/heimdall.json`:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "type": "http",
+      "url": "http://localhost:45637/mcp"
+    }
+  }
+}
+```
+
+stdio:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "type": "stdio",
+      "command": "/absolute/path/to/heimdall-mcp",
+      "args": [],
+      "env": {
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+      }
+    }
+  }
+}
+```
+
+Continue currently uses MCP only in Agent mode.
+
+#### Gemini CLI
+
+Add Heimdall over HTTP:
+
+```bash
+gemini mcp add -s user -t http heimdall http://localhost:45637/mcp
+```
+
+Manual config:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "url": "http://localhost:45637/mcp",
+      "type": "http"
+    }
+  }
+}
+```
+
+Add Heimdall over stdio:
+
+```bash
+gemini mcp add -s user -e DATABASE_URL=postgres://heimdall:heimdall@localhost:5432/heimdall heimdall /absolute/path/to/heimdall-mcp
+```
+
+Manual stdio config:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "command": "/absolute/path/to/heimdall-mcp",
+      "args": [],
+      "env": {
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+      }
+    }
+  }
+}
+```
+
+#### Troubleshooting
+
+- If Claude Code or Gemini CLI reports a schema error for Heimdall over HTTP, add an explicit `"type": "http"`.
+- If Windsurf does not pick up the server, use `serverUrl` instead of `url`.
+- If Cline cannot connect, make sure the transport is `Streamable HTTP`, not SSE.
+- If Continue does not expose the tools, switch to Agent mode.
+- If the MCP server is running in Docker but the client is on another machine, replace `localhost` with the host machine's reachable IP or DNS name.
+- If bare `curl` requests to `/mcp` return `400`, that is normal for a healthy Streamable HTTP MCP endpoint.
+- For stdio setups, make sure `DATABASE_URL` points to the same Heimdall database the web app uses.
+
 ### Available Tools
 
 | Tool | Description |
 |------|-------------|
 | `list_repositories` | List all connected repositories |
+| `add_repository` | Import a repository by URL |
 | `get_repository` | Get repository details by ID |
+| `delete_repository` | Delete a repository |
 | `trigger_scan` | Trigger a new security scan (runs async, poll with `get_scan_status`) |
+| `list_scans` | List scan history for a repository |
 | `get_scan_status` | Check scan progress and finding counts |
+| `cancel_scan` | Cancel a running or queued scan |
+| `list_scan_events` | Inspect the full scan audit trail |
+| `get_scan_progress_stream` | Get the live scan snapshot plus the SSE endpoint |
 | `list_findings` | Query findings with severity/status filters and pagination |
 | `get_finding` | Get full finding details (code, patch, reasoning, PoC status) |
+| `explain_finding` | Generate an AI explanation for a finding |
+| `verify_finding` | Run AI verification review for a finding |
+| `list_finding_events` | Get finding event history |
+| `comment_on_finding` | Add a note to a finding |
+| `apply_patch` | Mark the latest suggested patch as applied |
 | `get_threat_model` | Get the STRIDE threat model (boundaries, surfaces, data flows) |
+| `update_threat_model` | Update a threat model field |
 | `get_patches` | Get all suggested patches for a scan as unified diffs |
 | `update_finding_status` | Update finding status (open, confirmed, dismissed, false_positive, fixed) |
+| `update_finding_severity` | Update finding severity |
+| `create_issue` | Push a finding to GitHub, GitLab, or Bitbucket issues |
+| `create_all_issues` | Bulk-create grouped issues for open findings in a scan |
+| `list_agent_tool_calls` | Inspect the AI tool calls recorded for a scan |
+| `manage_api_keys` | Create, list, or delete stored AI provider keys |
+| `test_connection` | Verify provider connectivity with a short completion |
 
 ## Naming
 
