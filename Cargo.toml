@@ -12,6 +12,10 @@ path = "src/main.rs"
 name = "schema_gen"
 path = "src/bin/schema_gen.rs"
 
+[[bin]]
+name = "heimdall-mcp"
+path = "src/bin/mcp.rs"
+
 [dependencies]
 # Web
 actix-web = "4"
@@ -99,6 +103,10 @@ hex = "0.4"
 
 # Glob pattern matching
 glob = "0.3"
+
+# MCP (Model Context Protocol)
+rmcp = { version = "0.1", features = ["server", "macros", "transport-io"] }
+schemars = "0.8"
 
 # Streams (for SSE)
 futures = "0.3"

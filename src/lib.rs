@@ -15,6 +15,7 @@ pub mod db;
 pub mod errors;
 pub mod index;
 pub mod integrations;
+pub mod mcp;
 pub mod middleware;
 pub mod models;
 pub mod pipeline;

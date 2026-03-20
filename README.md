@@ -31,6 +31,7 @@ Heimdall goes beyond pattern matching: it builds a threat model of your applicat
 - [Project Structure](#project-structure)
 - [Testing](#testing)
 - [Deployment](#deployment)
+- [MCP Server](#mcp-server)
 - [License](#license)
 
 ## How It Works
@@ -869,6 +870,70 @@ pub trait ModelProvider: Send + Sync {
 **Model tracking:** Every LLM call records the actual `provider` and `model` used in the `agent_tool_calls` table, providing full observability into which provider served each request.
 
 **BYOK:** Users bring their own API keys. Keys are encrypted at rest with AES-256-GCM when `ENCRYPTION_KEY` is configured.
+
+## MCP Server
+
+Heimdall ships as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, allowing AI coding tools like Claude Code, Cursor, Windsurf, and other MCP-compatible clients to interact with Heimdall directly from the editor.
+
+### Setup
+
+The MCP server runs as a separate binary (`heimdall-mcp`) that connects to the same PostgreSQL database. It communicates over stdio (JSON-RPC).
+
+#### Local
+
+```bash
+# Build the MCP server
+cargo build --release --bin heimdall-mcp
+```
+
+Add to your MCP client configuration (e.g., Claude Code `~/.claude.json`, Cursor settings):
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "command": "/path/to/heimdall-mcp",
+      "env": {
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+      }
+    }
+  }
+}
+```
+
+#### Docker
+
+```bash
+# Start with MCP profile
+docker compose --profile postgres --profile mcp up -d
+```
+
+Configure your MCP client to connect via `docker exec`:
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "command": "docker",
+      "args": ["exec", "-i", "heimdall-mcp", "/app/heimdall-mcp"]
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_repositories` | List all connected repositories |
+| `get_repository` | Get repository details by ID |
+| `trigger_scan` | Trigger a new security scan (runs async, poll with `get_scan_status`) |
+| `get_scan_status` | Check scan progress and finding counts |
+| `list_findings` | Query findings with severity/status filters and pagination |
+| `get_finding` | Get full finding details (code, patch, reasoning, PoC status) |
+| `get_threat_model` | Get the STRIDE threat model (boundaries, surfaces, data flows) |
+| `get_patches` | Get all suggested patches for a scan as unified diffs |
+| `update_finding_status` | Update finding status (open, confirmed, dismissed, false_positive, fixed) |
 
 ## Naming
 

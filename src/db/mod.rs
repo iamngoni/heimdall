@@ -293,6 +293,22 @@ impl DatabaseOperations {
         .context("Failed to list repos by user (paginated)")
     }
 
+    pub async fn list_all_repos_paginated(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> HeimdallResult<Vec<Repo>> {
+        sqlx::query_as::<_, Repo>(
+            "SELECT * FROM repos WHERE deleted_at IS NULL \
+             ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to list all repos (paginated)")
+    }
+
     pub async fn update_repo_issue_settings(
         &self,
         repo_id: Uuid,

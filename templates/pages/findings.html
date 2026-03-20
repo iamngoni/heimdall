@@ -116,7 +116,30 @@
                     </form>
 
                     <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        <div class="hidden border-b border-slate-200 bg-slate-50 px-6 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 lg:grid lg:grid-cols-[120px_minmax(0,1.4fr)_160px_150px_170px] lg:gap-4">
+                        <div id="bulk-actions-bar"
+                             class="hidden items-center gap-3 border-b border-slate-200 bg-slate-900 px-6 py-2.5 text-sm text-white transition-all">
+                            <span id="selected-count" class="font-semibold">0 selected</span>
+                            <button type="button"
+                                    onclick="copySelectedFindings()"
+                                    id="copy-selected-btn"
+                                    class="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                <span id="copy-selected-label">Copy as Markdown</span>
+                            </button>
+                            <button type="button"
+                                    onclick="clearSelection()"
+                                    class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-300 transition hover:text-white">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                Clear
+                            </button>
+                        </div>
+
+                        <div class="hidden border-b border-slate-200 bg-slate-50 px-6 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 lg:grid lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:gap-4">
+                            <span>
+                                <input type="checkbox" id="select-all-checkbox"
+                                       class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-200"
+                                       aria-label="Select all findings">
+                            </span>
                             <span>Severity</span>
                             <span>Issue</span>
                             <span>Source</span>
@@ -178,6 +201,130 @@
 </div>
 
 <script>
+// --- Bulk selection and copy ---
+const selectAllCheckbox = document.getElementById('select-all-checkbox');
+const bulkBar = document.getElementById('bulk-actions-bar');
+const selectedCountEl = document.getElementById('selected-count');
+
+function getCheckboxes() {
+    return document.querySelectorAll('.finding-checkbox');
+}
+
+function getChecked() {
+    return document.querySelectorAll('.finding-checkbox:checked');
+}
+
+function updateBulkBar() {
+    const count = getChecked().length;
+    if (count > 0) {
+        bulkBar.classList.remove('hidden');
+        bulkBar.classList.add('flex');
+        selectedCountEl.textContent = count + ' selected';
+    } else {
+        bulkBar.classList.add('hidden');
+        bulkBar.classList.remove('flex');
+    }
+    const all = getCheckboxes();
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = all.length > 0 && count === all.length;
+        selectAllCheckbox.indeterminate = count > 0 && count < all.length;
+    }
+}
+
+if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', function () {
+        getCheckboxes().forEach(function (cb) { cb.checked = selectAllCheckbox.checked; });
+        updateBulkBar();
+    });
+}
+
+document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('finding-checkbox')) updateBulkBar();
+});
+
+function clearSelection() {
+    getCheckboxes().forEach(function (cb) { cb.checked = false; });
+    updateBulkBar();
+}
+
+function buildFindingMarkdown(el) {
+    const d = el.dataset;
+    const lines = [];
+    lines.push('### ' + (d.findingTitle || 'Untitled'));
+    lines.push('');
+    const badges = ['**Severity:** ' + (d.findingSeverity || '').toUpperCase()];
+    badges.push('**Confidence:** ' + (d.findingConfidence || ''));
+    badges.push('**Source:** ' + (d.findingSource || '').replace(/_/g, ' '));
+    badges.push('**Status:** ' + (d.findingStatus || '').replace(/_/g, ' '));
+    lines.push(badges.join(' | '));
+    lines.push('');
+    const loc = d.findingLineEnd && d.findingLineEnd !== 'None'
+        ? d.findingFile + ':' + d.findingLineStart + '-' + d.findingLineEnd
+        : d.findingFile + ':' + d.findingLineStart;
+    lines.push('**Location:** `' + loc + '`');
+    if (d.findingCwe && d.findingCwe !== 'None') lines.push('**CWE:** ' + d.findingCwe);
+    if (d.findingCve && d.findingCve !== 'None') lines.push('**CVE:** ' + d.findingCve);
+    lines.push('');
+    if (d.findingDescription && d.findingDescription !== 'None') {
+        lines.push(d.findingDescription.trim());
+        lines.push('');
+    }
+    if (d.findingSnippet && d.findingSnippet !== 'None') {
+        lines.push('```');
+        lines.push(d.findingSnippet.trim());
+        lines.push('```');
+        lines.push('');
+    }
+    if (d.findingPatch && d.findingPatch !== 'None') {
+        lines.push('**Suggested Fix:**');
+        lines.push('```diff');
+        lines.push(d.findingPatch.trim());
+        lines.push('```');
+        lines.push('');
+    }
+    return lines.join('\n');
+}
+
+async function copySelectedFindings() {
+    const checked = getChecked();
+    if (checked.length === 0) return;
+    const label = document.getElementById('copy-selected-label');
+    const btn = document.getElementById('copy-selected-btn');
+
+    const sections = [];
+    sections.push('# Heimdall Findings Report');
+    sections.push('');
+    sections.push('**Repository:** {{ repo.name }}');
+    sections.push('**Scan:** `{{ scan.id }}`');
+    sections.push('**Findings:** ' + checked.length);
+    sections.push('');
+    sections.push('---');
+    sections.push('');
+
+    checked.forEach(function (cb) {
+        const card = cb.closest('[data-finding-id]');
+        if (card) sections.push(buildFindingMarkdown(card));
+        sections.push('---');
+        sections.push('');
+    });
+
+    sections.push('*Exported from [Heimdall](/scans/{{ scan.id }}/findings)*');
+
+    try {
+        await navigator.clipboard.writeText(sections.join('\n'));
+        label.textContent = 'Copied!';
+        btn.classList.add('bg-emerald-500/20');
+        setTimeout(function () {
+            label.textContent = 'Copy as Markdown';
+            btn.classList.remove('bg-emerald-500/20');
+        }, 2000);
+    } catch (_) {
+        label.textContent = 'Failed';
+        setTimeout(function () { label.textContent = 'Copy as Markdown'; }, 2000);
+    }
+}
+
+// --- Existing bulk issue creation ---
 async function createAllIssues(btn) {
     const label = document.getElementById('bulk-issue-label');
     const spinner = document.getElementById('bulk-issue-spinner');

@@ -31,6 +31,31 @@ services:
     restart: unless-stopped
 
   # --------------------------------------------------------------------------
+  # MCP Server — activate with: docker compose --profile mcp up
+  # Provides Model Context Protocol access over stdio for AI coding tools.
+  # Connect via: docker exec -i heimdall-mcp /app/heimdall-mcp
+  # --------------------------------------------------------------------------
+
+  heimdall-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DB_DRIVER: ${DB_DRIVER:-postgres}
+    container_name: heimdall-mcp
+    profiles: ["mcp"]
+    entrypoint: ["/app/heimdall-mcp"]
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    # Keep container running so MCP clients can attach via docker exec
+    stdin_open: true
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
   # Database services — activate with: docker compose --profile <db> up
   # Only one should be active at a time.
   # Compose interpolates the full file before profile filtering, so each

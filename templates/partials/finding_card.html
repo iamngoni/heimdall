@@ -1,5 +1,26 @@
-<a href="/findings/{{ finding.id }}"
-   class="grid gap-4 px-6 py-4 transition hover:bg-slate-50 lg:grid-cols-[120px_minmax(0,1.4fr)_160px_150px_170px] lg:items-center">
+<div class="group grid gap-4 px-6 py-4 transition hover:bg-slate-50 lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:items-center"
+     data-finding-id="{{ finding.id }}"
+     data-finding-title="{{ finding.title }}"
+     data-finding-severity="{{ finding.severity }}"
+     data-finding-confidence="{{ finding.confidence }}"
+     data-finding-source="{{ finding.source }}"
+     data-finding-status="{{ finding.status }}"
+     data-finding-file="{{ finding.file_path }}"
+     data-finding-line-start="{{ finding.line_start }}"
+     data-finding-line-end="{{ finding.line_end }}"
+     data-finding-cwe="{{ finding.cwe_id }}"
+     data-finding-cve="{{ finding.cve_id }}"
+     data-finding-description="{{ finding.description }}"
+     data-finding-snippet="{{ finding.code_snippet }}"
+     data-finding-patch="{{ finding.suggested_patch }}"
+     data-finding-reasoning="{{ finding.agent_reasoning }}">
+    <div class="flex items-center" onclick="event.stopPropagation()">
+        <input type="checkbox"
+               class="finding-checkbox h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-200"
+               value="{{ finding.id }}"
+               aria-label="Select finding">
+    </div>
+    <a href="/findings/{{ finding.id }}" class="contents">
     <div class="flex items-center">
         {% with severity=finding.severity %}
             {% include "partials/severity_badge.html" %}
@@ -34,4 +55,5 @@
         </span>
         <span class="text-xs font-medium text-slate-400">{{ finding.updated_at }}</span>
     </div>
-</a>
+    </a>
+</div>

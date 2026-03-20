@@ -19,7 +19,8 @@ ARG DB_DRIVER=postgres
 # Cache dependencies
 COPY Cargo.toml Cargo.lock* ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs && \
-    mkdir -p src/bin && echo "fn main() {}" > src/bin/schema_gen.rs
+    mkdir -p src/bin && echo "fn main() {}" > src/bin/schema_gen.rs && \
+    echo "fn main() {}" > src/bin/mcp.rs
 RUN cargo build --release 2>/dev/null || true
 
 # Copy source
@@ -32,7 +33,7 @@ COPY --from=css-builder /app/static/css/app.css /app/static/css/app.css
 # (sqlx::migrate! is a compile-time macro — migrations must exist before build)
 RUN cargo build --release --bin schema_gen
 RUN ./target/release/schema_gen ${DB_DRIVER}
-RUN cargo build --release --bin heimdall
+RUN cargo build --release --bin heimdall --bin heimdall-mcp
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim
@@ -54,6 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY --from=builder /app/target/release/heimdall /app/heimdall
+COPY --from=builder /app/target/release/heimdall-mcp /app/heimdall-mcp
 COPY --from=builder /app/templates /app/templates
 COPY --from=builder /app/static /app/static
 
