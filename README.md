@@ -22,6 +22,7 @@ Heimdall goes beyond pattern matching: it builds a threat model of your applicat
 - [Architecture](#architecture)
 - [The Hunt Agent](#the-hunt-agent)
 - [Garmr Sandbox](#garmr-sandbox)
+- [Background Worker](#background-worker)
 - [Findings](#findings)
 - [API Reference](#api-reference)
 - [Tech Stack](#tech-stack)
@@ -35,12 +36,12 @@ Heimdall goes beyond pattern matching: it builds a threat model of your applicat
 ```mermaid
 graph LR
     A[Connect Repo] --> B[Run Scan]
-    B --> C[7-Stage Pipeline]
+    B --> C[10-Stage Pipeline]
     C --> D[View Findings]
     D --> E[Apply Patches]
 ```
 
-1. **Connect a repository** — GitHub OAuth, GitLab OAuth, public git URL, or zip upload
+1. **Connect a repository** — GitHub OAuth, GitLab OAuth, Bitbucket OAuth/PAT, public git URL, or zip upload
 2. **Run a scan** — manually triggered, the pipeline takes over
 3. **Review findings** — severity-ranked, with code context, explanations, and patches
 4. **Apply fixes** — accept suggested patches as unified diffs
@@ -71,17 +72,20 @@ cargo run --bin heimdall
 
 What Heimdall does today:
 
-- Repository intake via GitHub OAuth, GitLab OAuth, public Git URL, or ZIP upload
-- Seven-stage scan pipeline: Ingest, Tyr, Static Analysis, Hunt, Víðarr, Garmr, Report
+- Repository intake via GitHub OAuth, GitLab OAuth, Bitbucket OAuth/PAT, public Git URL, or ZIP upload
+- Ten-stage scan pipeline: Ingest, Tyr, Static Analysis, Taint Analysis, Config Scan, Hunt, Víðarr, Garmr, Deps Audit (module exists, not yet wired), Report
+- Background scan worker with configurable polling, stale scan detection, and cancellation support
 - Live scan progress via SSE, plus persisted execution and tool-call logs in the database
 - Finding review with explain, verify, patch, and repository issue creation/linking
-- Optional per-repo automatic issue creation for supported GitHub/GitLab repositories
+- Optional per-repo automatic issue creation for supported GitHub/GitLab/Bitbucket repositories
 - BYOK via environment variables or user-scoped keys stored in Settings
+- AI provider fallback chain (Anthropic > OpenAI > Ollama) with automatic retry on transient errors
 
 What is still missing or intentionally not done yet:
 
 - GitHub App / installation-token repository access is not implemented yet
-- GitLab uses the same current OAuth user-token model; there is no install-style app flow yet
+- GitLab and Bitbucket use the same OAuth user-token model; there is no install-style app flow yet
+- Deps audit stage is implemented but not yet wired into the pipeline orchestrator
 - End-to-end integration tests for the full `repo import -> scan -> findings -> issue sync` loop are still limited
 - Stage-specific artifact views are still spread across scan, findings, threat model, and patch surfaces rather than one dedicated “stage outputs” screen
 
@@ -259,9 +263,9 @@ For GitHub/GitLab login and repository import.
 
 Current state:
 
-- Repository access is currently OAuth user-token based
+- Repository access is currently OAuth user-token based (GitHub, GitLab, Bitbucket)
+- Bitbucket also supports Personal Access Tokens (PATs) via the Settings UI
 - GitHub App / install-style repo access is planned, but not implemented yet
-- If you are comparing Heimdall to tools like Vercel, this is the biggest remaining integration gap
 
 | Variable | Description |
 |----------|-------------|
@@ -272,6 +276,9 @@ Current state:
 | `GITLAB_CLIENT_SECRET` | GitLab OAuth app client secret |
 | `GITLAB_REDIRECT_URI` | Callback URL (default: `http://localhost:8080/api/auth/gitlab/callback`) |
 | `GITLAB_BASE_URL` | GitLab base URL (default: `https://gitlab.com`) |
+| `BITBUCKET_CLIENT_ID` | Bitbucket OAuth consumer key |
+| `BITBUCKET_CLIENT_SECRET` | Bitbucket OAuth consumer secret |
+| `BITBUCKET_REDIRECT_URI` | Callback URL (default: `http://localhost:8080/api/auth/bitbucket/callback`) |
 
 ### Security
 
@@ -341,29 +348,37 @@ flowchart TD
         direction TB
         I["1. Ingest\n<i>Clone + AST parse</i>"]
         T["2. Tyr\n<i>Threat modeling</i>"]
-        S["3. Static Analysis\n<i>Pattern matching + secrets + deps</i>"]
+        S["3. Static Analysis\n<i>Pattern matching + secrets</i>"]
+        TA["3b. Taint Analysis\n<i>Source → sink tracking</i>"]
+        CS["3c. Config Scan\n<i>IaC + config audit</i>"]
         H["4. Hunt\n<i>Agentic discovery</i>"]
-        V["5. Víðarr\n<i>Adversarial verification</i>"]
-        G["6. Garmr\n<i>Sandbox validation</i>"]
-        R["7. Report\n<i>Rank + patch + explain</i>"]
+        V["4b. Víðarr\n<i>Adversarial verification</i>"]
+        G["5. Garmr\n<i>Sandbox validation</i>"]
+        R["6. Report\n<i>Rank + patch + explain</i>"]
     end
 
-    I --> T --> S --> H --> V --> G --> R
+    I --> T --> S --> TA --> CS --> H --> V --> G --> R
 
     I -.- i1["tree-sitter AST\nSymbol table\nCall graph\nData flows"]
     T -.- t1["Trust boundaries\nAttack surfaces\nSensitive data flows"]
-    S -.- s1["Semgrep-style patterns\nSecret detection\nDependency audit\nTaint analysis"]
+    S -.- s1["Semgrep-style patterns\nSecret detection\n70+ rules"]
+    TA -.- ta1["Taint propagation\nFixed-point iteration\nSource/sink mapping"]
+    CS -.- cs1["Dockerfile, K8s, Terraform\nCI/CD, env files\nIaC misconfigurations"]
     H -.- h1["Per-threat AI agents\nMax 25 iterations\nSecurity + logic flaws"]
     V -.- v1["Adversarial challenge\nFalse positive filtering\nSeverity adjustment"]
     G -.- g1["Docker sandbox\nPoC execution\nNo network, 30s timeout"]
     R -.- r1["Severity ranking\nCWE/CVE classification\nUnified diff patches"]
 ```
 
+> **Note:** A **Deps Audit** stage (OSV-based dependency vulnerability scanning) is implemented but not yet wired into the pipeline orchestrator.
+
 | Stage | Engine | Purpose | Speed |
 |-------|--------|---------|-------|
 | **Ingest** | tree-sitter | Clone repo, build code index (AST, symbols, call graph, data flows) | Seconds |
 | **Tyr** | LLM | Generate structured threat model (boundaries, surfaces, data flows) | ~30s |
-| **Static Analysis** | tree-sitter + regex | Deterministic pattern matching, secret detection, dependency audit | Seconds |
+| **Static Analysis** | tree-sitter + regex | Deterministic pattern matching, secret detection (70+ rules across 6 languages) | Seconds |
+| **Taint Analysis** | Fixed-point iteration | Track tainted data from sources (user input, env) to sinks (exec, SQL, file I/O) | Seconds |
+| **Config Scan** | Regex | Audit Dockerfiles, Kubernetes manifests, Terraform, CI/CD configs, env files | Seconds |
 | **Hunt** | LLM Agent | Reason about code per-threat, discover security vulns + logic flaws | Minutes |
 | **Víðarr** | LLM | Adversarial challenge — tries to disprove each finding, filters false positives | ~15s/finding |
 | **Garmr** | Docker + LLM | Execute PoC exploits in sandboxed containers to confirm findings | ~30s/finding |
@@ -384,7 +399,7 @@ Tree-sitter AST parsing (full symbol extraction, call graphs):
 | Ruby | regex fallback | Basic |
 | PHP | regex fallback | Basic |
 
-Static analysis rules cover: SQL injection, command injection, XSS, hardcoded secrets, path traversal, unsafe deserialization, weak crypto, CSRF, open redirects, and more. The Hunt agent also investigates logic flaws: race conditions, off-by-one errors, state machine violations, business logic bypasses, and concurrency bugs.
+Static analysis rules cover: SQL injection, command injection, XSS, hardcoded secrets, path traversal, unsafe deserialization, weak crypto, CSRF, open redirects, and more. Taint analysis tracks data flow from user-controlled sources to dangerous sinks across 6+ languages. Config scanning audits Dockerfiles, Kubernetes manifests, Terraform configs, CI/CD pipelines, and environment files for misconfigurations. The Hunt agent also investigates logic flaws: race conditions, off-by-one errors, state machine violations, business logic bypasses, and concurrency bugs.
 
 ## Architecture
 
@@ -501,6 +516,18 @@ sequenceDiagram
 
 If Docker is not available, Garmr is skipped gracefully — findings are still reported but without sandbox validation.
 
+## Background Worker
+
+Heimdall includes a background scan worker that polls for queued scans and executes them automatically. This decouples scan submission from execution and handles recovery from stale/stuck scans.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WORKER_ENABLED` | `true` | Enable/disable the background scan worker |
+| `WORKER_POLL_INTERVAL_SECS` | `5` | How often the worker polls for queued scans |
+| `WORKER_STALE_TIMEOUT_MINS` | `10` | Timeout for stale/stuck scans |
+
+When a scan is triggered via `POST /repos/{id}/scan`, it is queued in the database. The worker picks it up, runs the full pipeline, and updates status in real-time via SSE. Users can cancel running scans via `POST /api/scans/{id}/cancel`, which signals the cancellation token — the pipeline stops gracefully at the next stage boundary.
+
 ## Findings
 
 Each finding includes:
@@ -526,6 +553,7 @@ Each finding includes:
 | `POST` | `/api/auth/logout` | Logout (clears session) |
 | `GET` | `/api/auth/github/authorize` | Start GitHub OAuth flow |
 | `GET` | `/api/auth/gitlab/authorize` | Start GitLab OAuth flow |
+| `GET` | `/api/auth/bitbucket/authorize` | Start Bitbucket OAuth flow |
 
 ### Repositories
 
@@ -647,14 +675,17 @@ heimdall/
 │   │   ├── ingest/             # Stage 1: Clone + index
 │   │   ├── tyr/                # Stage 2: Threat modeling
 │   │   ├── static_analysis/    # Stage 3: Pattern rules
+│   │   ├── taint/              # Stage 3b: Taint analysis
+│   │   ├── config_scan/        # Stage 3c: IaC + config audit
 │   │   ├── hunt/               # Stage 4: Agentic discovery
-│   │   ├── vidarr/             # Stage 5: Adversarial verification
-│   │   ├── garmr/              # Stage 6: Sandbox validation
-│   │   └── report/             # Stage 7: Patches + ranking
+│   │   ├── vidarr/             # Stage 4b: Adversarial verification
+│   │   ├── garmr/              # Stage 5: Sandbox validation
+│   │   ├── deps_audit/         # Dependency audit (not yet wired)
+│   │   └── report/             # Stage 6: Patches + ranking
 │   ├── worker.rs               # Background scan worker (poll + execute)
 │   ├── integrations/
 │   │   ├── mod.rs              # Integration hub
-│   │   └── issues.rs           # Issue tracker integration
+│   │   └── issues.rs           # Issue tracker integration (GitHub, GitLab, Bitbucket)
 │   ├── ai/
 │   │   ├── mod.rs              # ModelProvider trait + provider builder
 │   │   ├── types.rs            # Request/response types
@@ -742,7 +773,7 @@ cargo test --lib auth
 cargo test --test '*'
 ```
 
-The test suite covers: symbol extraction (all 6 languages), static analysis rules, call graph construction, dependency resolution, full-text search, password hashing, AES-256-GCM encryption, SSE broadcasting, pagination, and API response formatting.
+211 unit tests cover: symbol extraction (all 6 languages), static analysis rules, taint analysis, call graph construction, dependency resolution, full-text search, password hashing, AES-256-GCM encryption, SSE broadcasting, pagination, and API response formatting.
 
 ## Deployment
 
@@ -860,4 +891,4 @@ See [LICENSE](LICENSE) for the full terms, or visit [fsl.software](https://fsl.s
 
 ---
 
-Built by [ModestNerd Co.](https://codecraftsolutions.co.za)
+Built by [Codecraft Solutions ZA](https://codecraftsolutions.co.za)
