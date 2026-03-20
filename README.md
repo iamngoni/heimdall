@@ -4,6 +4,8 @@
 
 Heimdall goes beyond pattern matching: it builds a threat model of your application, deploys an AI agent that reasons about your codebase to discover real vulnerabilities, validates them in a sandboxed environment, and produces ranked findings with patches and proof-of-concept exploits.
 
+> **Why Norse mythology?** In Norse myth, **Heimdall** stands on the Bifrost bridge watching over all Nine Realms — he sees everything and hears the grass grow. That's the vibe: a guardian that observes your entire codebase. The internal components follow the same theme — **Tyr**, the god of justice and law, builds the threat model (he decides what matters). **Garmr**, the blood-stained hound chained at the gates of Hel, guards the boundary between safe and dangerous — he runs untrusted exploit code in sandboxed containers so nothing escapes. And **Vidarr**, the silent god known for patience and deliberation, challenges every finding before it reaches you — if a vulnerability can't survive his scrutiny, it was never real.
+
 ![Heimdall — Sign In](assets/images/screenshot.png)
 
 ## Table of Contents
