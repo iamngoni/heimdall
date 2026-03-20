@@ -14,7 +14,7 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::schemars;
 use rmcp::schemars::JsonSchema;
-use rmcp::{ServerHandler, tool, tool_router};
+use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use serde::{Deserialize, Serialize};
 
 use crate::db::DatabaseOperations;
@@ -497,6 +497,7 @@ impl HeimdallMcp {
     }
 }
 
+#[tool_handler]
 impl ServerHandler for HeimdallMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())

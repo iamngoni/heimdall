@@ -58,7 +58,11 @@ services:
         condition: service_healthy
         required: false
     healthcheck:
-      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:45637/mcp"]
+      test:
+        [
+          "CMD-SHELL",
+          "code=$$(curl -s -o /dev/null -w '%{http_code}' -H 'accept: application/json, text/event-stream' http://localhost:45637/mcp || true); [ \"$$code\" = \"400\" ]",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
