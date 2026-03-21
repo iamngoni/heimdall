@@ -13,13 +13,13 @@ use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
 
 use crate::ai::ModelProvider;
-use crate::util::{sat_i32, sat_i32_u128};
 use crate::ai::types::{CompletionRequest, Message, StopReason};
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::HeimdallResult;
 use crate::pipeline::hunt::tools;
 use crate::pipeline::tyr::AttackSurface;
+use crate::util::{sat_i32, sat_i32_u128};
 
 /// Maximum number of agent loop iterations before forced termination.
 pub const MAX_ITERATIONS: u32 = 25;
@@ -253,8 +253,12 @@ impl HuntAgent {
                                     .as_str()
                                     .unwrap_or("")
                                     .to_string(),
-                                line_start: crate::util::sat_i32_i64(tc.arguments["line_start"].as_i64().unwrap_or(1)),
-                                line_end: tc.arguments["line_end"].as_i64().map(crate::util::sat_i32_i64),
+                                line_start: crate::util::sat_i32_i64(
+                                    tc.arguments["line_start"].as_i64().unwrap_or(1),
+                                ),
+                                line_end: tc.arguments["line_end"]
+                                    .as_i64()
+                                    .map(crate::util::sat_i32_i64),
                                 description: tc.arguments["description"]
                                     .as_str()
                                     .unwrap_or("")

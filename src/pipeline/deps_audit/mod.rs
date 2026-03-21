@@ -248,11 +248,7 @@ fn is_lock_file(path: &str) -> bool {
         .unwrap_or_default();
     matches!(
         filename.as_str(),
-        "Cargo.lock"
-            | "package-lock.json"
-            | "Gemfile.lock"
-            | "composer.lock"
-            | "go.sum"
+        "Cargo.lock" | "package-lock.json" | "Gemfile.lock" | "composer.lock" | "go.sum"
     )
 }
 

@@ -920,7 +920,7 @@ The MCP server listens on port `45637` (configurable via `MCP_PORT`). Configure 
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://localhost:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -948,7 +948,7 @@ Heimdall works best over `http` for editor agents. Use `stdio` when you want the
 Add Heimdall over HTTP:
 
 ```bash
-claude mcp add -s user --transport http heimdall http://localhost:45637/mcp
+claude mcp add -s user --transport http heimdall http://127.0.0.1:45637/mcp
 ```
 
 Manual config:
@@ -958,7 +958,7 @@ Manual config:
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://localhost:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -991,7 +991,7 @@ HTTP:
 {
   "mcpServers": {
     "heimdall": {
-      "url": "http://localhost:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -1024,7 +1024,7 @@ HTTP:
 {
   "mcpServers": {
     "heimdall": {
-      "serverUrl": "http://localhost:45637/mcp"
+      "serverUrl": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -1054,7 +1054,7 @@ The most reliable setup path in Cline is the MCP UI:
 2. Open `MCP Servers`.
 3. Add a new remote server.
 4. Set the name to `heimdall`.
-5. Set the URL to `http://localhost:45637/mcp`.
+5. Set the URL to `http://127.0.0.1:45637/mcp`.
 6. Choose `Streamable HTTP` as the transport.
 
 Raw remote config:
@@ -1063,7 +1063,7 @@ Raw remote config:
 {
   "mcpServers": {
     "heimdall": {
-      "url": "http://localhost:45637/mcp",
+      "url": "http://127.0.0.1:45637/mcp",
       "type": "streamableHttp"
     }
   }
@@ -1097,7 +1097,7 @@ Create `<project-root>/.continue/mcpServers/heimdall.json`:
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://localhost:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -1127,7 +1127,7 @@ Continue currently uses MCP only in Agent mode.
 Add Heimdall over HTTP:
 
 ```bash
-gemini mcp add -s user -t http heimdall http://localhost:45637/mcp
+gemini mcp add -s user -t http heimdall http://127.0.0.1:45637/mcp
 ```
 
 Manual config:
@@ -1136,7 +1136,7 @@ Manual config:
 {
   "mcpServers": {
     "heimdall": {
-      "url": "http://localhost:45637/mcp",
+      "url": "http://127.0.0.1:45637/mcp",
       "type": "http"
     }
   }
@@ -1171,8 +1171,8 @@ Manual stdio config:
 - If Windsurf does not pick up the server, use `serverUrl` instead of `url`.
 - If Cline cannot connect, make sure the transport is `Streamable HTTP`, not SSE.
 - If Continue does not expose the tools, switch to Agent mode.
-- If the MCP server is running in Docker but the client is on another machine, replace `localhost` with the host machine's reachable IP or DNS name.
-- If bare `curl` requests to `/mcp` return `400`, that is normal for a healthy Streamable HTTP MCP endpoint.
+- If the MCP server is running in Docker but the client is on another machine, replace `127.0.0.1` with the host machine's reachable IP or DNS name.
+- If bare `curl` requests to `http://127.0.0.1:45637/mcp` return `400`, that is normal for a healthy Streamable HTTP MCP endpoint.
 - For stdio setups, make sure `DATABASE_URL` points to the same Heimdall database the web app uses.
 
 ### Available Tools

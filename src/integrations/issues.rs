@@ -446,7 +446,10 @@ fn issue_body(finding: &Finding) -> String {
 pub fn group_findings_by_rule(findings: &[Finding]) -> BTreeMap<String, Vec<&Finding>> {
     let mut groups: BTreeMap<String, Vec<&Finding>> = BTreeMap::new();
     for finding in findings {
-        groups.entry(finding.title.clone()).or_default().push(finding);
+        groups
+            .entry(finding.title.clone())
+            .or_default()
+            .push(finding);
     }
     groups
 }
@@ -590,12 +593,24 @@ pub async fn create_or_link_grouped_issue(
     // we'll call the provider APIs directly with our grouped title/body.
     let created_issue = match provider {
         "github" => {
-            create_github_grouped_issue(remote_url, &token, &issue_title_str, &issue_body_str, &severity)
-                .await?
+            create_github_grouped_issue(
+                remote_url,
+                &token,
+                &issue_title_str,
+                &issue_body_str,
+                &severity,
+            )
+            .await?
         }
         "gitlab" => {
-            create_gitlab_grouped_issue(remote_url, &token, &issue_title_str, &issue_body_str, &severity)
-                .await?
+            create_gitlab_grouped_issue(
+                remote_url,
+                &token,
+                &issue_title_str,
+                &issue_body_str,
+                &severity,
+            )
+            .await?
         }
         "bitbucket" => {
             create_bitbucket_grouped_issue(

@@ -134,14 +134,8 @@ fn parse_package_lock_json(content: &str) -> Vec<Dependency> {
                 continue;
             }
             // Extract name from the path (e.g., "node_modules/express")
-            let name = path
-                .rsplit("node_modules/")
-                .next()
-                .unwrap_or(path);
-            let version = info
-                .get("version")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let name = path.rsplit("node_modules/").next().unwrap_or(path);
+            let version = info.get("version").and_then(|v| v.as_str()).unwrap_or("");
 
             if !name.is_empty() && !version.is_empty() {
                 deps.push(Dependency {
@@ -154,7 +148,10 @@ fn parse_package_lock_json(content: &str) -> Vec<Dependency> {
     }
     // Fallback: package-lock.json v1 uses "dependencies"
     else if let Some(dependencies) = json.get("dependencies").and_then(|v| v.as_object()) {
-        fn walk_v1_deps(obj: &serde_json::Map<String, serde_json::Value>, deps: &mut Vec<Dependency>) {
+        fn walk_v1_deps(
+            obj: &serde_json::Map<String, serde_json::Value>,
+            deps: &mut Vec<Dependency>,
+        ) {
             for (name, info) in obj {
                 if let Some(version) = info.get("version").and_then(|v| v.as_str()) {
                     deps.push(Dependency {

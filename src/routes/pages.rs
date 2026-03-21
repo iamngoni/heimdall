@@ -718,8 +718,7 @@ async fn scan_findings_page(
         .collect();
 
     let issue_supported = crate::integrations::issues::supports_issue_creation(&repo);
-    let issue_provider = crate::integrations::issues::issue_provider(&repo)
-        .unwrap_or("unknown");
+    let issue_provider = crate::integrations::issues::issue_provider(&repo).unwrap_or("unknown");
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),

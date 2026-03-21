@@ -660,28 +660,35 @@ async fn create_all_issues(
     let scan = match state.db.get_scan_by_id(scan_id).await {
         Ok(Some(scan)) => scan,
         Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Scan not found"))
+            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Scan not found"));
         }
         Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("Failed to fetch scan: {e}")))
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch scan: {e}"),
+            ));
         }
     };
 
     let repo = match state.db.get_repo_by_id(scan.repo_id).await {
         Ok(Some(repo)) => repo,
         Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Repository not found"))
+            return HttpResponse::NotFound()
+                .json(ApiResponse::<()>::error(404, "Repository not found"));
         }
         Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("Failed to fetch repo: {e}")))
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch repo: {e}"),
+            ));
         }
     };
 
     if repo.user_id != user.id {
-        return HttpResponse::Forbidden()
-            .json(ApiResponse::<()>::error(403, "You do not have access to this repository"));
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(
+            403,
+            "You do not have access to this repository",
+        ));
     }
 
     if !issues::supports_issue_creation(&repo) {
@@ -699,8 +706,10 @@ async fn create_all_issues(
     {
         Ok(f) => f,
         Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("Failed to list findings: {e}")))
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to list findings: {e}"),
+            ));
         }
     };
 

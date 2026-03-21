@@ -70,7 +70,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
 pub struct RegisterRequest {
     #[validate(email(message = "Invalid email address"))]
     pub email: String,
-    #[validate(length(min = 8, message = "Password must be at least 8 characters"), custom(function = "validate_password_strength"))]
+    #[validate(
+        length(min = 8, message = "Password must be at least 8 characters"),
+        custom(function = "validate_password_strength")
+    )]
     pub password: String,
     pub display_name: Option<String>,
 }

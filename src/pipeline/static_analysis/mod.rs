@@ -882,8 +882,16 @@ fn is_test_or_generated_file(path: &str) -> bool {
 
     // Test/spec directories
     let test_dirs = [
-        "/test/", "/tests/", "/__tests__/", "/spec/", "/specs/",
-        "/fixtures/", "/testdata/", "/test_data/", "/mock/", "/mocks/",
+        "/test/",
+        "/tests/",
+        "/__tests__/",
+        "/spec/",
+        "/specs/",
+        "/fixtures/",
+        "/testdata/",
+        "/test_data/",
+        "/mock/",
+        "/mocks/",
     ];
     if test_dirs.iter().any(|d| lower.contains(d)) {
         return true;

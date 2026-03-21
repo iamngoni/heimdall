@@ -769,13 +769,41 @@ impl TyrStage {
     /// reach known risky sinks (exec, query, deserialize, file I/O, crypto, etc.).
     fn collect_call_chains(&self, index: &CodeIndex) -> Vec<String> {
         let risky_sinks: &[&str] = &[
-            "exec", "execute", "query", "raw_sql", "eval", "spawn", "command",
-            "deserialize", "from_str", "from_bytes", "unmarshal", "decode",
-            "open", "read_file", "write_file", "remove", "unlink", "rename",
-            "encrypt", "decrypt", "hash", "sign", "verify",
-            "send", "request", "fetch", "get", "post", "redirect",
-            "set_cookie", "create_token", "verify_token",
-            "upload", "download", "serialize",
+            "exec",
+            "execute",
+            "query",
+            "raw_sql",
+            "eval",
+            "spawn",
+            "command",
+            "deserialize",
+            "from_str",
+            "from_bytes",
+            "unmarshal",
+            "decode",
+            "open",
+            "read_file",
+            "write_file",
+            "remove",
+            "unlink",
+            "rename",
+            "encrypt",
+            "decrypt",
+            "hash",
+            "sign",
+            "verify",
+            "send",
+            "request",
+            "fetch",
+            "get",
+            "post",
+            "redirect",
+            "set_cookie",
+            "create_token",
+            "verify_token",
+            "upload",
+            "download",
+            "serialize",
         ];
 
         let entry_points = index.symbols.entry_points();
@@ -784,7 +812,8 @@ impl TyrStage {
         for ep in entry_points.iter().take(60) {
             // BFS up to depth 4 from this entry point
             let mut visited = std::collections::HashSet::new();
-            let mut queue: Vec<(String, Vec<String>)> = vec![(ep.name.clone(), vec![ep.name.clone()])];
+            let mut queue: Vec<(String, Vec<String>)> =
+                vec![(ep.name.clone(), vec![ep.name.clone()])];
             visited.insert(ep.name.clone());
 
             while let Some((current, path)) = queue.pop() {
@@ -1145,7 +1174,11 @@ impl TyrStage {
     /// Validate that LLM-generated attack surfaces reference real files/endpoints.
     /// Removes surfaces pointing to non-existent files and annotates surfaces
     /// with verified=true/false for downstream consumption.
-    fn validate_surfaces(&self, index: &CodeIndex, mut model: ThreatModelOutput) -> ThreatModelOutput {
+    fn validate_surfaces(
+        &self,
+        index: &CodeIndex,
+        mut model: ThreatModelOutput,
+    ) -> ThreatModelOutput {
         model.surfaces.retain(|surface| {
             // If the surface references a file, verify it exists
             if let Some(ref file) = surface.file {
@@ -1172,15 +1205,21 @@ impl TyrStage {
 
             // Generic terms are always valid (user, browser, database, etc.)
             let generic_terms = [
-                "user", "browser", "client", "database", "db", "api", "server",
-                "external", "network", "cache", "queue", "storage", "memory",
-                "file", "config", "env", "session",
+                "user", "browser", "client", "database", "db", "api", "server", "external",
+                "network", "cache", "queue", "storage", "memory", "file", "config", "env",
+                "session",
             ];
 
             let source_valid = generic_terms.iter().any(|t| source_lower.contains(t))
-                || index.files.keys().any(|k| source_lower.contains(k.split('/').last().unwrap_or("")));
+                || index
+                    .files
+                    .keys()
+                    .any(|k| source_lower.contains(k.split('/').last().unwrap_or("")));
             let sink_valid = generic_terms.iter().any(|t| sink_lower.contains(t))
-                || index.files.keys().any(|k| sink_lower.contains(k.split('/').last().unwrap_or("")));
+                || index
+                    .files
+                    .keys()
+                    .any(|k| sink_lower.contains(k.split('/').last().unwrap_or("")));
 
             source_valid || sink_valid
         });

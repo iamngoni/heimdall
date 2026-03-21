@@ -1805,10 +1805,17 @@ impl HeimdallMcp {
 #[tool_handler]
 impl ServerHandler for HeimdallMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "Heimdall is an agentic security scanner for source code repositories. \
-             Use these tools to import repositories, queue scans, inspect scan history and audit trails, \
-             review findings, manage issue creation, update threat models, and manage stored AI provider keys.",
-        )
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(
+                Implementation::new("heimdall", env!("CARGO_PKG_VERSION"))
+                    .with_title("Heimdall MCP")
+                    .with_description("Agentic security scanner for source code repositories")
+                    .with_website_url("https://github.com/iamngoni/heimdall"),
+            )
+            .with_instructions(
+                "Heimdall is an agentic security scanner for source code repositories. \
+                 Use these tools to import repositories, queue scans, inspect scan history and audit trails, \
+                 review findings, manage issue creation, update threat models, and manage stored AI provider keys.",
+            )
     }
 }
