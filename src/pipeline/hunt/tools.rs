@@ -332,13 +332,25 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
     // Find functions that contain the matched lines
     for m in &initial_matches {
         let syms = index.symbols.symbols_in_file(&m.file);
+        // For each match, choose only the closest preceding function/method
+        let mut best_function_name: Option<String> = None;
+        let mut best_function_line: Option<u32> = None;
+
         for sym in syms {
-            if (sym.kind == "function" || sym.kind == "method")
-                && sym.line <= m.line
-                && !seen_functions.contains(&sym.name)
-            {
-                seen_functions.insert(sym.name.clone());
-                current_functions.push(sym.name.clone());
+            if sym.kind == "function" || sym.kind == "method" {
+                if sym.line <= m.line {
+                    if best_function_line.map_or(true, |line| sym.line > line) {
+                        best_function_line = Some(sym.line);
+                        best_function_name = Some(sym.name.clone());
+                    }
+                }
+            }
+        }
+
+        if let Some(name) = best_function_name {
+            if !seen_functions.contains(&name) {
+                seen_functions.insert(name.clone());
+                current_functions.push(name);
             }
         }
     }
