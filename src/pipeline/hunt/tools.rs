@@ -333,10 +333,16 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
     for m in &initial_matches {
         let syms = index.symbols.symbols_in_file(&m.file);
         // For each match, choose only the closest preceding function/method
-        let mut best_function_name: Option<String> = None;
-        let mut best_function_line: Option<u32> = None;
+    // Cache symbols per file to avoid repeatedly scanning the whole index
+    let mut symbols_by_file: std::collections::HashMap<String, Vec<_>> =
+        std::collections::HashMap::new();
 
-        for sym in syms {
+    // Find functions that contain the matched lines
+    for m in &initial_matches {
+        let syms = symbols_by_file
+            .entry(m.file.clone())
+            .or_insert_with(|| index.symbols.symbols_in_file(&m.file));
+        for sym in syms.iter() {
             if sym.kind == "function" || sym.kind == "method" {
                 if sym.line <= m.line {
                     if best_function_line.map_or(true, |line| sym.line > line) {
