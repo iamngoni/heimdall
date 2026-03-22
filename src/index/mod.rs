@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
+pub mod ast_search;
 pub mod callgraph;
 pub mod deps;
 pub mod search;
@@ -36,6 +37,7 @@ pub struct CodeIndex {
     pub callgraph: callgraph::CallGraph,
     pub deps: deps::DependencyGraph,
     pub search: search::SearchIndex,
+    pub ast_search: ast_search::AstSearchIndex,
 }
 
 impl CodeIndex {
@@ -47,6 +49,7 @@ impl CodeIndex {
             callgraph: callgraph::CallGraph::new(),
             deps: deps::DependencyGraph::new(),
             search: search::SearchIndex::new(),
+            ast_search: ast_search::AstSearchIndex::new(),
         }
     }
 
@@ -68,6 +71,11 @@ impl CodeIndex {
 
         // Index for text search
         self.search.index_file(&rel, &file.content);
+
+        // Index for AST-based structural search
+        if let Some(ref lang) = file.language {
+            self.ast_search.index_file(&rel, &file.content, lang);
+        }
 
         // Extract dependencies (imports)
         if let Some(ref lang) = file.language {
