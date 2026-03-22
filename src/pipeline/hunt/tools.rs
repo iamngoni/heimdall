@@ -245,14 +245,28 @@ fn execute_get_symbol(args: &serde_json::Value, index: &CodeIndex) -> ToolResult
             let start = sym.line.saturating_sub(1); // 1-based to 0-based
             // Heuristic: read up to 60 lines from the symbol start for its body
             let end = (start + 60).min(lines.len());
-            let snippet: String = lines[start..end]
-                .iter()
-                .enumerate()
-                .map(|(i, l)| format!("{:>4} | {l}", start + i + 1))
-                .collect::<Vec<_>>()
-                .join("\n");
+            if start >= lines.len() || start >= end {
+                // Avoid panicking if the symbol line is beyond the current file length
+                output.push_str(&format!(
+                    "\n```text\n\
+Unable to display source for `{}` at {}:{}: recorded line {} is beyond the indexed file length ({} lines).\n\
+```\n\n",
+                    sym.name,
+                    sym.file,
+                    sym.line,
+                    sym.line,
+                    lines.len()
+                ));
+            } else {
+                let snippet: String = lines[start..end]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, l)| format!("{:>4} | {l}", start + i + 1))
+                    .collect::<Vec<_>>()
+                    .join("\n");
 
-            output.push_str(&format!("\n```\n{snippet}\n```\n\n"));
+                output.push_str(&format!("\n```\n{snippet}\n```\n\n"));
+            }
         }
     }
 
