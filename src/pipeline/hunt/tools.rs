@@ -282,7 +282,10 @@ Unable to display source for `{}` at {}:{}: recorded line {} is beyond the index
 fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolResult {
     let source_pattern = args["source_pattern"].as_str().unwrap_or("");
     let file_path = args["file_path"].as_str();
-    let max_depth = args["max_depth"].as_u64().unwrap_or(2) as usize;
+    const MAX_DEPTH_LIMIT: usize = 10;
+    const MAX_CALLERS_PER_FUNC: usize = 20;
+    const MAX_TOTAL_EDGES: usize = 200;
+    let max_depth = (args["max_depth"].as_u64().unwrap_or(2) as usize).min(MAX_DEPTH_LIMIT);
 
     if source_pattern.is_empty() {
         return ToolResult {
@@ -332,31 +335,13 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
     // Find functions that contain the matched lines
     for m in &initial_matches {
         let syms = index.symbols.symbols_in_file(&m.file);
-        // For each match, choose only the closest preceding function/method
-    // Cache symbols per file to avoid repeatedly scanning the whole index
-    let mut symbols_by_file: std::collections::HashMap<String, Vec<_>> =
-        std::collections::HashMap::new();
-
-    // Find functions that contain the matched lines
-    for m in &initial_matches {
-        let syms = symbols_by_file
-            .entry(m.file.clone())
-            .or_insert_with(|| index.symbols.symbols_in_file(&m.file));
-        for sym in syms.iter() {
-            if sym.kind == "function" || sym.kind == "method" {
-                if sym.line <= m.line {
-                    if best_function_line.map_or(true, |line| sym.line > line) {
-                        best_function_line = Some(sym.line);
-                        best_function_name = Some(sym.name.clone());
-                    }
-                }
-            }
-        }
-
-        if let Some(name) = best_function_name {
-            if !seen_functions.contains(&name) {
-                seen_functions.insert(name.clone());
-                current_functions.push(name);
+        for sym in syms {
+            if (sym.kind == "function" || sym.kind == "method")
+                && sym.line <= m.line
+                && !seen_functions.contains(&sym.name)
+            {
+                seen_functions.insert(sym.name.clone());
+                current_functions.push(sym.name.clone());
             }
         }
     }
@@ -371,7 +356,8 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
     }
 
     // Trace callers breadth-first up to max_depth
-    for depth in 1..=max_depth {
+    let mut total_edges: usize = 0;
+    'outer: for depth in 1..=max_depth {
         if current_functions.is_empty() {
             break;
         }
@@ -384,11 +370,27 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
             if callers.is_empty() {
                 output.push_str(&format!("- `{func}` — no callers found\n"));
             } else {
+                let mut shown = 0usize;
                 for edge in &callers {
+                    if total_edges >= MAX_TOTAL_EDGES {
+                        output.push_str(
+                            "\n_(output truncated: total edge limit reached)_\n",
+                        );
+                        break 'outer;
+                    }
+                    if shown >= MAX_CALLERS_PER_FUNC {
+                        output.push_str(&format!(
+                            "- _(...{} more callers of `{func}` not shown)_\n",
+                            callers.len() - shown
+                        ));
+                        break;
+                    }
                     output.push_str(&format!(
                         "- `{}` calls `{func}` at {}:{}\n",
                         edge.caller, edge.file, edge.line
                     ));
+                    total_edges += 1;
+                    shown += 1;
                     if !seen_functions.contains(&edge.caller) {
                         seen_functions.insert(edge.caller.clone());
                         next_functions.push(edge.caller.clone());
@@ -531,7 +533,7 @@ pub fn hunt_tool_definitions() -> Vec<ToolDefinition> {
                     },
                     "max_depth": {
                         "type": "integer",
-                        "description": "How many call-graph hops to trace (default 2)"
+                        "description": "How many call-graph hops to trace (default 2, max 10). Values above 10 are clamped to 10."
                     }
                 },
                 "required": ["source_pattern"]
