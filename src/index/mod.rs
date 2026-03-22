@@ -72,9 +72,11 @@ impl CodeIndex {
         // Index for text search
         self.search.index_file(&rel, &file.content);
 
-        // Index for AST-based structural search
+        // Index for AST-based structural search (only for languages with a tree-sitter grammar)
         if let Some(ref lang) = file.language {
-            self.ast_search.index_file(&rel, &file.content, lang);
+            if ast_search::is_language_supported(lang) {
+                self.ast_search.index_file(&rel, &file.content, lang);
+            }
         }
 
         // Extract dependencies (imports)

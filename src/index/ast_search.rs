@@ -23,8 +23,6 @@ pub struct AstSearchMatch {
     pub node_kind: String,
     /// The matched source code snippet.
     pub code_snippet: String,
-    /// Surrounding context lines for readability.
-    pub context: String,
 }
 
 /// Entry for a single indexed file: its source text and detected language.
@@ -80,6 +78,19 @@ impl AstSearchIndex {
         let query = Query::new(&ts_lang, pattern)
             .map_err(|e| format!("Invalid tree-sitter query: {e}"))?;
 
+        // Require at least one capture so that every match produces a concrete node.
+        // Patterns like `(function_item)` with no `@capture` would otherwise silently
+        // skip all matches because `m.captures` is always empty.
+        if query.capture_names().is_empty() {
+            return Err(
+                "Query must contain at least one capture (e.g. `@name`). \
+                 Capture-less patterns like `(function_item)` are not supported — \
+                 add a capture to identify the node of interest, e.g. \
+                 `(function_item name: (identifier) @name)`."
+                    .to_string(),
+            );
+        }
+
         let glob_pattern = file_glob.and_then(|g| glob::Pattern::new(g).ok());
 
         let mut parser = Parser::new();
@@ -111,24 +122,13 @@ impl AstSearchIndex {
             let mut cursor = QueryCursor::new();
             let mut matches = cursor.matches(&query, tree.root_node(), source);
 
-            let lines: Vec<&str> = entry.content.lines().collect();
-
             while let Some(m) = matches.next() {
-                // Use the first capture, or skip if no captures
-                let node = if !m.captures.is_empty() {
-                    m.captures[0].node
-                } else {
-                    continue;
-                };
+                // At least one capture is guaranteed by the earlier `capture_names` check.
+                let node = m.captures[0].node;
 
                 let start_line = node.start_position().row;
                 let end_line = node.end_position().row;
                 let snippet = node.utf8_text(source).unwrap_or("").to_string();
-
-                // Build context: 2 lines before/after the matched region
-                let ctx_start = start_line.saturating_sub(2);
-                let ctx_end = std::cmp::min(end_line + 3, lines.len());
-                let context = lines[ctx_start..ctx_end].join("\n");
 
                 results.push(AstSearchMatch {
                     file: path.clone(),
@@ -136,7 +136,6 @@ impl AstSearchIndex {
                     line_end: end_line + 1,
                     node_kind: node.kind().to_string(),
                     code_snippet: snippet,
-                    context,
                 });
             }
         }
@@ -157,6 +156,11 @@ fn get_language(name: &str) -> Option<Language> {
         "java" => Some(tree_sitter_java::LANGUAGE.into()),
         _ => None,
     }
+}
+
+/// Returns `true` if the given language name is supported by the AST search index.
+pub fn is_language_supported(name: &str) -> bool {
+    get_language(name).is_some()
 }
 
 #[cfg(test)]
@@ -211,6 +215,17 @@ mod tests {
         let index = AstSearchIndex::new();
         let result = index.search("(identifier)", "brainfuck", None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_capture_less_query_returns_error() {
+        let index = AstSearchIndex::new();
+        // A syntactically valid query with no captures should return a clear error
+        // rather than silently returning empty results.
+        let result = index.search("(function_item)", "rust", None);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("capture"), "error should mention 'capture': {msg}");
     }
 
     #[test]
