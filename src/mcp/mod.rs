@@ -148,6 +148,7 @@ pub struct UpdateThreatModelRequest {
     pub threat_model_id: Option<String>,
     pub scan_id: Option<String>,
     pub field: String,
+    #[schemars(schema_with = "json_value_input_schema")]
     pub value: serde_json::Value,
 }
 
@@ -509,6 +510,22 @@ fn normalize_threat_model_field(field: &str) -> Option<&'static str> {
         "data_flows" | "data_flows_json" => Some("data_flows_json"),
         _ => None,
     }
+}
+
+fn json_value_input_schema(_gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(serde_json::json!({
+        "description": "JSON value to store in the threat model field. Use a string for summary, and an object or array for boundaries, surfaces, and data_flows.",
+        "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "integer" },
+            { "type": "boolean" },
+            { "type": "null" },
+            { "type": "array" },
+            { "type": "object" }
+        ]
+    }))
+    .expect("valid JSON schema")
 }
 
 impl HeimdallMcp {
@@ -1805,17 +1822,10 @@ impl HeimdallMcp {
 #[tool_handler]
 impl ServerHandler for HeimdallMcp {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(
-                Implementation::new("heimdall", env!("CARGO_PKG_VERSION"))
-                    .with_title("Heimdall MCP")
-                    .with_description("Agentic security scanner for source code repositories")
-                    .with_website_url("https://github.com/iamngoni/heimdall"),
-            )
-            .with_instructions(
-                "Heimdall is an agentic security scanner for source code repositories. \
-                 Use these tools to import repositories, queue scans, inspect scan history and audit trails, \
-                 review findings, manage issue creation, update threat models, and manage stored AI provider keys.",
-            )
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Heimdall is an agentic security scanner for source code repositories. \
+             Use these tools to import repositories, queue scans, inspect scan history and audit trails, \
+             review findings, manage issue creation, update threat models, and manage stored AI provider keys.",
+        )
     }
 }

@@ -92,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
     let transport = std::env::var("MCP_TRANSPORT").unwrap_or_default();
 
     if transport.eq_ignore_ascii_case("sse") || transport.eq_ignore_ascii_case("http") {
-        let bind = std::env::var("MCP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+        let bind = std::env::var("MCP_HOST").unwrap_or_else(|_| "0.0.0.0".into());
         let port = std::env::var("MCP_PORT").unwrap_or_else(|_| "45637".into());
         let addr: std::net::SocketAddr = format!("{bind}:{port}").parse()?;
 
