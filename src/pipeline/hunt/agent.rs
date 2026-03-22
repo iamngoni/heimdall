@@ -508,6 +508,7 @@ fn humanize_tool_name(tool_name: &str) -> &'static str {
     match tool_name {
         "read_file" => "Reading file",
         "search_code" => "Searching code",
+        "ast_search" => "AST pattern search",
         "get_callers" => "Tracing callers",
         "get_dependencies" => "Tracing dependencies",
         "report_finding" => "Reporting finding",
@@ -528,6 +529,19 @@ fn tool_detail(tool_name: &str, arguments: &serde_json::Value) -> String {
             arguments["query"]
                 .as_str()
                 .unwrap_or("the requested pattern"),
+            arguments["file_glob"]
+                .as_str()
+                .map(|glob| format!(" within {glob}"))
+                .unwrap_or_default()
+        ),
+        "ast_search" => format!(
+            "AST search for `{}` in {} files{}.",
+            arguments["pattern"]
+                .as_str()
+                .unwrap_or("the requested pattern"),
+            arguments["language"]
+                .as_str()
+                .unwrap_or("the specified"),
             arguments["file_glob"]
                 .as_str()
                 .map(|glob| format!(" within {glob}"))

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 pub enum AgentTool {
     ReadFile,
     SearchCode,
+    AstSearch,
     GetCallers,
     GetDependencies,
     ReportFinding,
@@ -39,6 +40,7 @@ pub fn execute_tool(
     match tool_name {
         "read_file" => execute_read_file(arguments, index),
         "search_code" => execute_search_code(arguments, index),
+        "ast_search" => execute_ast_search(arguments, index),
         "get_callers" => execute_get_callers(arguments, index),
         "get_dependencies" => execute_get_dependencies(arguments, index),
         _ => ToolResult {
@@ -117,6 +119,63 @@ fn execute_search_code(args: &serde_json::Value, index: &CodeIndex) -> ToolResul
     }
 }
 
+fn execute_ast_search(args: &serde_json::Value, index: &CodeIndex) -> ToolResult {
+    let pattern = args["pattern"].as_str().unwrap_or("");
+    let language = args["language"].as_str().unwrap_or("");
+    let file_glob = args["file_glob"].as_str();
+
+    if pattern.is_empty() || language.is_empty() {
+        return ToolResult {
+            tool_name: "ast_search".to_string(),
+            output: "Both 'pattern' and 'language' parameters are required.".to_string(),
+            success: false,
+        };
+    }
+
+    match index.ast_search.search(pattern, language, file_glob) {
+        Ok(matches) => {
+            if matches.is_empty() {
+                return ToolResult {
+                    tool_name: "ast_search".to_string(),
+                    output: format!("No AST matches found for pattern in {language} files."),
+                    success: true,
+                };
+            }
+
+            let mut output = format!(
+                "Found {} AST matches in {language} files:\n\n",
+                matches.len()
+            );
+            for (i, m) in matches.iter().enumerate().take(30) {
+                output.push_str(&format!(
+                    "{}. {}:{}-{} [{}]\n```\n{}\n```\n\n",
+                    i + 1,
+                    m.file,
+                    m.line_start,
+                    m.line_end,
+                    m.node_kind,
+                    m.code_snippet,
+                ));
+            }
+
+            if matches.len() > 30 {
+                output.push_str(&format!("... and {} more matches\n", matches.len() - 30));
+            }
+
+            ToolResult {
+                tool_name: "ast_search".to_string(),
+                output,
+                success: true,
+            }
+        }
+        Err(e) => ToolResult {
+            tool_name: "ast_search".to_string(),
+            output: format!("AST search error: {e}"),
+            success: false,
+        },
+    }
+}
+
 fn execute_get_callers(args: &serde_json::Value, index: &CodeIndex) -> ToolResult {
     let symbol = args["symbol"].as_str().unwrap_or("");
     let output = index.callgraph.callers_summary(symbol);
@@ -172,6 +231,36 @@ pub fn hunt_tool_definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["query"]
+            }),
+        },
+        ToolDefinition {
+            name: "ast_search".to_string(),
+            description: "Search the codebase using tree-sitter AST structural pattern matching. \
+                More precise than regex — matches syntax tree nodes like function definitions, \
+                call expressions, assignments, etc. Uses tree-sitter S-expression query syntax."
+                .to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "Tree-sitter S-expression query pattern. Examples:\n\
+                            - Find function calls: (call_expression function: (identifier) @fn)\n\
+                            - Find dangerous calls: (call_expression function: (identifier) @fn (#match? @fn \"exec|eval|system\"))\n\
+                            - Find unsafe blocks (Rust): (unsafe_block) @blk\n\
+                            - Find string assignments: (assignment_statement left: (identifier) @var right: (string) @val)"
+                    },
+                    "language": {
+                        "type": "string",
+                        "enum": ["rust", "python", "javascript", "typescript", "go", "java"],
+                        "description": "Programming language to search in"
+                    },
+                    "file_glob": {
+                        "type": "string",
+                        "description": "Optional glob pattern to filter files (e.g., 'src/**/*.rs')"
+                    }
+                },
+                "required": ["pattern", "language"]
             }),
         },
         ToolDefinition {
