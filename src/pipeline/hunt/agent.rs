@@ -508,9 +508,13 @@ fn humanize_tool_name(tool_name: &str) -> &'static str {
     match tool_name {
         "read_file" => "Reading file",
         "search_code" => "Searching code",
+        "ast_search" => "AST pattern search",
         "get_callers" => "Tracing callers",
         "get_dependencies" => "Tracing dependencies",
         "report_finding" => "Reporting finding",
+        "list_files" => "Listing files",
+        "get_symbol" => "Looking up symbol",
+        "find_data_flows" => "Tracing data flows",
         _ => "Running tool",
     }
 }
@@ -533,6 +537,19 @@ fn tool_detail(tool_name: &str, arguments: &serde_json::Value) -> String {
                 .map(|glob| format!(" within {glob}"))
                 .unwrap_or_default()
         ),
+        "ast_search" => format!(
+            "AST search for `{}` in {} files{}.",
+            arguments["pattern"]
+                .as_str()
+                .unwrap_or("the requested pattern"),
+            arguments["language"]
+                .as_str()
+                .unwrap_or("the specified"),
+            arguments["file_glob"]
+                .as_str()
+                .map(|glob| format!(" within {glob}"))
+                .unwrap_or_default()
+        ),
         "get_callers" => format!(
             "Tracing call sites for {}.",
             arguments["symbol"]
@@ -544,6 +561,37 @@ fn tool_detail(tool_name: &str, arguments: &serde_json::Value) -> String {
             arguments["file_path"]
                 .as_str()
                 .unwrap_or("the requested file")
+        ),
+        "list_files" => format!(
+            "Browsing files{}{}.",
+            arguments["directory"]
+                .as_str()
+                .map(|d| format!(" under {d}"))
+                .unwrap_or_default(),
+            arguments["extension"]
+                .as_str()
+                .map(|e| format!(" (*.{e})"))
+                .unwrap_or_default()
+        ),
+        "get_symbol" => format!(
+            "Looking up symbol `{}`{}.",
+            arguments["name"]
+                .as_str()
+                .unwrap_or("the requested symbol"),
+            arguments["file_path"]
+                .as_str()
+                .map(|f| format!(" in {f}"))
+                .unwrap_or_default()
+        ),
+        "find_data_flows" => format!(
+            "Tracing data flows for pattern `{}`{}.",
+            arguments["source_pattern"]
+                .as_str()
+                .unwrap_or("the requested pattern"),
+            arguments["file_path"]
+                .as_str()
+                .map(|f| format!(" in {f}"))
+                .unwrap_or_default()
         ),
         _ => "Running investigation tool.".to_string(),
     }
