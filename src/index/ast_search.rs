@@ -75,20 +75,18 @@ impl AstSearchIndex {
         let ts_lang = get_language(language)
             .ok_or_else(|| format!("Unsupported language for AST search: {language}"))?;
 
-        let query = Query::new(&ts_lang, pattern)
-            .map_err(|e| format!("Invalid tree-sitter query: {e}"))?;
+        let query =
+            Query::new(&ts_lang, pattern).map_err(|e| format!("Invalid tree-sitter query: {e}"))?;
 
         // Require at least one capture so that every match produces a concrete node.
         // Patterns like `(function_item)` with no `@capture` would otherwise silently
         // skip all matches because `m.captures` is always empty.
         if query.capture_names().is_empty() {
-            return Err(
-                "Query must contain at least one capture (e.g. `@name`). \
+            return Err("Query must contain at least one capture (e.g. `@name`). \
                  Capture-less patterns like `(function_item)` are not supported — \
                  add a capture to identify the node of interest, e.g. \
                  `(function_item name: (identifier) @name)`."
-                    .to_string(),
-            );
+                .to_string());
         }
 
         let glob_pattern = file_glob.and_then(|g| glob::Pattern::new(g).ok());
@@ -225,7 +223,10 @@ mod tests {
         let result = index.search("(function_item)", "rust", None);
         assert!(result.is_err());
         let msg = result.unwrap_err();
-        assert!(msg.contains("capture"), "error should mention 'capture': {msg}");
+        assert!(
+            msg.contains("capture"),
+            "error should mention 'capture': {msg}"
+        );
     }
 
     #[test]
@@ -252,11 +253,7 @@ mod tests {
         index.index_file("app.py", "def main(): pass", "python");
 
         let results = index
-            .search(
-                "(function_item name: (identifier) @name)",
-                "rust",
-                None,
-            )
+            .search("(function_item name: (identifier) @name)", "rust", None)
             .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].file, "main.rs");

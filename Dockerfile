@@ -13,9 +13,6 @@ FROM rust:1.88-bookworm AS builder
 
 WORKDIR /app
 
-# Database driver for migration generation (postgres|sqlite|mysql|mongo)
-ARG DB_DRIVER=postgres
-
 # Cache dependencies
 COPY Cargo.toml Cargo.lock* ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs && \
@@ -29,10 +26,10 @@ COPY . .
 # Copy built CSS from css-builder stage
 COPY --from=css-builder /app/static/css/app.css /app/static/css/app.css
 
-# Build schema_gen first, then generate migrations before building heimdall
+# Build schema_gen first, then generate PostgreSQL migrations before building heimdall
 # (sqlx::migrate! is a compile-time macro — migrations must exist before build)
 RUN cargo build --release --bin schema_gen
-RUN ./target/release/schema_gen ${DB_DRIVER}
+RUN ./target/release/schema_gen postgres
 RUN cargo build --release --bin heimdall --bin heimdall-mcp
 
 # Stage 2: Runtime

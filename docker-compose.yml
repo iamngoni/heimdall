@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        DB_DRIVER: ${DB_DRIVER:-postgres}
     container_name: heimdall
     ports:
       - "${APP_PORT:-8080}:8080"
@@ -12,12 +10,6 @@ services:
       - .env
     depends_on:
       postgres:
-        condition: service_healthy
-        required: false
-      mysql:
-        condition: service_healthy
-        required: false
-      mongo:
         condition: service_healthy
         required: false
     volumes:
@@ -32,16 +24,14 @@ services:
 
   # --------------------------------------------------------------------------
   # MCP Server — activate with: docker compose --profile mcp up
-  # Provides Model Context Protocol access over stdio for AI coding tools.
-  # Connect via: docker exec -i heimdall-mcp /app/heimdall-mcp
+  # Provides authenticated Streamable HTTP access for MCP clients that cannot
+  # launch the binary directly over stdio. Set MCP_HTTP_AUTH_TOKEN in .env.
   # --------------------------------------------------------------------------
 
   heimdall-mcp:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        DB_DRIVER: ${DB_DRIVER:-postgres}
     container_name: heimdall-mcp
     profiles: ["mcp"]
     entrypoint: ["/app/heimdall-mcp"]
@@ -49,6 +39,7 @@ services:
       MCP_TRANSPORT: http
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "45637"
+      MCP_HTTP_AUTH_TOKEN: "${MCP_HTTP_AUTH_TOKEN:-}"
     ports:
       - "${MCP_PORT:-45637}:45637"
     env_file:
@@ -70,17 +61,13 @@ services:
     restart: unless-stopped
 
   # --------------------------------------------------------------------------
-  # Database services — activate with: docker compose --profile <db> up
-  # Only one should be active at a time.
-  # Compose interpolates the full file before profile filtering, so each
-  # service needs a usable default to avoid inactive profiles failing config.
+  # Database service — PostgreSQL is the only supported runtime database.
   # Override these values in .env for anything beyond local development.
   # --------------------------------------------------------------------------
 
   postgres:
     image: postgres:17-alpine
     container_name: heimdall-postgres
-    profiles: ["postgres"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-heimdall}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-heimdall}
@@ -91,45 +78,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-heimdall}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  mysql:
-    image: mysql:8.4
-    container_name: heimdall-mysql
-    profiles: ["mysql"]
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-heimdall}
-      MYSQL_DATABASE: ${MYSQL_DB:-heimdall}
-      MYSQL_USER: ${MYSQL_USER:-heimdall}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-heimdall}
-    ports:
-      - "${MYSQL_PORT:-3306}:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  mongo:
-    image: mongo:7
-    container_name: heimdall-mongo
-    profiles: ["mongo"]
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-heimdall}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-heimdall}
-      MONGO_INITDB_DATABASE: ${MONGO_DB:-heimdall}
-    ports:
-      - "${MONGO_PORT:-27017}:27017"
-    volumes:
-      - mongo-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -152,10 +100,6 @@ services:
 
 volumes:
   postgres-data:
-    driver: local
-  mysql-data:
-    driver: local
-  mongo-data:
     driver: local
   # ollama-data:
   #   driver: local

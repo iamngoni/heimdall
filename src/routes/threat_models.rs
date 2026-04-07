@@ -3,10 +3,11 @@
 //  src/routes/threat_models.rs
 //
 
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::middleware::auth::AuthenticatedUser;
 use crate::models::ApiResponse;
 use crate::state::AppState;
 
@@ -59,37 +60,51 @@ struct AddDataFlowRequest {
     description: Option<String>,
 }
 
-async fn get_threat_model(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
-    let id = path.into_inner();
-    match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => HttpResponse::Ok().json(ApiResponse::ok(tm)),
+fn extract_user_id(req: &HttpRequest) -> Uuid {
+    req.extensions()
+        .get::<AuthenticatedUser>()
+        .map(|user| user.id)
+        .unwrap_or_else(Uuid::nil)
+}
+
+async fn load_owned_threat_model(
+    state: &AppState,
+    id: Uuid,
+    user_id: Uuid,
+) -> Result<crate::models::db_models::ThreatModel, HttpResponse> {
+    match state.db.get_threat_model_by_id_for_user(id, user_id).await {
+        Ok(Some(tm)) => Ok(tm),
         Ok(None) => {
-            HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found"))
+            Err(HttpResponse::NotFound()
+                .json(ApiResponse::<()>::error(404, "Threat model not found")))
         }
-        Err(e) => {
-            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")))
-        }
+        Err(error) => Err(HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{error}")))),
+    }
+}
+
+async fn get_threat_model(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => HttpResponse::Ok().json(ApiResponse::ok(tm)),
+        Err(response) => response,
     }
 }
 
 async fn update_threat_model(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
     body: web::Json<UpdateThreatModelRequest>,
 ) -> HttpResponse {
     let id = path.into_inner();
 
-    // Verify exists
-    match state.db.get_threat_model_by_id(id).await {
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Threat model not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
-        _ => {}
+    if let Err(response) = load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        return response;
     }
 
     if let Some(ref summary) = body.summary {
@@ -134,33 +149,22 @@ async fn update_threat_model(
     }
 
     // Return updated model
-    match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => HttpResponse::Ok().json(ApiResponse::ok(tm)),
-        Ok(None) => {
-            HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Threat model not found"))
-        }
-        Err(e) => {
-            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(500, format!("{e}")))
-        }
+    match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => HttpResponse::Ok().json(ApiResponse::ok(tm)),
+        Err(response) => response,
     }
 }
 
 async fn add_surface(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
     body: web::Json<AddSurfaceRequest>,
 ) -> HttpResponse {
     let id = path.into_inner();
-    let tm = match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => tm,
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Threat model not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    let tm = match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => tm,
+        Err(response) => return response,
     };
 
     let mut surfaces = tm
@@ -192,19 +196,13 @@ async fn add_surface(
 
 async fn remove_surface(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<(Uuid, usize)>,
 ) -> HttpResponse {
     let (id, index) = path.into_inner();
-    let tm = match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => tm,
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Threat model not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    let tm = match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => tm,
+        Err(response) => return response,
     };
 
     let mut surfaces = tm
@@ -237,20 +235,14 @@ async fn remove_surface(
 
 async fn add_boundary(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
     body: web::Json<AddBoundaryRequest>,
 ) -> HttpResponse {
     let id = path.into_inner();
-    let tm = match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => tm,
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Threat model not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    let tm = match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => tm,
+        Err(response) => return response,
     };
 
     let mut boundaries = tm
@@ -281,19 +273,13 @@ async fn add_boundary(
 
 async fn remove_boundary(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<(Uuid, usize)>,
 ) -> HttpResponse {
     let (id, index) = path.into_inner();
-    let tm = match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => tm,
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Threat model not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    let tm = match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => tm,
+        Err(response) => return response,
     };
 
     let mut boundaries = tm
@@ -326,20 +312,14 @@ async fn remove_boundary(
 
 async fn add_data_flow(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
     body: web::Json<AddDataFlowRequest>,
 ) -> HttpResponse {
     let id = path.into_inner();
-    let tm = match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => tm,
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Threat model not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    let tm = match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => tm,
+        Err(response) => return response,
     };
 
     let mut flows = tm
@@ -372,19 +352,13 @@ async fn add_data_flow(
 
 async fn remove_data_flow(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<(Uuid, usize)>,
 ) -> HttpResponse {
     let (id, index) = path.into_inner();
-    let tm = match state.db.get_threat_model_by_id(id).await {
-        Ok(Some(tm)) => tm,
-        Ok(None) => {
-            return HttpResponse::NotFound()
-                .json(ApiResponse::<()>::error(404, "Threat model not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    let tm = match load_owned_threat_model(&state, id, extract_user_id(&req)).await {
+        Ok(tm) => tm,
+        Err(response) => return response,
     };
 
     let mut flows = tm

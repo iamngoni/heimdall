@@ -61,18 +61,35 @@ pub struct UpdateIssueAutomationRequest {
     pub min_severity: String,
 }
 
-async fn get_repo(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
-    let repo_id = path.into_inner();
-    match state.db.get_repo_by_id(repo_id).await {
-        Ok(Some(repo)) => HttpResponse::Ok().json(ApiResponse::ok(repo)),
-        Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
+async fn load_owned_repo(
+    state: &AppState,
+    repo_id: Uuid,
+    user_id: Uuid,
+) -> Result<crate::models::db_models::Repo, HttpResponse> {
+    match state.db.get_repo_by_id_for_user(repo_id, user_id).await {
+        Ok(Some(repo)) => Ok(repo),
+        Ok(None) => Err(HttpResponse::NotFound().json(ApiResponse::<()>::error(
             404,
             format!("Repo '{repo_id}' not found"),
-        )),
-        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            format!("Failed to fetch repo: {e}"),
-        )),
+        ))),
+        Err(error) => Err(
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch repo: {error}"),
+            )),
+        ),
+    }
+}
+
+async fn get_repo(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let repo_id = path.into_inner();
+    match load_owned_repo(&state, repo_id, extract_user_id(&req)).await {
+        Ok(repo) => HttpResponse::Ok().json(ApiResponse::ok(repo)),
+        Err(response) => response,
     }
 }
 
@@ -89,29 +106,10 @@ async fn delete_repo(
         .cloned()
         .expect("auth middleware ensures user exists");
 
-    // Verify the repo exists and belongs to this user
-    let repo = match state.db.get_repo_by_id(repo_id).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Repo '{repo_id}' not found"),
-            ));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch repo: {e}"),
-            ));
-        }
+    let repo = match load_owned_repo(&state, repo_id, user.id).await {
+        Ok(repo) => repo,
+        Err(response) => return response,
     };
-
-    if repo.user_id != user.id {
-        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(
-            403,
-            "You do not have access to this repository",
-        ));
-    }
 
     match state.db.delete_repo(repo_id).await {
         Ok(true) => {
@@ -188,21 +186,16 @@ async fn trigger_scan(
 ) -> HttpResponse {
     let repo_id = path.into_inner();
 
-    // Fetch the repo
-    let repo = match state.db.get_repo_by_id(repo_id).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Repo '{repo_id}' not found"),
-            ));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch repo: {e}"),
-            ));
-        }
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+    let user_id = user.id;
+
+    let repo = match load_owned_repo(&state, repo_id, user_id).await {
+        Ok(repo) => repo,
+        Err(response) => return response,
     };
 
     let runtime = match state.resolve_ai_for_user(repo.user_id).await {
@@ -212,13 +205,6 @@ async fn trigger_scan(
                 .json(ApiResponse::<()>::error(503, error.to_string()));
         }
     };
-
-    let user = req
-        .extensions()
-        .get::<AuthenticatedUser>()
-        .cloned()
-        .expect("auth middleware ensures user exists");
-    let user_id = user.id;
 
     // Create scan and job
     let scan = match state
@@ -331,28 +317,10 @@ async fn update_repo_issue_automation(
         .get::<AuthenticatedUser>()
         .cloned()
         .expect("auth middleware ensures user exists");
-    let repo = match state.db.get_repo_by_id(repo_id).await {
-        Ok(Some(repo)) => repo,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Repo '{repo_id}' not found"),
-            ));
-        }
-        Err(error) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch repo: {error}"),
-            ));
-        }
+    let _repo = match load_owned_repo(&state, repo_id, user.id).await {
+        Ok(repo) => repo,
+        Err(response) => return response,
     };
-
-    if repo.user_id != user.id {
-        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(
-            403,
-            "You do not have access to this repository",
-        ));
-    }
 
     match state
         .db
@@ -376,18 +344,15 @@ async fn update_repo_issue_automation(
 }
 
 /// GET /repos/{id}/branches — list remote branches for a repo.
-async fn list_repo_branches(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn list_repo_branches(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let repo_id = path.into_inner();
-
-    let repo = match state.db.get_repo_by_id(repo_id).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Repo not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    let repo = match load_owned_repo(&state, repo_id, extract_user_id(&req)).await {
+        Ok(repo) => repo,
+        Err(response) => return response,
     };
 
     let remote_url = match repo.remote_url.as_deref() {
@@ -656,6 +621,7 @@ struct UpdateBranchRequest {
 /// PATCH /repos/{id}/branch — update the default branch for a repo.
 async fn update_repo_branch(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
     body: Either<web::Json<UpdateBranchRequest>, web::Form<UpdateBranchRequest>>,
 ) -> HttpResponse {
@@ -671,6 +637,10 @@ async fn update_repo_branch(
             400,
             "Branch name cannot be empty.",
         ));
+    }
+
+    if let Err(response) = load_owned_repo(&state, repo_id, extract_user_id(&req)).await {
+        return response;
     }
 
     match state.db.update_repo_default_branch(repo_id, branch).await {
@@ -690,19 +660,15 @@ async fn update_repo_branch(
 }
 
 /// GET /repos/{id}/check-issue-tracker — check if Bitbucket issue tracker is enabled.
-async fn check_issue_tracker(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn check_issue_tracker(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let repo_id = path.into_inner();
-    let repo = match state.db.get_repo_by_id(repo_id).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Repo not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch repo: {e}"),
-            ));
-        }
+    let repo = match load_owned_repo(&state, repo_id, extract_user_id(&req)).await {
+        Ok(repo) => repo,
+        Err(response) => return response,
     };
 
     if repo.source_type != "bitbucket" {

@@ -48,18 +48,48 @@ pub struct AddCommentRequest {
     pub comment: String,
 }
 
-async fn get_finding(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
-    let finding_id = path.into_inner();
-    match state.db.get_finding_by_id(finding_id).await {
-        Ok(Some(finding)) => HttpResponse::Ok().json(ApiResponse::ok(finding)),
-        Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
+fn valid_severity(severity: &str) -> bool {
+    matches!(severity, "critical" | "high" | "medium" | "low")
+}
+
+async fn load_owned_finding(
+    state: &AppState,
+    finding_id: Uuid,
+    user_id: Uuid,
+) -> Result<Finding, HttpResponse> {
+    match state
+        .db
+        .get_finding_by_id_for_user(finding_id, user_id)
+        .await
+    {
+        Ok(Some(finding)) => Ok(finding),
+        Ok(None) => Err(HttpResponse::NotFound().json(ApiResponse::<()>::error(
             404,
             format!("Finding '{finding_id}' not found"),
-        )),
-        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            format!("Failed to fetch finding: {e}"),
-        )),
+        ))),
+        Err(error) => Err(
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch finding: {error}"),
+            )),
+        ),
+    }
+}
+
+async fn get_finding(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let finding_id = path.into_inner();
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+    match load_owned_finding(&state, finding_id, user.id).await {
+        Ok(finding) => HttpResponse::Ok().json(ApiResponse::ok(finding)),
+        Err(response) => response,
     }
 }
 
@@ -90,20 +120,9 @@ async fn update_finding_status(
         .cloned()
         .expect("auth middleware ensures user exists");
 
-    let mut finding = match state.db.get_finding_by_id(finding_id).await {
-        Ok(Some(finding)) => finding,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Finding '{finding_id}' not found"),
-            ));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch finding: {e}"),
-            ));
-        }
+    let mut finding = match load_owned_finding(&state, finding_id, user.id).await {
+        Ok(finding) => finding,
+        Err(response) => return response,
     };
 
     let old_status = finding.status.clone();
@@ -212,16 +231,10 @@ async fn create_issue(
         .get::<AuthenticatedUser>()
         .cloned()
         .expect("auth middleware ensures user exists");
-    let (finding, repo) = match load_finding_and_repo(&state, finding_id).await {
+    let (finding, repo) = match load_finding_and_repo(&state, finding_id, user.id).await {
         Ok(data) => data,
         Err(response) => return response,
     };
-    if repo.user_id != user.id {
-        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(
-            403,
-            "You do not have access to this finding",
-        ));
-    }
     if !issues::supports_issue_creation(&repo) {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
@@ -291,21 +304,9 @@ async fn apply_patch(
         .cloned()
         .expect("auth middleware ensures user exists");
 
-    // Look up the finding
-    let finding = match state.db.get_finding_by_id(finding_id).await {
-        Ok(Some(f)) => f,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Finding '{finding_id}' not found"),
-            ));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch finding: {e}"),
-            ));
-        }
+    let finding = match load_owned_finding(&state, finding_id, user.id).await {
+        Ok(finding) => finding,
+        Err(response) => return response,
     };
 
     // Get the latest patch for this finding
@@ -328,15 +329,15 @@ async fn apply_patch(
     if patch.applied {
         return HttpResponse::Conflict().json(ApiResponse::<()>::error(
             409,
-            "Patch has already been applied",
+            "Suggested diff has already been marked as applied in Heimdall",
         ));
     }
 
-    // Mark patch as applied
+    // Mark the stored diff as applied in Heimdall metadata only.
     if let Err(e) = state.db.mark_patch_applied(patch.id, user.id).await {
         return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,
-            format!("Failed to apply patch: {e}"),
+            format!("Failed to mark suggested diff as applied in Heimdall: {e}"),
         ));
     }
 
@@ -362,7 +363,9 @@ async fn apply_patch(
         }))),
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
             500,
-            format!("Patch applied but failed to record event: {e}"),
+            format!(
+                "Suggested diff was marked as applied, but Heimdall failed to record the event: {e}"
+            ),
         )),
     }
 }
@@ -380,21 +383,8 @@ async fn add_comment(
         .cloned()
         .expect("auth middleware ensures user exists");
 
-    // Verify finding exists
-    match state.db.get_finding_by_id(finding_id).await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Finding '{finding_id}' not found"),
-            ));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch finding: {e}"),
-            ));
-        }
+    if let Err(response) = load_owned_finding(&state, finding_id, user.id).await {
+        return response;
     }
 
     match state
@@ -430,21 +420,18 @@ async fn update_severity(
         .cloned()
         .expect("auth middleware ensures user exists");
 
+    let new_severity = body.severity.trim().to_ascii_lowercase();
+    if !valid_severity(&new_severity) {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            format!("Unsupported finding severity: {}", body.severity),
+        ));
+    }
+
     // Get current finding to record old severity
-    let finding = match state.db.get_finding_by_id(finding_id).await {
-        Ok(Some(f)) => f,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Finding '{finding_id}' not found"),
-            ));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch finding: {e}"),
-            ));
-        }
+    let finding = match load_owned_finding(&state, finding_id, user.id).await {
+        Ok(finding) => finding,
+        Err(response) => return response,
     };
 
     let old_severity = finding.severity.clone();
@@ -452,7 +439,7 @@ async fn update_severity(
     // Update the severity
     match state
         .db
-        .update_finding_severity(finding_id, &body.severity)
+        .update_finding_severity(finding_id, &new_severity)
         .await
     {
         Ok(true) => {}
@@ -478,7 +465,7 @@ async fn update_severity(
             Some(user.id),
             "severity_change",
             Some(&old_severity),
-            Some(&body.severity),
+            Some(&new_severity),
             None,
         )
         .await
@@ -486,7 +473,7 @@ async fn update_severity(
         Ok(event) => HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
             "finding_id": finding_id,
             "old_severity": old_severity,
-            "new_severity": body.severity,
+            "new_severity": new_severity,
             "event": event,
         }))),
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
@@ -496,8 +483,20 @@ async fn update_severity(
     }
 }
 
-async fn list_events(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn list_events(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let finding_id = path.into_inner();
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+    if let Err(response) = load_owned_finding(&state, finding_id, user.id).await {
+        return response;
+    }
     match state.db.list_finding_events(finding_id).await {
         Ok(events) => HttpResponse::Ok().json(ApiResponse::ok(events)),
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
@@ -518,16 +517,10 @@ async fn run_finding_ai_review(
         .get::<AuthenticatedUser>()
         .cloned()
         .expect("auth middleware ensures user exists");
-    let (finding, repo) = match load_finding_and_repo(&state, finding_id).await {
+    let (finding, repo) = match load_finding_and_repo(&state, finding_id, user.id).await {
         Ok(data) => data,
         Err(response) => return response,
     };
-    if repo.user_id != user.id {
-        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(
-            403,
-            "You do not have access to this finding",
-        ));
-    }
 
     let runtime = match state.resolve_ai_for_user(repo.user_id).await {
         Ok(runtime) => runtime,
@@ -624,26 +617,15 @@ async fn run_finding_ai_review(
 async fn load_finding_and_repo(
     state: &AppState,
     finding_id: Uuid,
+    user_id: Uuid,
 ) -> Result<(Finding, Repo), HttpResponse> {
-    let finding = match state.db.get_finding_by_id(finding_id).await {
-        Ok(Some(finding)) => finding,
-        Ok(None) => {
-            return Err(HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Finding '{finding_id}' not found"),
-            )));
-        }
-        Err(error) => {
-            return Err(
-                HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                    500,
-                    format!("Failed to fetch finding: {error}"),
-                )),
-            );
-        }
-    };
+    let finding = load_owned_finding(state, finding_id, user_id).await?;
 
-    let repo = match state.db.get_repo_by_id(finding.repo_id).await {
+    let repo = match state
+        .db
+        .get_repo_by_id_for_user(finding.repo_id, user_id)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => {
             return Err(HttpResponse::NotFound().json(ApiResponse::<()>::error(

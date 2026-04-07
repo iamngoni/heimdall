@@ -7,7 +7,7 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use log::warn;
 use rmcp::handler::server::router::tool::ToolRouter;
@@ -37,6 +37,7 @@ pub struct HeimdallMcp {
 pub struct ListReposRequest {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -52,6 +53,7 @@ pub struct AddRepositoryRequest {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetRepoRequest {
     pub repo_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -71,27 +73,32 @@ pub struct ListScansRequest {
     pub repo_id: String,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetScanRequest {
     pub scan_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CancelScanRequest {
     pub scan_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListScanEventsRequest {
     pub scan_id: String,
     pub limit: Option<i64>,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetScanProgressStreamRequest {
     pub scan_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -101,11 +108,13 @@ pub struct ListFindingsRequest {
     pub status: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetFindingRequest {
     pub finding_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -123,6 +132,7 @@ pub struct VerifyFindingRequest {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListFindingEventsRequest {
     pub finding_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -141,6 +151,7 @@ pub struct ApplyPatchRequest {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetThreatModelRequest {
     pub scan_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -150,11 +161,13 @@ pub struct UpdateThreatModelRequest {
     pub field: String,
     #[schemars(schema_with = "json_value_input_schema")]
     pub value: serde_json::Value,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetPatchesRequest {
     pub scan_id: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -187,6 +200,7 @@ pub struct CreateAllIssuesRequest {
 pub struct ListAgentToolCallsRequest {
     pub scan_id: String,
     pub limit: Option<i64>,
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -548,54 +562,80 @@ impl HeimdallMcp {
                 .ok_or_else(|| invalid_params(format!("User {user_id} not found")));
         }
 
+        let configured_default = env::var("MCP_DEFAULT_USER_ID")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        if let Some(user_id) = configured_default {
+            let user_id = parse_uuid(&user_id)?;
+            return self
+                .state
+                .db
+                .get_user_by_id(user_id)
+                .await
+                .map_err(|error| internal_err(format!("Database error: {error}")))?
+                .ok_or_else(|| {
+                    invalid_params(format!(
+                        "Configured MCP_DEFAULT_USER_ID {user_id} was not found"
+                    ))
+                });
+        }
+
+        Err(invalid_params(
+            "Pass an explicit user_id or set MCP_DEFAULT_USER_ID for single-user stdio mode."
+                .to_string(),
+        ))
+    }
+
+    async fn load_repo_for_user(
+        &self,
+        repo_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Repo, rmcp::ErrorData> {
         self.state
             .db
-            .get_default_user()
+            .get_repo_by_id_for_user(repo_id, user_id)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| {
-                invalid_params(
-                    "No users exist in Heimdall yet. Pass an explicit user_id or create a user first."
-                        .to_string(),
-                )
-            })
+            .ok_or_else(|| invalid_params(format!("Repository {repo_id} not found")))
     }
 
     async fn resolve_actor_user_id(
         &self,
         explicit_user_id: Option<&str>,
-        fallback_user_id: Option<Uuid>,
+        _fallback_user_id: Option<Uuid>,
     ) -> Result<Uuid, rmcp::ErrorData> {
-        if explicit_user_id.is_some() {
-            return Ok(self.resolve_user(explicit_user_id).await?.id);
-        }
-        if let Some(user_id) = fallback_user_id {
-            return Ok(user_id);
-        }
-        Ok(self.resolve_user(None).await?.id)
+        Ok(self.resolve_user(explicit_user_id).await?.id)
     }
 
-    async fn load_finding_and_repo(
+    async fn load_scan_for_user(
+        &self,
+        scan_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<crate::models::db_models::Scan, rmcp::ErrorData> {
+        self.state
+            .db
+            .get_scan_by_id_for_user(scan_id, user_id)
+            .await
+            .map_err(|error| internal_err(format!("Database error: {error}")))?
+            .ok_or_else(|| invalid_params(format!("Scan {scan_id} not found")))
+    }
+
+    async fn load_finding_and_repo_for_user(
         &self,
         finding_id: Uuid,
+        user_id: Uuid,
     ) -> Result<(Finding, Repo), rmcp::ErrorData> {
         let finding = self
             .state
             .db
-            .get_finding_by_id(finding_id)
+            .get_finding_by_id_for_user(finding_id, user_id)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?
             .ok_or_else(|| invalid_params(format!("Finding {finding_id} not found")))?;
 
-        let repo = self
-            .state
-            .db
-            .get_repo_by_id(finding.repo_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| {
-                invalid_params(format!("Repository for finding {finding_id} not found"))
-            })?;
+        let repo = self.load_repo_for_user(finding.repo_id, user_id).await?;
 
         Ok((finding, repo))
     }
@@ -630,7 +670,9 @@ impl HeimdallMcp {
         actor_user_id: Uuid,
         event_type: &str,
     ) -> Result<String, rmcp::ErrorData> {
-        let (finding, repo) = self.load_finding_and_repo(finding_id).await?;
+        let (finding, repo) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
+            .await?;
         let runtime = self
             .state
             .resolve_ai_for_user(repo.user_id)
@@ -727,17 +769,18 @@ impl HeimdallMcp {
 
 #[tool_router]
 impl HeimdallMcp {
-    #[tool(description = "List all repositories connected to Heimdall")]
+    #[tool(description = "List repositories visible to a Heimdall user.")]
     async fn list_repositories(
         &self,
         Parameters(req): Parameters<ListReposRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let limit = req.limit.unwrap_or(50);
         let offset = req.offset.unwrap_or(0);
         let repos = self
             .state
             .db
-            .list_all_repos_paginated(limit, offset)
+            .list_repos_by_user_paginated(user.id, limit, offset)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?;
 
@@ -761,10 +804,11 @@ impl HeimdallMcp {
             return Err(invalid_params("remote_url must not be empty".to_string()));
         }
 
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         if let Some(existing) = self
             .state
             .db
-            .get_repo_by_remote_url(remote_url)
+            .get_repo_by_remote_url_for_user(user.id, remote_url)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?
         {
@@ -774,7 +818,6 @@ impl HeimdallMcp {
             })));
         }
 
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let oauth_connection_id = match req.oauth_connection_id.as_deref() {
             Some(value) => Some(parse_uuid(value)?),
             None => None,
@@ -818,14 +861,9 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<GetRepoRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let repo_id = parse_uuid(&req.repo_id)?;
-        let repo = self
-            .state
-            .db
-            .get_repo_by_id(repo_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Repository {} not found", req.repo_id)))?;
+        let repo = self.load_repo_for_user(repo_id, user.id).await?;
 
         Ok(json_text(&repo_info(&repo)))
     }
@@ -835,28 +873,13 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<DeleteRepositoryRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let repo_id = parse_uuid(&req.repo_id)?;
-        let repo = self
-            .state
-            .db
-            .get_repo_by_id(repo_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Repository {} not found", req.repo_id)))?;
-
-        if let Some(user_id) = req.user_id.as_deref() {
-            let user_id = parse_uuid(user_id)?;
-            if repo.user_id != user_id {
-                return Err(invalid_params(format!(
-                    "Repository {} does not belong to user {}",
-                    req.repo_id, user_id
-                )));
-            }
-        }
+        let repo = self.load_repo_for_user(repo_id, user.id).await?;
 
         self.state
             .db
-            .delete_repo(repo_id)
+            .delete_repo(repo.id)
             .await
             .map_err(|error| internal_err(format!("Failed to delete repository: {error}")))?;
 
@@ -873,17 +896,11 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<TriggerScanRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let repo_id = parse_uuid(&req.repo_id)?;
-        let repo = self
-            .state
-            .db
-            .get_repo_by_id(repo_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Repository {} not found", req.repo_id)))?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
             .await?;
+        let repo_id = parse_uuid(&req.repo_id)?;
+        let repo = self.load_repo_for_user(repo_id, actor_user_id).await?;
 
         self.state
             .resolve_ai_for_user(repo.user_id)
@@ -914,27 +931,23 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<ListScansRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let repo_id = parse_uuid(&req.repo_id)?;
         let limit = req.limit.unwrap_or(50);
         let offset = req.offset.unwrap_or(0);
 
-        self.state
-            .db
-            .get_repo_by_id(repo_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Repository {} not found", req.repo_id)))?;
+        let repo = self.load_repo_for_user(repo_id, user.id).await?;
 
         let total = self
             .state
             .db
-            .count_scans_by_repo(repo_id)
+            .count_scans_by_repo(repo.id)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?;
         let scans = self
             .state
             .db
-            .list_scans_by_repo_paginated(repo_id, limit, offset)
+            .list_scans_by_repo_paginated(repo.id, limit, offset)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?;
 
@@ -951,14 +964,9 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<GetScanRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
-        let scan = self
-            .state
-            .db
-            .get_scan_by_id(scan_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Scan {} not found", req.scan_id)))?;
+        let scan = self.load_scan_for_user(scan_id, user.id).await?;
 
         let finding_count = self
             .state
@@ -1017,14 +1025,9 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<CancelScanRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
-        let scan = self
-            .state
-            .db
-            .get_scan_by_id(scan_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Scan {} not found", req.scan_id)))?;
+        let scan = self.load_scan_for_user(scan_id, user.id).await?;
 
         if matches!(scan.status.as_str(), "completed" | "failed" | "cancelled") {
             return Err(invalid_params(format!("Scan is already {}", scan.status)));
@@ -1054,7 +1057,9 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<ListScanEventsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
+        let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let limit = req.limit.unwrap_or(100);
         let events = self
             .state
@@ -1073,7 +1078,9 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<GetScanProgressStreamRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
+        let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let snapshot = build_scan_live_snapshot(&self.state.db, scan_id)
             .await
             .map_err(|error| internal_err(format!("Failed to build live snapshot: {error}")))?
@@ -1097,7 +1104,9 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<ListFindingsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
+        let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let limit = req.limit.unwrap_or(50);
         let offset = req.offset.unwrap_or(0);
         let findings = self
@@ -1122,20 +1131,17 @@ impl HeimdallMcp {
     }
 
     #[tool(
-        description = "Get full details of a specific finding including code snippet, suggested patch, analyst reasoning, and PoC validation status."
+        description = "Get full details of a specific finding including code snippet, suggested diff, analyst reasoning, and PoC validation status."
     )]
     async fn get_finding(
         &self,
         Parameters(req): Parameters<GetFindingRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let finding_id = parse_uuid(&req.finding_id)?;
-        let finding = self
-            .state
-            .db
-            .get_finding_by_id(finding_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Finding {} not found", req.finding_id)))?;
+        let (finding, _) = self
+            .load_finding_and_repo_for_user(finding_id, user.id)
+            .await?;
 
         Ok(json_text(&finding_info(&finding)))
     }
@@ -1146,9 +1152,8 @@ impl HeimdallMcp {
         Parameters(req): Parameters<ExplainFindingRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let finding_id = parse_uuid(&req.finding_id)?;
-        let (_, repo) = self.load_finding_and_repo(finding_id).await?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
             .await?;
         self.run_finding_ai_review(finding_id, actor_user_id, "ai_explanation")
             .await
@@ -1162,9 +1167,8 @@ impl HeimdallMcp {
         Parameters(req): Parameters<VerifyFindingRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let finding_id = parse_uuid(&req.finding_id)?;
-        let (_, repo) = self.load_finding_and_repo(finding_id).await?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
             .await?;
         self.run_finding_ai_review(finding_id, actor_user_id, "ai_verification")
             .await
@@ -1175,7 +1179,11 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<ListFindingEventsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let finding_id = parse_uuid(&req.finding_id)?;
+        let (_finding, _) = self
+            .load_finding_and_repo_for_user(finding_id, user.id)
+            .await?;
         let events = self
             .state
             .db
@@ -1194,10 +1202,12 @@ impl HeimdallMcp {
         if req.comment.trim().is_empty() {
             return Err(invalid_params("comment must not be empty".to_string()));
         }
-        let finding_id = parse_uuid(&req.finding_id)?;
-        let (_, repo) = self.load_finding_and_repo(finding_id).await?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .await?;
+        let finding_id = parse_uuid(&req.finding_id)?;
+        let (_finding, _) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
             .await?;
 
         let event = self
@@ -1218,16 +1228,18 @@ impl HeimdallMcp {
     }
 
     #[tool(
-        description = "Apply the latest suggested fix for a finding by marking its stored patch as applied. This does not modify the repository checkout directly."
+        description = "Mark the latest suggested diff for a finding as applied in Heimdall metadata. This does not modify the repository checkout directly."
     )]
     async fn apply_patch(
         &self,
         Parameters(req): Parameters<ApplyPatchRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let finding_id = parse_uuid(&req.finding_id)?;
-        let (finding, repo) = self.load_finding_and_repo(finding_id).await?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .await?;
+        let finding_id = parse_uuid(&req.finding_id)?;
+        let (finding, _) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
             .await?;
 
         let patch = self
@@ -1241,14 +1253,20 @@ impl HeimdallMcp {
             })?;
 
         if patch.applied {
-            return Err(invalid_params("Patch has already been applied".to_string()));
+            return Err(invalid_params(
+                "Suggested diff has already been marked as applied in Heimdall.".to_string(),
+            ));
         }
 
         self.state
             .db
             .mark_patch_applied(patch.id, actor_user_id)
             .await
-            .map_err(|error| internal_err(format!("Failed to mark patch as applied: {error}")))?;
+            .map_err(|error| {
+                internal_err(format!(
+                    "Failed to mark suggested diff as applied in Heimdall: {error}"
+                ))
+            })?;
 
         let event = self
             .state
@@ -1259,11 +1277,13 @@ impl HeimdallMcp {
                 "patch_applied",
                 None,
                 Some(&patch.id.to_string()),
-                Some("Patch marked as applied via MCP"),
+                Some("Suggested diff marked as applied in Heimdall via MCP"),
             )
             .await
             .map_err(|error| {
-                internal_err(format!("Patch applied but event creation failed: {error}"))
+                internal_err(format!(
+                    "Suggested diff was marked as applied, but event creation failed: {error}"
+                ))
             })?;
 
         Ok(json_text(&serde_json::json!({
@@ -1281,11 +1301,12 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<GetThreatModelRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let threat_model = self
             .state
             .db
-            .get_threat_model_by_scan(scan_id)
+            .get_threat_model_by_scan_for_user(scan_id, user.id)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?
             .ok_or_else(|| {
@@ -1302,8 +1323,20 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<UpdateThreatModelRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let threat_model_id = match req.threat_model_id.as_deref() {
-            Some(value) => parse_uuid(value)?,
+            Some(value) => {
+                let threat_model_id = parse_uuid(value)?;
+                self.state
+                    .db
+                    .get_threat_model_by_id_for_user(threat_model_id, user.id)
+                    .await
+                    .map_err(|error| internal_err(format!("Database error: {error}")))?
+                    .ok_or_else(|| {
+                        invalid_params(format!("Threat model {threat_model_id} not found"))
+                    })?
+                    .id
+            }
             None => {
                 let scan_id = req.scan_id.as_deref().ok_or_else(|| {
                     invalid_params("Either threat_model_id or scan_id is required".to_string())
@@ -1311,7 +1344,7 @@ impl HeimdallMcp {
                 let scan_id = parse_uuid(scan_id)?;
                 self.state
                     .db
-                    .get_threat_model_by_scan(scan_id)
+                    .get_threat_model_by_scan_for_user(scan_id, user.id)
                     .await
                     .map_err(|error| internal_err(format!("Database error: {error}")))?
                     .ok_or_else(|| {
@@ -1335,7 +1368,7 @@ impl HeimdallMcp {
         let updated = self
             .state
             .db
-            .get_threat_model_by_id(threat_model_id)
+            .get_threat_model_by_id_for_user(threat_model_id, user.id)
             .await
             .map_err(|error| internal_err(format!("Database error: {error}")))?
             .ok_or_else(|| invalid_params(format!("Threat model {threat_model_id} not found")))?;
@@ -1343,12 +1376,14 @@ impl HeimdallMcp {
         Ok(json_text(&updated))
     }
 
-    #[tool(description = "Get all suggested patches for a scan as unified diffs.")]
+    #[tool(description = "Get all suggested diffs for a scan as unified patches.")]
     async fn get_patches(
         &self,
         Parameters(req): Parameters<GetPatchesRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
+        let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let patches = self
             .state
             .db
@@ -1372,10 +1407,12 @@ impl HeimdallMcp {
             )));
         }
 
-        let finding_id = parse_uuid(&req.finding_id)?;
-        let (finding, repo) = self.load_finding_and_repo(finding_id).await?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .await?;
+        let finding_id = parse_uuid(&req.finding_id)?;
+        let (finding, _) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
             .await?;
 
         self.state
@@ -1421,10 +1458,12 @@ impl HeimdallMcp {
             )));
         }
 
-        let finding_id = parse_uuid(&req.finding_id)?;
-        let (finding, repo) = self.load_finding_and_repo(finding_id).await?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .await?;
+        let finding_id = parse_uuid(&req.finding_id)?;
+        let (finding, _) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
             .await?;
 
         self.state
@@ -1466,10 +1505,12 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<CreateIssueRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let finding_id = parse_uuid(&req.finding_id)?;
-        let (finding, repo) = self.load_finding_and_repo(finding_id).await?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .await?;
+        let finding_id = parse_uuid(&req.finding_id)?;
+        let (finding, repo) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
             .await?;
 
         if !issues::supports_issue_creation(&repo) {
@@ -1530,24 +1571,12 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<CreateAllIssuesRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let scan_id = parse_uuid(&req.scan_id)?;
-        let scan = self
-            .state
-            .db
-            .get_scan_by_id(scan_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Scan {} not found", req.scan_id)))?;
-        let repo = self
-            .state
-            .db
-            .get_repo_by_id(scan.repo_id)
-            .await
-            .map_err(|error| internal_err(format!("Database error: {error}")))?
-            .ok_or_else(|| invalid_params(format!("Repository {} not found", scan.repo_id)))?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), Some(repo.user_id))
+            .resolve_actor_user_id(req.user_id.as_deref(), None)
             .await?;
+        let scan_id = parse_uuid(&req.scan_id)?;
+        let scan = self.load_scan_for_user(scan_id, actor_user_id).await?;
+        let repo = self.load_repo_for_user(scan.repo_id, actor_user_id).await?;
 
         if !issues::supports_issue_creation(&repo) {
             return Err(invalid_params(
@@ -1647,7 +1676,9 @@ impl HeimdallMcp {
         &self,
         Parameters(req): Parameters<ListAgentToolCallsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
+        let user = self.resolve_user(req.user_id.as_deref()).await?;
         let scan_id = parse_uuid(&req.scan_id)?;
+        let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let limit = req.limit.unwrap_or(50);
         let tool_calls = self
             .state

@@ -293,6 +293,21 @@ impl DatabaseOperations {
             .context("Failed to fetch repo by id")
     }
 
+    pub async fn get_repo_by_id_for_user(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> HeimdallResult<Option<Repo>> {
+        sqlx::query_as::<_, Repo>(
+            "SELECT * FROM repos WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch repo by id for user")
+    }
+
     pub async fn list_repos_by_user(&self, user_id: Uuid) -> HeimdallResult<Vec<Repo>> {
         sqlx::query_as::<_, Repo>(
             "SELECT * FROM repos WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
@@ -402,6 +417,29 @@ impl DatabaseOperations {
         .context("Failed to fetch repo by remote URL")
     }
 
+    pub async fn get_repo_by_remote_url_for_user(
+        &self,
+        user_id: Uuid,
+        url: &str,
+    ) -> HeimdallResult<Option<Repo>> {
+        let normalized = url.trim_end_matches(".git");
+        let with_git = format!("{normalized}.git");
+
+        sqlx::query_as::<_, Repo>(
+            "SELECT * FROM repos \
+             WHERE user_id = $1 AND deleted_at IS NULL \
+               AND (remote_url = $2 OR remote_url = $3 OR remote_url = $4) \
+             LIMIT 1",
+        )
+        .bind(user_id)
+        .bind(url)
+        .bind(normalized)
+        .bind(&with_git)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch repo by remote URL for user")
+    }
+
     pub async fn delete_repo(&self, id: Uuid) -> HeimdallResult<bool> {
         let result = sqlx::query("DELETE FROM repos WHERE id = $1")
             .bind(id)
@@ -446,6 +484,23 @@ impl DatabaseOperations {
             .fetch_optional(&self.pool)
             .await
             .context("Failed to fetch scan by id")
+    }
+
+    pub async fn get_scan_by_id_for_user(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> HeimdallResult<Option<Scan>> {
+        sqlx::query_as::<_, Scan>(
+            "SELECT s.* FROM scans s \
+             JOIN repos r ON r.id = s.repo_id \
+             WHERE s.id = $1 AND r.user_id = $2 AND r.deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch scan by id for user")
     }
 
     pub async fn list_scans_by_repo(&self, repo_id: Uuid) -> HeimdallResult<Vec<Scan>> {
@@ -585,6 +640,23 @@ impl DatabaseOperations {
             .fetch_optional(&self.pool)
             .await
             .context("Failed to fetch finding by id")
+    }
+
+    pub async fn get_finding_by_id_for_user(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> HeimdallResult<Option<Finding>> {
+        sqlx::query_as::<_, Finding>(
+            "SELECT f.* FROM findings f \
+             JOIN repos r ON r.id = f.repo_id \
+             WHERE f.id = $1 AND r.user_id = $2 AND r.deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch finding by id for user")
     }
 
     pub async fn list_findings_by_scan(
@@ -740,6 +812,23 @@ impl DatabaseOperations {
             .fetch_optional(&self.pool)
             .await
             .context("Failed to fetch threat model by scan")
+    }
+
+    pub async fn get_threat_model_by_scan_for_user(
+        &self,
+        scan_id: Uuid,
+        user_id: Uuid,
+    ) -> HeimdallResult<Option<ThreatModel>> {
+        sqlx::query_as::<_, ThreatModel>(
+            "SELECT tm.* FROM threat_models tm \
+             JOIN repos r ON r.id = tm.repo_id \
+             WHERE tm.scan_id = $1 AND r.user_id = $2 AND r.deleted_at IS NULL",
+        )
+        .bind(scan_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch threat model by scan for user")
     }
 
     // -----------------------------------------------------------------------
@@ -1601,6 +1690,23 @@ impl DatabaseOperations {
             .fetch_optional(&self.pool)
             .await
             .context("Failed to fetch threat model by id")
+    }
+
+    pub async fn get_threat_model_by_id_for_user(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> HeimdallResult<Option<ThreatModel>> {
+        sqlx::query_as::<_, ThreatModel>(
+            "SELECT tm.* FROM threat_models tm \
+             JOIN repos r ON r.id = tm.repo_id \
+             WHERE tm.id = $1 AND r.user_id = $2 AND r.deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch threat model by id for user")
     }
 
     /// Update a single field on a threat model.

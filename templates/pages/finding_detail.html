@@ -90,12 +90,12 @@
                             <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                                 <div class="flex items-center justify-between gap-3">
                                     <div>
-                                        <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Suggested Fix</h2>
-                                        <p class="mt-1 text-sm text-slate-500">Recommended remediation diff generated during the scan.</p>
+                                        <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Suggested Diff</h2>
+                                        <p class="mt-1 text-sm text-slate-500">Recommended remediation diff generated during the scan. Review and apply it manually if you choose.</p>
                                     </div>
                                     {% if patch.id %}
                                     <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                        {% if patch.applied %}Applied{% else %}Patch Ready{% endif %}
+                                        {% if patch.applied %}Marked Applied{% else %}Review Ready{% endif %}
                                     </span>
                                     {% endif %}
                                 </div>
@@ -153,9 +153,9 @@
                                         <dd class="mt-1 text-sm text-slate-600">
                                             {% if patch.id %}
                                                 {% if patch.applied %}
-                                                Applied{% if patch.created_at %} · last updated {{ patch.created_at }}{% endif %}
+                                                Marked applied in Heimdall{% if patch.created_at %} · generated {{ patch.created_at }}{% endif %} · no repository write-back recorded
                                                 {% else %}
-                                                Ready for review{% if patch.created_at %} · generated {{ patch.created_at }}{% endif %}
+                                                Ready for manual review{% if patch.created_at %} · generated {{ patch.created_at }}{% endif %}
                                                 {% endif %}
                                             {% else %}
                                             No generated patch
@@ -253,10 +253,10 @@
         }
 
         if (finding.suggested_patch) {
-            lines.push('## Suggested Fix');
+            lines.push('## Suggested Diff');
             lines.push('');
             if (patch && patch.id && patch.applied) {
-                lines.push('> Patch has been applied.');
+                lines.push('> Heimdall shows this suggested diff as manually marked applied. It did not change the repository automatically.');
                 lines.push('');
             }
             lines.push('```diff');

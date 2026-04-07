@@ -277,9 +277,7 @@ fn execute_get_symbol(args: &serde_json::Value, index: &CodeIndex) -> ToolResult
     };
 
     if symbols.is_empty() {
-        let qualifier = file_path
-            .map(|f| format!(" in {f}"))
-            .unwrap_or_default();
+        let qualifier = file_path.map(|f| format!(" in {f}")).unwrap_or_default();
         return ToolResult {
             tool_name: "get_symbol".to_string(),
             output: format!("Symbol `{name}` not found{qualifier}"),
@@ -370,9 +368,7 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
         };
     }
 
-    let mut output = format!(
-        "Data flow trace for `{source_pattern}` (max depth {max_depth}):\n\n"
-    );
+    let mut output = format!("Data flow trace for `{source_pattern}` (max depth {max_depth}):\n\n");
 
     // Show initial source locations
     output.push_str(&format!(
@@ -380,7 +376,13 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
         initial_matches.len()
     ));
     for (i, m) in initial_matches.iter().enumerate().take(20) {
-        output.push_str(&format!("{}. {}:{} — {}\n", i + 1, m.file, m.line, m.content.trim()));
+        output.push_str(&format!(
+            "{}. {}:{} — {}\n",
+            i + 1,
+            m.file,
+            m.line,
+            m.content.trim()
+        ));
     }
     if initial_matches.len() > 20 {
         output.push_str(&format!("... and {} more\n", initial_matches.len() - 20));
@@ -432,9 +434,7 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
                 let mut shown = 0usize;
                 for edge in &callers {
                     if total_edges >= MAX_TOTAL_EDGES {
-                        output.push_str(
-                            "\n_(output truncated: total edge limit reached)_\n",
-                        );
+                        output.push_str("\n_(output truncated: total edge limit reached)_\n");
                         break 'outer;
                     }
                     if shown >= MAX_CALLERS_PER_FUNC {

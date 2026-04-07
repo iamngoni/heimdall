@@ -1963,4 +1963,21 @@ mod tests {
         assert!(parsed.surfaces.is_empty());
         assert!(parsed.data_flows.is_empty());
     }
+
+    #[test]
+    fn malformed_markdown_threat_model_falls_back_to_empty_structure() {
+        let raw = "## Threat Model Analysis\n### Trust Boundaries\n1. Browser -> API";
+        let parse_error = super::TyrStage::parse_threat_model_output(raw).unwrap_err();
+        let fallback = super::TyrStage::empty_threat_model(&parse_error);
+
+        assert!(fallback.boundaries.is_empty());
+        assert!(fallback.surfaces.is_empty());
+        assert!(fallback.data_flows.is_empty());
+        assert!(
+            fallback
+                .summary
+                .contains("continued without a structured Tyr threat model")
+        );
+        assert!(fallback.summary.contains(&parse_error));
+    }
 }

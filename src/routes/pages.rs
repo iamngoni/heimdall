@@ -396,8 +396,9 @@ async fn repo_detail_page(
 ) -> HttpResponse {
     let repo_id = path.into_inner();
     let pagination = query.into_inner();
+    let user = get_user(&req).expect("auth middleware ensures user exists");
 
-    let repo = match state.db.get_repo_by_id(repo_id).await {
+    let repo = match state.db.get_repo_by_id_for_user(repo_id, user.id).await {
         Ok(Some(r)) => r,
         Ok(None) => {
             return not_found_html(&state);
@@ -550,8 +551,9 @@ async fn scan_detail_page(
     req: HttpRequest,
 ) -> HttpResponse {
     let scan_id = path.into_inner();
+    let user = get_user(&req).expect("auth middleware ensures user exists");
 
-    let scan = match state.db.get_scan_by_id(scan_id).await {
+    let scan = match state.db.get_scan_by_id_for_user(scan_id, user.id).await {
         Ok(Some(s)) => s,
         Ok(None) => {
             return not_found_html(&state);
@@ -561,7 +563,11 @@ async fn scan_detail_page(
             return server_error_html(&state);
         }
     };
-    let repo = match state.db.get_repo_by_id(scan.repo_id).await {
+    let repo = match state
+        .db
+        .get_repo_by_id_for_user(scan.repo_id, user.id)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => return not_found_html(&state),
         Err(e) => {
@@ -647,7 +653,8 @@ async fn scan_findings_page(
     req: HttpRequest,
 ) -> HttpResponse {
     let scan_id = path.into_inner();
-    let scan = match state.db.get_scan_by_id(scan_id).await {
+    let user = get_user(&req).expect("auth middleware ensures user exists");
+    let scan = match state.db.get_scan_by_id_for_user(scan_id, user.id).await {
         Ok(Some(scan)) => scan,
         Ok(None) => return not_found_html(&state),
         Err(e) => {
@@ -655,7 +662,11 @@ async fn scan_findings_page(
             return server_error_html(&state);
         }
     };
-    let repo = match state.db.get_repo_by_id(scan.repo_id).await {
+    let repo = match state
+        .db
+        .get_repo_by_id_for_user(scan.repo_id, user.id)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => return not_found_html(&state),
         Err(e) => {
@@ -755,8 +766,13 @@ async fn finding_detail_page(
     req: HttpRequest,
 ) -> HttpResponse {
     let finding_id = path.into_inner();
+    let user = get_user(&req).expect("auth middleware ensures user exists");
 
-    let finding = match state.db.get_finding_by_id(finding_id).await {
+    let finding = match state
+        .db
+        .get_finding_by_id_for_user(finding_id, user.id)
+        .await
+    {
         Ok(Some(f)) => f,
         Ok(None) => {
             return not_found_html(&state);
@@ -766,7 +782,11 @@ async fn finding_detail_page(
             return server_error_html(&state);
         }
     };
-    let repo = match state.db.get_repo_by_id(finding.repo_id).await {
+    let repo = match state
+        .db
+        .get_repo_by_id_for_user(finding.repo_id, user.id)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => return not_found_html(&state),
         Err(e) => {
@@ -864,7 +884,8 @@ async fn threat_model_page(
     req: HttpRequest,
 ) -> HttpResponse {
     let scan_id = path.into_inner();
-    let scan = match state.db.get_scan_by_id(scan_id).await {
+    let user = get_user(&req).expect("auth middleware ensures user exists");
+    let scan = match state.db.get_scan_by_id_for_user(scan_id, user.id).await {
         Ok(Some(scan)) => scan,
         Ok(None) => return not_found_html(&state),
         Err(e) => {
@@ -872,7 +893,11 @@ async fn threat_model_page(
             return server_error_html(&state);
         }
     };
-    let repo = match state.db.get_repo_by_id(scan.repo_id).await {
+    let repo = match state
+        .db
+        .get_repo_by_id_for_user(scan.repo_id, user.id)
+        .await
+    {
         Ok(Some(repo)) => repo,
         Ok(None) => return not_found_html(&state),
         Err(e) => {
@@ -884,7 +909,11 @@ async fn threat_model_page(
         }
     };
 
-    let threat_model = match state.db.get_threat_model_by_scan(scan_id).await {
+    let threat_model = match state
+        .db
+        .get_threat_model_by_scan_for_user(scan_id, user.id)
+        .await
+    {
         Ok(Some(tm)) => tm,
         Ok(None) => {
             return not_found_html(&state);
@@ -1104,11 +1133,13 @@ fn serialize_finding_event(event: &crate::models::db_models::FindingEvent) -> mi
             "success",
         ),
         "patch_applied" => (
-            "Patch applied".to_string(),
+            "Suggested diff marked applied".to_string(),
             event
                 .comment
                 .clone()
-                .unwrap_or_else(|| "The generated patch was marked as applied.".to_string()),
+                .unwrap_or_else(|| {
+                    "The suggested diff was marked as applied in Heimdall. No repository write-back was recorded.".to_string()
+                }),
             "success",
         ),
         "comment" => (

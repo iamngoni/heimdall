@@ -542,9 +542,7 @@ fn tool_detail(tool_name: &str, arguments: &serde_json::Value) -> String {
             arguments["pattern"]
                 .as_str()
                 .unwrap_or("the requested pattern"),
-            arguments["language"]
-                .as_str()
-                .unwrap_or("the specified"),
+            arguments["language"].as_str().unwrap_or("the specified"),
             arguments["file_glob"]
                 .as_str()
                 .map(|glob| format!(" within {glob}"))
@@ -575,9 +573,7 @@ fn tool_detail(tool_name: &str, arguments: &serde_json::Value) -> String {
         ),
         "get_symbol" => format!(
             "Looking up symbol `{}`{}.",
-            arguments["name"]
-                .as_str()
-                .unwrap_or("the requested symbol"),
+            arguments["name"].as_str().unwrap_or("the requested symbol"),
             arguments["file_path"]
                 .as_str()
                 .map(|f| format!(" in {f}"))

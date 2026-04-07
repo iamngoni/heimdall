@@ -46,9 +46,9 @@ End-to-end flow, from the user clicking "Run Scan" to viewing findings:
 
 7. **Stage 4 -- Garmr (Sandbox Validation).** Each finding from Hunt is passed to the LLM to generate a proof-of-concept exploit script. Garmr executes the PoC inside a Docker container with no network access, 1 CPU, 512MB RAM, and a 30-second timeout. The repo is mounted read-only. The LLM then interprets the execution results: confirmed findings are marked `poc_validated = true`; unconfirmed findings are marked as lower confidence. Status: `hunted` -> `validating` -> `validated`.
 
-8. **Stage 5 -- Report.** Findings are ranked by severity and confidence. The LLM generates suggested patches as unified diffs. Each finding gets a plain English explanation, CWE/CVE classification, affected file and line number, and the PoC exploit details. Status: `validated` -> `reporting` -> `completed`.
+8. **Stage 5 -- Report.** Findings are ranked by severity and confidence. The LLM generates suggested diffs as unified patches. Each finding gets a plain English explanation, CWE/CVE classification, affected file and line number, and the PoC exploit details. Status: `validated` -> `reporting` -> `completed`.
 
-9. **User views results.** The scan progress screen shows real-time updates via Server-Sent Events. Once complete, the user navigates to the findings list (filterable by severity, status, CWE) and can drill into each finding to see the explanation, code context, PoC details, and suggested patch. They can accept/reject/dismiss findings, apply patches, and edit the threat model for future scans.
+9. **User views results.** The scan progress screen shows real-time updates via Server-Sent Events. Once complete, the user navigates to the findings list (filterable by severity, status, CWE) and can drill into each finding to see the explanation, code context, PoC details, and suggested diff. They can accept/reject/dismiss findings, export or manually apply the suggested diff outside Heimdall, mark it handled in Heimdall, and edit the threat model for future scans.
 
 ---
 
@@ -56,7 +56,7 @@ End-to-end flow, from the user clicking "Run Scan" to viewing findings:
 
 ### Overview
 
-The pipeline is a sequential chain of six stages. Each stage is a distinct module in `src/pipeline/`. The `ScanPipeline` orchestrator runs them in order, updating the scan status and creating `scan_stages` rows to log execution.
+The pipeline is a sequential chain of nine stages. Each stage is a distinct module in `src/pipeline/`. The `ScanPipeline` orchestrator runs them in order, updating the scan status and creating `scan_stages` rows to log execution.
 
 ### Stage 1: Ingest (`pipeline/ingest/`)
 
@@ -158,7 +158,7 @@ The pipeline is a sequential chain of six stages. Each stage is a distinct modul
 
 **Process:**
 - Rank findings by severity (critical > high > medium > low) and confidence
-- For each finding, generate a suggested patch:
+- For each finding, generate a suggested diff:
   - Send the vulnerable code context to the LLM
   - Request a unified diff that fixes the vulnerability
   - Validate that the diff applies cleanly to the source
@@ -988,10 +988,10 @@ Global shell present on all pages except Login:
 - **Explanation section**: plain English description of the vulnerability
 - **Code section**: affected file with syntax highlighting, vulnerable lines highlighted
 - **PoC section** (if available): PoC script, execution output, verdict (confirmed/unconfirmed)
-- **Patch section** (D1 -- Diff Viewer): unified diff with syntax highlighting, "Apply Patch" button
+- **Patch section** (D1 -- Diff Viewer): unified diff with syntax highlighting, export/copy controls, and a button to mark the suggestion handled in Heimdall
 - **Agent Reasoning section**: collapsible, shows the agent's chain of thought
 - **Events/Timeline**: audit trail from `finding_events` (status changes, comments)
-- **Actions**: Add comment, change status, change severity, apply patch
+- **Actions**: Add comment, change status, change severity, mark patch handled
 
 #### C4: Threat Model Viewer/Editor
 - Section-based layout:
@@ -1006,15 +1006,15 @@ Global shell present on all pages except Login:
 - Embedded within C3 (Finding Detail) and D2 (Batch Patch Review)
 - Side-by-side or unified diff view toggle
 - Syntax-highlighted code with red (removed) and green (added) lines
-- "Apply Patch" button
+- "Mark Suggested Diff Applied" button
 - "Copy Diff" button
 
 #### D2: Batch Patch Review
 - List of all findings with patches for a given scan
 - Checkbox selection for each
 - Preview selected patches (shows each diff)
-- "Apply Selected Patches" button
-- Status indicators: applied / failed to apply / conflicts
+- Optional bulk mark-as-applied action after patches are handled outside Heimdall
+- Status indicators: marked applied / pending review
 
 ### HTMX Patterns
 
@@ -1024,7 +1024,7 @@ Global shell present on all pages except Login:
 | Fragment replacement | `HX-Request` header detected by server. Same route returns full page or fragment based on header presence. |
 | Filtering | `hx-get` with query params on filter controls. Target: `#findings-list`. Swap: `innerHTML`. |
 | Inline editing | `hx-get` to swap display -> edit form. `hx-put` to save. `hx-target` to swap back. |
-| Form submission | `hx-post` for forms (add repo, run scan, apply patch, etc.). |
+| Form submission | `hx-post` for forms (add repo, run scan, mark suggested diffs handled, etc.). |
 | SSE streaming | `hx-ext="sse"`, `sse-connect`, `sse-swap` for real-time updates. |
 | Status updates | `hx-patch` on status dropdown change. Target: status badge. |
 | Loading indicators | `hx-indicator` with spinner class on buttons/forms. |
@@ -1039,7 +1039,7 @@ templates/
     finding_card.html          -- finding card for lists
     severity_badge.html        -- colored severity indicator
     diff_viewer.html           -- unified/side-by-side diff display
-    pipeline_stepper.html      -- 5-stage progress stepper
+    pipeline_stepper.html      -- scan progress timeline
     repo_card.html             -- repo card for dashboard grid
 
   pages/
@@ -1102,7 +1102,7 @@ templates/
 |--------|------|-------------|
 | GET | `/scans/{id}/findings/list` | Findings list fragment (for filtering) |
 | PATCH | `/findings/{id}/status` | Update finding status |
-| POST | `/findings/{id}/apply-patch` | Apply a patch to a finding |
+| POST | `/findings/{id}/apply-patch` | Mark a suggested diff as applied in Heimdall metadata (no repo write-back) |
 | GET | `/scans/{id}/threat-model/edit/{section}` | Threat model section edit form fragment |
 | PUT | `/scans/{id}/threat-model/{section}` | Save threat model section edit |
 | GET | `/scans/{id}/threat-model/display/{section}` | Threat model section display fragment |
@@ -1111,7 +1111,7 @@ templates/
 | POST | `/settings/ai/test` | Test AI provider connection |
 | POST | `/findings/{id}/comment` | Add comment to finding |
 | PATCH | `/findings/{id}/severity` | Update finding severity |
-| POST | `/scans/{id}/patches/apply` | Batch apply selected patches |
+| POST | `/scans/{id}/patches/apply` | Planned bulk mark-as-applied action (not implemented) |
 
 #### Action Routes (7)
 
@@ -1150,8 +1150,8 @@ templates/
 2. Filters by severity (Critical + High)
 3. Clicks on a critical finding
 4. Reads explanation, reviews vulnerable code, checks PoC output
-5. Reviews suggested patch in diff viewer
-6. Clicks "Apply Patch" or marks as "False Positive"
+5. Reviews the suggested diff in the diff viewer
+6. Copies or manually applies the diff outside Heimdall, then marks it applied in Heimdall or marks the finding as "False Positive"
 7. Adds a comment for team context
 
 #### Journey 4: Editing Threat Model
@@ -1164,9 +1164,9 @@ templates/
 #### Journey 5: Batch Patching
 1. User visits `/scans/{id}/patches`
 2. Reviews all available patches
-3. Selects the ones they want to apply (checkboxes)
+3. Selects the ones they want to track as handled (checkboxes)
 4. Previews the combined diff
-5. Clicks "Apply Selected Patches"
+5. Uses the batch action only to update Heimdall state after handling those patches elsewhere
 6. Sees success/failure status for each
 
 ---

@@ -39,15 +39,15 @@ Heimdall goes beyond pattern matching: it builds a threat model of your applicat
 ```mermaid
 graph LR
     A[Connect Repo] --> B[Run Scan]
-    B --> C[10-Stage Pipeline]
+    B --> C[9-Stage Pipeline]
     C --> D[View Findings]
-    D --> E[Apply Patches]
+    D --> E[Review Patches]
 ```
 
 1. **Connect a repository** — GitHub OAuth, GitLab OAuth, Bitbucket OAuth/PAT, public git URL, or zip upload
 2. **Run a scan** — manually triggered, the pipeline takes over
-3. **Review findings** — severity-ranked, with code context, explanations, and patches
-4. **Apply fixes** — accept suggested patches as unified diffs
+3. **Review findings** — severity-ranked, with code context, explanations, and suggested diffs
+4. **Handle fixes** — export or manually apply the unified diff, then mark it handled in Heimdall
 
 ## Quick Start
 
@@ -76,7 +76,7 @@ cargo run --bin heimdall
 What Heimdall does today:
 
 - Repository intake via GitHub OAuth, GitLab OAuth, Bitbucket OAuth/PAT, public Git URL, or ZIP upload
-- Ten-stage scan pipeline: Ingest, Tyr, Static Analysis, Taint Analysis, Config Scan, Hunt, Víðarr, Garmr, Deps Audit (module exists, not yet wired), Report
+- Nine-stage scan pipeline: Ingest, Tyr, Static Analysis, Taint Analysis, Config Scan, Hunt, Víðarr, Garmr, Report
 - Background scan worker with configurable polling, stale scan detection, and cancellation support
 - Live scan progress via SSE, plus persisted execution and tool-call logs in the database
 - Finding review with explain, verify, patch, and repository issue creation/linking
@@ -88,7 +88,7 @@ What is still missing or intentionally not done yet:
 
 - GitHub App / installation-token repository access is not implemented yet
 - GitLab and Bitbucket use the same OAuth user-token model; there is no install-style app flow yet
-- Deps audit stage is implemented but not yet wired into the pipeline orchestrator
+- OSV-based dependency audit runs inside Static Analysis rather than as a separate pipeline stage
 - End-to-end integration tests for the full `repo import -> scan -> findings -> issue sync` loop are still limited
 - Stage-specific artifact views are still spread across scan, findings, threat model, and patch surfaces rather than one dedicated “stage outputs” screen
 
@@ -199,10 +199,10 @@ cp .env.example .env
 # and edit .env with your AI provider key(s)
 
 # Start Heimdall + Postgres
-docker compose --profile postgres up -d
+docker compose up -d
 
 # Or build from source
-docker compose --profile postgres up -d --build
+docker compose up -d --build
 ```
 
 The Dockerfile handles migration generation and compilation in a multi-stage build automatically.
@@ -210,9 +210,8 @@ The Dockerfile handles migration generation and compilation in a multi-stage bui
 #### Docker Compose Profiles
 
 ```bash
-docker compose --profile postgres up -d   # PostgreSQL (default, recommended)
-docker compose --profile mysql up -d      # MySQL 8.4
-docker compose --profile mongo up -d      # MongoDB 7
+docker compose up -d                 # Heimdall + PostgreSQL
+docker compose --profile mcp up -d   # Optional MCP sidecar
 ```
 
 ## Configuration
@@ -331,7 +330,7 @@ cargo build --release
 Or via Docker:
 
 ```bash
-docker compose --profile postgres up -d
+docker compose up -d
 ```
 
 ### Verify it's running
@@ -373,13 +372,13 @@ flowchart TD
     R -.- r1["Severity ranking\nCWE/CVE classification\nUnified diff patches"]
 ```
 
-> **Note:** A **Deps Audit** stage (OSV-based dependency vulnerability scanning) is implemented but not yet wired into the pipeline orchestrator.
+> **Note:** OSV-based dependency auditing currently runs as part of **Static Analysis**, not as a standalone pipeline stage.
 
 | Stage | Engine | Purpose | Speed |
 |-------|--------|---------|-------|
 | **Ingest** | tree-sitter | Clone repo, build code index (AST, symbols, call graph, data flows) | Seconds |
 | **Tyr** | LLM | Generate structured threat model (boundaries, surfaces, data flows) | ~30s |
-| **Static Analysis** | tree-sitter + regex | Deterministic pattern matching, secret detection (70+ rules across 6 languages) | Seconds |
+| **Static Analysis** | tree-sitter + regex | Deterministic pattern matching, secret detection, and OSV-based dependency audit coverage | Seconds |
 | **Taint Analysis** | Fixed-point iteration | Track tainted data from sources (user input, env) to sinks (exec, SQL, file I/O) | Seconds |
 | **Config Scan** | Regex | Audit Dockerfiles, Kubernetes manifests, Terraform, CI/CD configs, env files | Seconds |
 | **Hunt** | LLM Agent | Reason about code per-threat, discover security vulns + logic flaws | Minutes |
@@ -539,7 +538,7 @@ Each finding includes:
 - **CWE/CVE** classification
 - **File + line number** with code context
 - **Plain English explanation** of the vulnerability
-- **Suggested patch** as a unified diff
+- **Suggested diff** as a unified diff
 - **PoC exploit details** (if sandbox-validated)
 - **Source badge** — AI (Hunt agent), Static (pattern rules), Dependencies (audit)
 - **Confidence** — High (static rules), Medium (AI-discovered), Confirmed (sandbox-validated)
@@ -584,7 +583,7 @@ Each finding includes:
 |--------|----------|-------------|
 | `GET` | `/api/findings/{id}` | Get finding details |
 | `PATCH` | `/api/findings/{id}/severity` | Update severity |
-| `POST` | `/api/findings/{id}/apply-patch` | Apply suggested patch |
+| `POST` | `/api/findings/{id}/apply-patch` | Mark a suggested diff as applied in Heimdall metadata (no repo write-back) |
 | `POST` | `/api/findings/{id}/comments` | Add a comment |
 | `GET` | `/api/findings/{id}/events` | Get finding event history |
 
@@ -683,7 +682,7 @@ heimdall/
 │   │   ├── hunt/               # Stage 4: Agentic discovery
 │   │   ├── vidarr/             # Stage 4b: Adversarial verification
 │   │   ├── garmr/              # Stage 5: Sandbox validation
-│   │   ├── deps_audit/         # Dependency audit (not yet wired)
+│   │   ├── deps_audit/         # Dependency audit helpers used by Static Analysis
 │   │   └── report/             # Stage 6: Patches + ranking
 │   ├── worker.rs               # Background scan worker (poll + execute)
 │   ├── integrations/
@@ -703,7 +702,7 @@ heimdall/
 │   │   ├── deps.rs             # Dependency graph
 │   │   └── search.rs           # Full-text search
 │   └── bin/
-│       └── schema_gen.rs       # CLI: generate migrations
+│       └── schema_gen.rs       # CLI: export schema snapshots / DDL
 ├── templates/
 │   ├── base.html               # Master layout
 │   ├── pages/                  # Full page templates
@@ -722,7 +721,7 @@ heimdall/
 
 ## Schema DSL
 
-The database schema is defined once in Rust and generates idempotent DDL for any supported driver:
+The database schema is defined once in Rust. Heimdall itself runs against PostgreSQL, and the schema definition can also export DDL snapshots for other drivers during development:
 
 ```rust
 Schema::new()
@@ -740,11 +739,11 @@ Schema::new()
 
 ### Automatic schema at startup
 
-On every startup, Heimdall generates the full DDL from the schema definition and applies it using `IF NOT EXISTS` / `DROP TRIGGER IF EXISTS` statements. No migration files or tracking tables needed — this is safe to run repeatedly.
+On every startup, Heimdall generates the PostgreSQL DDL from the schema definition and applies it using `IF NOT EXISTS` / `DROP TRIGGER IF EXISTS` statements. No migration files or tracking tables needed — this is safe to run repeatedly.
 
 ### Generating migration files (optional)
 
-For external tooling, CI, or manual review you can still export migration SQL:
+For external tooling, CI, or manual review you can still export SQL snapshots:
 
 ```bash
 cargo run --bin schema_gen -- postgres   # migrations/active/
@@ -752,6 +751,8 @@ cargo run --bin schema_gen -- sqlite     # migrations/sqlite/
 cargo run --bin schema_gen -- mysql      # migrations/mysql/
 cargo run --bin schema_gen -- all        # all drivers
 ```
+
+Those extra driver outputs are developer tooling only. The shipped app, Docker stack, and MCP server currently support PostgreSQL as the runtime database.
 
 The schema DSL also supports **smart incremental migrations** — it snapshots the current schema and diffs against it on the next run, generating only `ALTER TABLE` / `CREATE INDEX` / etc. for what changed.
 
@@ -776,7 +777,7 @@ cargo test --lib auth
 cargo test --test '*'
 ```
 
-211 unit tests cover: symbol extraction (all 6 languages), static analysis rules, taint analysis, call graph construction, dependency resolution, full-text search, password hashing, AES-256-GCM encryption, SSE broadcasting, pagination, and API response formatting.
+The unit tests cover symbol extraction (all 6 languages), static analysis rules, taint analysis, call graph construction, dependency resolution, full-text search, password hashing, AES-256-GCM encryption, SSE broadcasting, pagination, and API response formatting.
 
 ## Deployment
 
@@ -798,7 +799,7 @@ cp .env.example .env
 # Edit .env
 
 # Start
-docker compose --profile postgres up -d
+docker compose up -d
 
 # View logs
 docker compose logs -f heimdall
@@ -879,8 +880,8 @@ Heimdall ships as an [MCP (Model Context Protocol)](https://modelcontextprotocol
 
 The MCP server runs as a separate binary (`heimdall-mcp`) that connects to the same PostgreSQL database. It supports two transport modes:
 
-- **stdio** (default) — for local development, communicates over stdin/stdout
-- **HTTP** — for Docker/remote deployments, serves over Streamable HTTP
+- **stdio** (default and recommended) — for local development, communicates over stdin/stdout
+- **HTTP** (optional) — serves over authenticated Streamable HTTP for clients that cannot spawn the binary directly
 
 #### Local (stdio)
 
@@ -899,7 +900,8 @@ Add to your MCP client configuration (e.g., Claude Code `~/.claude.json`, Cursor
       "command": "/path/to/heimdall-mcp",
       "args": [],
       "env": {
-        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall"
+        "DATABASE_URL": "postgres://heimdall:heimdall@localhost:5432/heimdall",
+        "MCP_DEFAULT_USER_ID": "<optional-user-uuid>"
       }
     }
   }
@@ -910,17 +912,20 @@ Add to your MCP client configuration (e.g., Claude Code `~/.claude.json`, Cursor
 
 ```bash
 # Start with MCP profile
-docker compose --profile postgres --profile mcp up -d
+docker compose --profile mcp up -d
 ```
 
-The MCP server listens on port `45637` (configurable via `MCP_PORT`). Configure your MCP client to connect via URL:
+Set `MCP_HTTP_AUTH_TOKEN` in `.env` before enabling the HTTP profile. The MCP server listens on port `45637` (configurable via `MCP_PORT`). Configure your MCP client to connect via URL:
 
 ```json
 {
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://127.0.0.1:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-http-token>"
+      }
     }
   }
 }
@@ -928,37 +933,36 @@ The MCP server listens on port `45637` (configurable via `MCP_PORT`). Configure 
 
 Some clients use a slightly different HTTP field name, such as `serverUrl`, or a different transport label, such as `streamableHttp`.
 
+Heimdall does not map HTTP requests onto web sessions. Access is authenticated with the shared bearer token above, and tool calls must still include `user_id` unless `MCP_DEFAULT_USER_ID` is set for a trusted single-user stdio setup.
+
 ### Client Setup Guide
 
-Heimdall works best over `http` for editor agents. Use `stdio` when you want the client to manage the MCP subprocess directly.
+Heimdall works best over `stdio`. Use HTTP only when your MCP client supports custom headers and cannot manage the subprocess directly.
 
 #### Quick Reference
 
 | Client | Config location | Recommended transport | Notes |
 |------|------|------|------|
-| Claude Code | `~/.claude.json` or project `.mcp.json` | `http` | Use explicit `"type": "http"` |
-| Cursor | `~/.cursor/mcp.json` or project `.cursor/mcp.json` | `http` | Supports project-scoped MCP config |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `http` | Remote HTTP may use `serverUrl` |
-| Cline | Configure from the Cline MCP panel | `http` | Choose `Streamable HTTP` |
-| Continue | `.continue/mcpServers/*.json` | `http` | MCP is available in Agent mode |
-| Gemini CLI | `~/.gemini/settings.json` or project `.gemini/settings.json` | `http` | `gemini mcp add` works well |
+| Claude Code | `~/.claude.json` or project `.mcp.json` | `stdio` | Use HTTP only if you can attach bearer headers manually |
+| Cursor | `~/.cursor/mcp.json` or project `.cursor/mcp.json` | `stdio` | Supports project-scoped MCP config |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `stdio` | Remote HTTP needs custom headers |
+| Cline | Configure from the Cline MCP panel | `stdio` | Use remote HTTP only if the client can send `Authorization` |
+| Continue | `.continue/mcpServers/*.json` | `stdio` | MCP is available in Agent mode |
+| Gemini CLI | `~/.gemini/settings.json` or project `.gemini/settings.json` | `stdio` | Remote HTTP requires manual header support |
 
 #### Claude Code
 
-Add Heimdall over HTTP:
-
-```bash
-claude mcp add -s user --transport http heimdall http://127.0.0.1:45637/mcp
-```
-
-Manual config:
+Authenticated HTTP, if you need remote transport:
 
 ```json
 {
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://127.0.0.1:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-http-token>"
+      }
     }
   }
 }
@@ -991,7 +995,10 @@ HTTP:
 {
   "mcpServers": {
     "heimdall": {
-      "url": "http://127.0.0.1:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-http-token>"
+      }
     }
   }
 }
@@ -1024,7 +1031,10 @@ HTTP:
 {
   "mcpServers": {
     "heimdall": {
-      "serverUrl": "http://127.0.0.1:45637/mcp"
+      "serverUrl": "http://127.0.0.1:45637/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-http-token>"
+      }
     }
   }
 }
@@ -1056,6 +1066,7 @@ The most reliable setup path in Cline is the MCP UI:
 4. Set the name to `heimdall`.
 5. Set the URL to `http://127.0.0.1:45637/mcp`.
 6. Choose `Streamable HTTP` as the transport.
+7. Add the header `Authorization: Bearer <your-mcp-http-token>`. If the UI cannot set custom headers, use stdio instead.
 
 Raw remote config:
 
@@ -1064,7 +1075,10 @@ Raw remote config:
   "mcpServers": {
     "heimdall": {
       "url": "http://127.0.0.1:45637/mcp",
-      "type": "streamableHttp"
+      "type": "streamableHttp",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-http-token>"
+      }
     }
   }
 }
@@ -1097,7 +1111,10 @@ Create `<project-root>/.continue/mcpServers/heimdall.json`:
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://127.0.0.1:45637/mcp"
+      "url": "http://127.0.0.1:45637/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-http-token>"
+      }
     }
   }
 }
@@ -1124,20 +1141,17 @@ Continue currently uses MCP only in Agent mode.
 
 #### Gemini CLI
 
-Add Heimdall over HTTP:
-
-```bash
-gemini mcp add -s user -t http heimdall http://127.0.0.1:45637/mcp
-```
-
-Manual config:
+Authenticated HTTP, if you need remote transport:
 
 ```json
 {
   "mcpServers": {
     "heimdall": {
       "url": "http://127.0.0.1:45637/mcp",
-      "type": "http"
+      "type": "http",
+      "headers": {
+        "Authorization": "Bearer <your-mcp-http-token>"
+      }
     }
   }
 }
@@ -1167,12 +1181,12 @@ Manual stdio config:
 
 #### Troubleshooting
 
-- If Claude Code or Gemini CLI reports a schema error for Heimdall over HTTP, add an explicit `"type": "http"`.
+- If Claude Code or Gemini CLI reports a schema error for Heimdall over HTTP, add an explicit `"type": "http"` and the `Authorization` header.
 - If Windsurf does not pick up the server, use `serverUrl` instead of `url`.
 - If Cline cannot connect, make sure the transport is `Streamable HTTP`, not SSE.
 - If Continue does not expose the tools, switch to Agent mode.
 - If the MCP server is running in Docker but the client is on another machine, replace `127.0.0.1` with the host machine's reachable IP or DNS name.
-- If bare `curl` requests to `http://127.0.0.1:45637/mcp` return `400`, that is normal for a healthy Streamable HTTP MCP endpoint.
+- If bare `curl` requests to `http://127.0.0.1:45637/mcp` return `401`, the auth gate is working. A healthy authenticated request still returns `400` unless it speaks MCP correctly.
 - For stdio setups, make sure `DATABASE_URL` points to the same Heimdall database the web app uses.
 
 ### Available Tools
@@ -1195,10 +1209,10 @@ Manual stdio config:
 | `verify_finding` | Run AI verification review for a finding |
 | `list_finding_events` | Get finding event history |
 | `comment_on_finding` | Add a note to a finding |
-| `apply_patch` | Mark the latest suggested patch as applied |
+| `apply_patch` | Mark the latest suggested diff as applied in Heimdall metadata |
 | `get_threat_model` | Get the STRIDE threat model (boundaries, surfaces, data flows) |
 | `update_threat_model` | Update a threat model field |
-| `get_patches` | Get all suggested patches for a scan as unified diffs |
+| `get_patches` | Get all suggested diffs for a scan as unified patches |
 | `update_finding_status` | Update finding status (open, confirmed, dismissed, false_positive, fixed) |
 | `update_finding_severity` | Update finding severity |
 | `create_issue` | Push a finding to GitHub, GitLab, or Bitbucket issues |

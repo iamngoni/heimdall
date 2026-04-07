@@ -9,6 +9,10 @@
 
 use std::sync::Arc;
 
+use axum::extract::{Request, State};
+use axum::http::{StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use log::{info, warn};
 use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
@@ -26,6 +30,29 @@ use heimdall::sse::ScanBroadcaster;
 use heimdall::state::AppState;
 use heimdall::templates;
 use heimdall::worker::ScanWorker;
+
+async fn require_http_auth(
+    State(expected_token): State<Arc<String>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let authorized = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value == format!("Bearer {}", expected_token.as_str()))
+        .unwrap_or(false);
+
+    if !authorized {
+        return (
+            StatusCode::UNAUTHORIZED,
+            "Missing or invalid MCP HTTP bearer token",
+        )
+            .into_response();
+    }
+
+    next.run(request).await
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -92,9 +119,19 @@ async fn main() -> anyhow::Result<()> {
     let transport = std::env::var("MCP_TRANSPORT").unwrap_or_default();
 
     if transport.eq_ignore_ascii_case("sse") || transport.eq_ignore_ascii_case("http") {
-        let bind = std::env::var("MCP_HOST").unwrap_or_else(|_| "0.0.0.0".into());
+        let bind = std::env::var("MCP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
         let port = std::env::var("MCP_PORT").unwrap_or_else(|_| "45637".into());
         let addr: std::net::SocketAddr = format!("{bind}:{port}").parse()?;
+        let auth_token = std::env::var("MCP_HTTP_AUTH_TOKEN")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "MCP_HTTP_AUTH_TOKEN must be set when MCP_TRANSPORT=http or MCP_TRANSPORT=sse"
+                )
+            })?;
+        let auth_token = Arc::new(auth_token);
 
         let ct = CancellationToken::new();
         let service: StreamableHttpService<HeimdallMcp, LocalSessionManager> =
@@ -111,10 +148,15 @@ async fn main() -> anyhow::Result<()> {
                 },
             );
 
-        let router = axum::Router::new().nest_service("/mcp", service);
+        let router = axum::Router::new().nest_service("/mcp", service).layer(
+            middleware::from_fn_with_state(Arc::clone(&auth_token), require_http_auth),
+        );
         let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
 
-        info!("Starting Heimdall MCP server over Streamable HTTP at {addr}/mcp");
+        if transport.eq_ignore_ascii_case("sse") {
+            warn!("MCP_TRANSPORT=sse is treated as Streamable HTTP for backward compatibility");
+        }
+        info!("Starting Heimdall MCP server over authenticated Streamable HTTP at {addr}/mcp");
         axum::serve(tcp_listener, router)
             .with_graceful_shutdown(async move {
                 tokio::signal::ctrl_c().await.ok();

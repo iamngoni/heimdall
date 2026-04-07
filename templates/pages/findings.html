@@ -276,7 +276,7 @@ function buildFindingMarkdown(el) {
         lines.push('');
     }
     if (d.findingPatch && d.findingPatch !== 'None') {
-        lines.push('**Suggested Fix:**');
+        lines.push('**Suggested Diff:**');
         lines.push('```diff');
         lines.push(d.findingPatch.trim());
         lines.push('```');

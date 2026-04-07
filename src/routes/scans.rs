@@ -50,23 +50,54 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     );
 }
 
-async fn get_scan(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
-    let scan_id = path.into_inner();
-    match state.db.get_scan_by_id(scan_id).await {
-        Ok(Some(scan)) => HttpResponse::Ok().json(ApiResponse::ok(scan)),
-        Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
+fn extract_user_id(req: &HttpRequest) -> Uuid {
+    req.extensions()
+        .get::<AuthenticatedUser>()
+        .map(|user| user.id)
+        .unwrap_or_else(Uuid::nil)
+}
+
+async fn load_owned_scan(
+    state: &AppState,
+    scan_id: Uuid,
+    user_id: Uuid,
+) -> Result<crate::models::db_models::Scan, HttpResponse> {
+    match state.db.get_scan_by_id_for_user(scan_id, user_id).await {
+        Ok(Some(scan)) => Ok(scan),
+        Ok(None) => Err(HttpResponse::NotFound().json(ApiResponse::<()>::error(
             404,
             format!("Scan '{scan_id}' not found"),
-        )),
-        Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-            500,
-            format!("Failed to fetch scan: {e}"),
-        )),
+        ))),
+        Err(error) => Err(
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch scan: {error}"),
+            )),
+        ),
     }
 }
 
-async fn get_scan_live(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn get_scan(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let scan_id = path.into_inner();
+    match load_owned_scan(&state, scan_id, extract_user_id(&req)).await {
+        Ok(scan) => HttpResponse::Ok().json(ApiResponse::ok(scan)),
+        Err(response) => response,
+    }
+}
+
+async fn get_scan_live(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let scan_id = path.into_inner();
+    if let Err(response) = load_owned_scan(&state, scan_id, extract_user_id(&req)).await {
+        return response;
+    }
     match build_scan_live_snapshot(&state.db, scan_id).await {
         Ok(Some(snapshot)) => HttpResponse::Ok().json(ApiResponse::ok(snapshot)),
         Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
@@ -80,23 +111,15 @@ async fn get_scan_live(state: web::Data<AppState>, path: web::Path<Uuid>) -> Htt
     }
 }
 
-async fn cancel_scan(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn cancel_scan(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let scan_id = path.into_inner();
-
-    let scan = match state.db.get_scan_by_id(scan_id).await {
-        Ok(Some(s)) => s,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(
-                404,
-                format!("Scan '{scan_id}' not found"),
-            ));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch scan: {e}"),
-            ));
-        }
+    let scan = match load_owned_scan(&state, scan_id, extract_user_id(&req)).await {
+        Ok(scan) => scan,
+        Err(response) => return response,
     };
 
     // Only allow cancelling scans that are still running
@@ -141,10 +164,14 @@ async fn cancel_scan(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpR
 
 async fn get_scan_findings(
     state: web::Data<AppState>,
+    req: HttpRequest,
     path: web::Path<Uuid>,
     query: web::Query<FindingsQuery>,
 ) -> HttpResponse {
     let scan_id = path.into_inner();
+    if let Err(response) = load_owned_scan(&state, scan_id, extract_user_id(&req)).await {
+        return response;
+    }
     let pagination = PaginationParams {
         page: query.page,
         per_page: query.per_page,
@@ -189,9 +216,17 @@ async fn get_scan_findings(
     }
 }
 
-async fn get_scan_threat_model(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn get_scan_threat_model(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let scan_id = path.into_inner();
-    match state.db.get_threat_model_by_scan(scan_id).await {
+    match state
+        .db
+        .get_threat_model_by_scan_for_user(scan_id, extract_user_id(&req))
+        .await
+    {
         Ok(Some(model)) => HttpResponse::Ok().json(ApiResponse::ok(model)),
         Ok(None) => HttpResponse::NotFound().json(ApiResponse::<()>::error(
             404,
@@ -204,8 +239,15 @@ async fn get_scan_threat_model(state: web::Data<AppState>, path: web::Path<Uuid>
     }
 }
 
-async fn get_scan_patches(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn get_scan_patches(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let scan_id = path.into_inner();
+    if let Err(response) = load_owned_scan(&state, scan_id, extract_user_id(&req)).await {
+        return response;
+    }
     match state.db.list_patches_by_scan(scan_id).await {
         Ok(patches) => HttpResponse::Ok().json(ApiResponse::ok(patches)),
         Err(e) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
@@ -566,8 +608,15 @@ fn activity_tone(status: Option<&str>, event_type: &str) -> &'static str {
     }
 }
 
-async fn scan_progress_stream(state: web::Data<AppState>, path: web::Path<Uuid>) -> HttpResponse {
+async fn scan_progress_stream(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
     let scan_id = path.into_inner();
+    if let Err(response) = load_owned_scan(&state, scan_id, extract_user_id(&req)).await {
+        return response;
+    }
     let db: Arc<DatabaseOperations> = Arc::clone(&state.db);
     let sse: Arc<ScanBroadcaster> = Arc::clone(&state.sse);
 
@@ -657,17 +706,9 @@ async fn create_all_issues(
         .expect("auth middleware ensures user exists");
 
     // Load scan and repo
-    let scan = match state.db.get_scan_by_id(scan_id).await {
-        Ok(Some(scan)) => scan,
-        Ok(None) => {
-            return HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "Scan not found"));
-        }
-        Err(e) => {
-            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                500,
-                format!("Failed to fetch scan: {e}"),
-            ));
-        }
+    let scan = match load_owned_scan(&state, scan_id, user.id).await {
+        Ok(scan) => scan,
+        Err(response) => return response,
     };
 
     let repo = match state.db.get_repo_by_id(scan.repo_id).await {

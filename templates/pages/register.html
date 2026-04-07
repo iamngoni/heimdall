@@ -238,7 +238,12 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
         if (res.ok && data.success) {
             window.location.href = '/';
         } else {
-            errorText.textContent = data.error || 'Registration failed';
+            const message = data && data.error
+                ? (typeof data.error === 'string'
+                    ? data.error
+                    : (data.error.message || 'Registration failed'))
+                : 'Registration failed';
+            errorText.textContent = message;
             errorEl.classList.remove('hidden');
         }
     } catch (err) {
