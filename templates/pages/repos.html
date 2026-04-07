@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const needle = search.value.trim().toLowerCase();
         document.querySelectorAll('.repo-row').forEach((row) => {
             const haystack = (row.dataset.search || '').toLowerCase();
-            row.hidden = needle.length > 0 && !haystack.includes(needle);
+            row.classList.toggle('hidden', needle.length > 0 && !haystack.includes(needle));
         });
     });
 });

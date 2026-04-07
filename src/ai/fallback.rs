@@ -20,8 +20,9 @@ struct ProviderEntry {
 }
 
 /// A `ModelProvider` that tries multiple providers in order.
-/// On retryable errors (429, 500, 502, 503, 529), it falls through to the next
-/// configured provider, rewriting the model field to match that provider.
+/// On fallback-eligible errors (auth/access failures, rate limits, provider
+/// outages, quota exhaustion), it falls through to the next configured
+/// provider, rewriting the model field to match that provider.
 pub struct FallbackProvider {
     providers: Vec<ProviderEntry>,
 }
@@ -48,22 +49,28 @@ impl FallbackProvider {
     }
 }
 
-/// Check if an error message indicates a retryable HTTP status.
+/// Check if an error message indicates a provider failure that should fall
+/// through to the next configured provider.
 /// Provider errors include the status code in their message, e.g.:
 ///   "Claude API error (429): rate_limit_error — ..."
 ///   "OpenAI API error (429): ..."
 fn is_retryable_error(err: &anyhow::Error) -> bool {
     let msg = format!("{err}");
     // Match status codes in parentheses from our provider error format
-    for code in ["(429)", "(500)", "(502)", "(503)", "(529)"] {
+    for code in [
+        "(401)", "(403)", "(429)", "(500)", "(502)", "(503)", "(529)",
+    ] {
         if msg.contains(code) {
             return true;
         }
     }
-    // Catch billing/quota errors — these mean the provider can't serve requests
-    // even though the HTTP status may be 400 or 403
+    // Catch auth/access and billing/quota errors — these mean the current
+    // provider cannot serve requests even if another one can.
     let lower = msg.to_ascii_lowercase();
-    if lower.contains("credit balance")
+    if lower.contains("authentication")
+        || lower.contains("forbidden")
+        || lower.contains("request not allowed")
+        || lower.contains("credit balance")
         || lower.contains("billing")
         || lower.contains("quota")
         || lower.contains("insufficient_quota")
@@ -238,7 +245,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn does_not_fallback_on_401() {
+    async fn falls_back_on_401() {
         let provider = FallbackProvider::new()
             .add(
                 Box::new(FailingProvider {
@@ -253,9 +260,28 @@ mod tests {
                 "model-b".into(),
             );
 
-        let result = provider.complete(test_request()).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("401"));
+        let result = provider.complete(test_request()).await.unwrap();
+        assert_eq!(result.content, "response from secondary");
+    }
+
+    #[tokio::test]
+    async fn falls_back_on_403() {
+        let provider = FallbackProvider::new()
+            .add(
+                Box::new(FailingProvider {
+                    name: "primary",
+                    error_msg: "Claude API error (403 Forbidden): forbidden — Request not allowed"
+                        .into(),
+                }),
+                "model-a".into(),
+            )
+            .add(
+                Box::new(SuccessProvider { name: "secondary" }),
+                "model-b".into(),
+            );
+
+        let result = provider.complete(test_request()).await.unwrap();
+        assert_eq!(result.content, "response from secondary");
     }
 
     #[tokio::test]
@@ -318,8 +344,11 @@ mod tests {
         assert!(is_retryable_error(&anyhow::anyhow!(
             "API error (529): overloaded"
         )));
-        assert!(!is_retryable_error(&anyhow::anyhow!(
+        assert!(is_retryable_error(&anyhow::anyhow!(
             "API error (401): unauthorized"
+        )));
+        assert!(is_retryable_error(&anyhow::anyhow!(
+            "API error (403 Forbidden): forbidden — Request not allowed"
         )));
         assert!(is_retryable_error(&anyhow::anyhow!("connection refused")));
         assert!(is_retryable_error(&anyhow::anyhow!("request timed out")));

@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use log::info;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::ai::ModelProvider;
@@ -259,19 +259,60 @@ impl TyrStage {
 
         // Parse the structured response
         let content = response.content.trim();
-        let json_str = if content.starts_with("```") {
-            content
-                .trim_start_matches("```json")
-                .trim_start_matches("```")
-                .trim_end_matches("```")
-                .trim()
-        } else {
-            content
-        };
+        let threat_model = match Self::parse_threat_model_output(content) {
+            Ok(model) => model,
+            Err(parse_error) => {
+                warn!(
+                    "[{}] Tyr initial parse failed: {}",
+                    self.scan_id, parse_error
+                );
+                self.record_event(
+                    Some("threat-model-repair"),
+                    "running",
+                    "Repairing malformed threat model response",
+                    Some("The model returned unstructured output. Tyr is asking for a strict JSON rewrite so the scan can continue."),
+                    Some(78),
+                    Some(&serde_json::json!({
+                        "parse_error": parse_error,
+                        "raw_preview": truncate_text(content, 800),
+                    })),
+                )
+                .await;
 
-        let threat_model: ThreatModelOutput = serde_json::from_str(json_str).map_err(|e| {
-            anyhow::anyhow!("Failed to parse Tyr threat model response: {e}\nRaw: {json_str}")
-        })?;
+                match self.repair_threat_model_output(content, "initial").await {
+                    Some(model) => {
+                        self.record_event(
+                            Some("threat-model-repair"),
+                            "completed",
+                            "Threat model response repaired",
+                            Some("Recovered the malformed model response by rewriting it into the required JSON schema."),
+                            Some(79),
+                            None,
+                        )
+                        .await;
+                        model
+                    }
+                    None => {
+                        warn!(
+                            "[{}] Tyr repair failed; continuing with empty structured model",
+                            self.scan_id
+                        );
+                        self.record_event(
+                            Some("threat-model-repair"),
+                            "failed",
+                            "Threat model response could not be repaired",
+                            Some("Tyr could not recover a valid structured threat model. The scan will continue with an empty model so later stages can still run."),
+                            Some(79),
+                            Some(&serde_json::json!({
+                                "raw_preview": truncate_text(content, 800),
+                            })),
+                        )
+                        .await;
+                        Self::empty_threat_model(&parse_error)
+                    }
+                }
+            }
+        };
 
         self.record_event(
             Some("threat-model-request"),
@@ -1382,18 +1423,7 @@ impl TyrStage {
             .await;
 
         // Parse the refined model
-        let content = response.content.trim();
-        let json_str = if content.starts_with("```") {
-            content
-                .trim_start_matches("```json")
-                .trim_start_matches("```")
-                .trim_end_matches("```")
-                .trim()
-        } else {
-            content
-        };
-
-        match serde_json::from_str::<ThreatModelOutput>(json_str) {
+        match Self::parse_threat_model_output(&response.content) {
             Ok(refined) => {
                 info!(
                     "[{}] Tyr refinement: {} boundaries, {} surfaces, {} data flows (was {}/{}/{})",
@@ -1407,13 +1437,139 @@ impl TyrStage {
                 );
                 Some(refined)
             }
-            Err(e) => {
+            Err(parse_error) => {
                 info!(
-                    "[{}] Tyr refinement parse failed (keeping initial model): {e}",
-                    self.scan_id
+                    "[{}] Tyr refinement parse failed; attempting repair: {}",
+                    self.scan_id, parse_error
+                );
+                match self
+                    .repair_threat_model_output(&response.content, "refinement")
+                    .await
+                {
+                    Some(refined) => {
+                        info!(
+                            "[{}] Tyr refinement repair succeeded: {} boundaries, {} surfaces, {} data flows",
+                            self.scan_id,
+                            refined.boundaries.len(),
+                            refined.surfaces.len(),
+                            refined.data_flows.len(),
+                        );
+                        Some(refined)
+                    }
+                    None => {
+                        info!(
+                            "[{}] Tyr refinement repair failed (keeping initial model)",
+                            self.scan_id
+                        );
+                        None
+                    }
+                }
+            }
+        }
+    }
+
+    async fn repair_threat_model_output(
+        &self,
+        raw: &str,
+        phase: &str,
+    ) -> Option<ThreatModelOutput> {
+        let prompt = format!(
+            "Convert the following threat model response into a JSON object using Heimdall's exact schema.\n\n\
+             Requirements:\n\
+             - Preserve only information present in the raw response.\n\
+             - Do not add markdown, headings, or commentary.\n\
+             - Use this exact schema:\n\
+               {{\n\
+                 \"summary\": string,\n\
+                 \"boundaries\": [{{\"name\": string, \"description\": string, \"from_zone\": string, \"to_zone\": string}}],\n\
+                 \"surfaces\": [{{\"name\": string, \"description\": string, \"endpoint\": string|null, \"file\": string|null, \"line\": number|null, \"risk_level\": \"critical\"|\"high\"|\"medium\"|\"low\"}}],\n\
+                 \"data_flows\": [{{\"name\": string, \"description\": string, \"source\": string, \"sink\": string, \"sensitive_data\": string}}]\n\
+               }}\n\
+             - If a field is unknown, use null for optional fields or an empty array when nothing is present.\n\
+             - Return ONLY the JSON object.\n\n\
+             Raw response:\n{}\n",
+            truncate_text(raw, 24_000)
+        );
+
+        let start = std::time::Instant::now();
+        let response = self
+            .ai
+            .complete(CompletionRequest {
+                model: self.default_model.clone(),
+                messages: vec![
+                    Message {
+                        role: "system".to_string(),
+                        content: TYR_JSON_REPAIR_PROMPT.to_string(),
+                    },
+                    Message {
+                        role: "user".to_string(),
+                        content: prompt,
+                    },
+                ],
+                tools: None,
+                max_tokens: Some(4096),
+                temperature: Some(0.0),
+            })
+            .await
+            .ok()?;
+        let duration = start.elapsed();
+
+        let metadata = serde_json::json!({ "phase": phase });
+        let _ = self
+            .db
+            .create_agent_tool_call(
+                self.scan_id,
+                "tyr",
+                "llm_json_repair",
+                Some(&response.provider),
+                Some(&response.model),
+                Some(&metadata),
+                None,
+                Some(sat_i32(response.usage.prompt_tokens.into())),
+                Some(sat_i32(response.usage.completion_tokens.into())),
+                Some(sat_i32(response.usage.total_tokens.into())),
+                Some(sat_i32_u128(duration.as_millis())),
+                None,
+            )
+            .await;
+
+        match Self::parse_threat_model_output(&response.content) {
+            Ok(model) => Some(model),
+            Err(error) => {
+                warn!(
+                    "[{}] Tyr {} repair parse failed: {}",
+                    self.scan_id, phase, error
                 );
                 None
             }
+        }
+    }
+
+    fn parse_threat_model_output(raw: &str) -> Result<ThreatModelOutput, String> {
+        let mut errors = Vec::new();
+
+        for candidate in json_parse_candidates(raw) {
+            match serde_json::from_str::<ThreatModelOutput>(&candidate) {
+                Ok(model) => return Ok(model),
+                Err(error) => errors.push(error.to_string()),
+            }
+        }
+
+        Err(errors
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| "No JSON object found in Tyr response".to_string()))
+    }
+
+    fn empty_threat_model(parse_error: &str) -> ThreatModelOutput {
+        ThreatModelOutput {
+            summary: format!(
+                "Heimdall continued without a structured Tyr threat model because the model response could not be parsed or repaired automatically. Parser error: {}",
+                parse_error
+            ),
+            boundaries: Vec::new(),
+            surfaces: Vec::new(),
+            data_flows: Vec::new(),
         }
     }
 
@@ -1658,9 +1814,100 @@ Quality bar:
 Return the COMPLETE refined model (all boundaries, surfaces, data_flows), not just deltas. \
 Use the same JSON schema as the initial model. Return ONLY the JSON object.";
 
+const TYR_JSON_REPAIR_PROMPT: &str = "\
+You repair malformed Heimdall Tyr outputs.
+
+Your job is to convert a raw threat-model response into the exact JSON schema Heimdall expects.
+- Output must be valid JSON.
+- Output must contain only the JSON object.
+- Do not invent facts not present in the raw response.
+- If optional location fields are unknown, use null.
+- If a section is missing, use an empty array.
+- Normalize risk_level to one of: critical, high, medium, low.";
+
+fn json_parse_candidates(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    let mut candidates = Vec::new();
+
+    if !trimmed.is_empty() {
+        candidates.push(trimmed.to_string());
+    }
+
+    if let Some(stripped) = strip_markdown_fences(trimmed) {
+        if !stripped.is_empty() && !candidates.iter().any(|candidate| candidate == stripped) {
+            candidates.push(stripped.to_string());
+        }
+    }
+
+    if let Some(extracted) = extract_first_json_object(trimmed) {
+        if !extracted.is_empty() && !candidates.iter().any(|candidate| candidate == extracted) {
+            candidates.push(extracted.to_string());
+        }
+    }
+
+    candidates
+}
+
+fn strip_markdown_fences(content: &str) -> Option<&str> {
+    let stripped = content.strip_prefix("```")?;
+    let stripped = stripped
+        .strip_prefix("json")
+        .or_else(|| stripped.strip_prefix("JSON"))
+        .unwrap_or(stripped);
+    Some(stripped.strip_suffix("```").unwrap_or(stripped).trim())
+}
+
+fn extract_first_json_object(content: &str) -> Option<&str> {
+    let mut start = None;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escape = false;
+
+    for (idx, ch) in content.char_indices() {
+        if in_string {
+            if escape {
+                escape = false;
+                continue;
+            }
+            match ch {
+                '\\' => escape = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                if depth == 0 {
+                    start = Some(idx);
+                }
+                depth += 1;
+            }
+            '}' => {
+                if depth == 0 {
+                    continue;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    let start = start?;
+                    return Some(&content[start..idx + ch.len_utf8()]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{TyrContextMode, is_context_limit_error, truncate_text};
+    use super::{
+        TyrContextMode, extract_first_json_object, is_context_limit_error, json_parse_candidates,
+        truncate_text,
+    };
 
     #[test]
     fn detects_context_limit_provider_errors() {
@@ -1685,5 +1932,35 @@ mod tests {
     fn truncate_text_adds_ellipsis_when_needed() {
         assert_eq!(truncate_text("short", 12), "short");
         assert_eq!(truncate_text("abcdefghij", 5), "abcd…");
+    }
+
+    #[test]
+    fn extracts_json_object_from_wrapped_content() {
+        let wrapped = "Analysis follows\n\n{\"summary\":\"ok\",\"boundaries\":[],\"surfaces\":[],\"data_flows\":[]}\n";
+        assert_eq!(
+            extract_first_json_object(wrapped),
+            Some("{\"summary\":\"ok\",\"boundaries\":[],\"surfaces\":[],\"data_flows\":[]}")
+        );
+    }
+
+    #[test]
+    fn json_parse_candidates_include_fenced_and_extracted_json() {
+        let raw = "## Report\n```json\n{\"summary\":\"ok\",\"boundaries\":[],\"surfaces\":[],\"data_flows\":[]}\n```\n";
+        let candidates = json_parse_candidates(raw);
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.contains("\"summary\":\"ok\""))
+        );
+    }
+
+    #[test]
+    fn parses_wrapped_threat_model_json() {
+        let raw = "Here is the model:\n\n{\"summary\":\"ok\",\"boundaries\":[],\"surfaces\":[],\"data_flows\":[]}";
+        let parsed = super::TyrStage::parse_threat_model_output(raw).unwrap();
+        assert_eq!(parsed.summary, "ok");
+        assert!(parsed.boundaries.is_empty());
+        assert!(parsed.surfaces.is_empty());
+        assert!(parsed.data_flows.is_empty());
     }
 }

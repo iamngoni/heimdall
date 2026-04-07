@@ -26,6 +26,8 @@ pub fn init_public(cfg: &mut web::ServiceConfig) {
 /// Protected pages — require a valid session (auth middleware wraps these).
 pub fn init_protected(cfg: &mut web::ServiceConfig) {
     cfg.route("/", web::get().to(dashboard_page))
+        .route("/dashboard", web::get().to(dashboard_page))
+        .route("/dashboard/", web::get().to(dashboard_page))
         .route("/repos", web::get().to(repos_page))
         .route("/repos/new", web::get().to(repo_new_page))
         .route("/repos/{id}", web::get().to(repo_detail_page))
