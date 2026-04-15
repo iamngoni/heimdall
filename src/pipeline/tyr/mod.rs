@@ -100,8 +100,11 @@ struct TyrContextBudgets {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThreatModelOutput {
     pub summary: String,
+    #[serde(default)]
     pub boundaries: Vec<TrustBoundary>,
+    #[serde(default)]
     pub surfaces: Vec<AttackSurface>,
+    #[serde(default)]
     pub data_flows: Vec<DataFlow>,
 }
 
@@ -1185,7 +1188,16 @@ impl TyrStage {
                      }}\n\
                    ]\n\
                  }}\n\n\
-                 Return ONLY the JSON object, no markdown fences, no commentary."
+                 Additional rules:\n\
+                 - The top-level object MUST contain all 4 keys: summary, boundaries, surfaces, data_flows.\n\
+                 - If you have no entries for boundaries, surfaces, or data_flows, use [] for that key.\n\
+                 - Do NOT rename keys. Forbidden alternatives include: trust_boundaries, attack_surfaces, \
+                   security_concerns, architectural_improvements, code_review_notes, and security_summary.\n\
+                 - Do NOT add any extra top-level keys.\n\
+                 - Do NOT emit markdown fences, headings, prose, or explanation.\n\
+                 - line must be a number or null.\n\
+                 - risk_level must be exactly one of: critical, high, medium, low.\n\n\
+                 Return ONLY the JSON object."
             ),
             budgets.total_chars,
         );
@@ -1208,7 +1220,7 @@ impl TyrStage {
             ],
             tools: None,
             max_tokens: Some(8192),
-            temperature: Some(0.2),
+            temperature: Some(0.0),
         }
     }
 
@@ -1362,7 +1374,15 @@ impl TyrStage {
                 connectivity data.\n\
              4. Remove any surfaces you now believe are false positives.\n\
              5. Return the COMPLETE refined threat model (not just changes).\n\n\
-             Return ONLY the JSON object, no markdown fences, no commentary.",
+             Response contract:\n\
+             - Return a SINGLE JSON object and nothing else.\n\
+             - The top-level object MUST contain exactly these keys: \
+               summary, boundaries, surfaces, data_flows.\n\
+             - Do NOT use alternate keys such as trust_boundaries, attack_surfaces, \
+               security_concerns, architectural_improvements, or code_review_notes.\n\
+             - If a section has no entries, return an empty array for that section.\n\
+             - Do not wrap the JSON in markdown fences.\n\
+             - Do not add explanatory text before or after the JSON.",
             budgets.total_chars,
         );
 
@@ -1549,9 +1569,18 @@ impl TyrStage {
         let mut errors = Vec::new();
 
         for candidate in json_parse_candidates(raw) {
-            match serde_json::from_str::<ThreatModelOutput>(&candidate) {
-                Ok(model) => return Ok(model),
-                Err(error) => errors.push(error.to_string()),
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&candidate) {
+                match Self::normalize_threat_model_value(value.clone()) {
+                    Ok(model) => return Ok(model),
+                    Err(error) => errors.push(error),
+                }
+
+                match serde_json::from_value::<ThreatModelOutput>(value) {
+                    Ok(model) => return Ok(model),
+                    Err(error) => errors.push(error.to_string()),
+                }
+            } else if let Err(error) = serde_json::from_str::<ThreatModelOutput>(&candidate) {
+                errors.push(error.to_string());
             }
         }
 
@@ -1571,6 +1600,43 @@ impl TyrStage {
             surfaces: Vec::new(),
             data_flows: Vec::new(),
         }
+    }
+
+    fn normalize_threat_model_value(value: serde_json::Value) -> Result<ThreatModelOutput, String> {
+        let object = value
+            .as_object()
+            .ok_or_else(|| "Threat model output was JSON but not an object".to_string())?;
+
+        let summary = first_string(
+            object,
+            &["summary", "overview", "description", "analysis_summary"],
+        )
+        .unwrap_or_else(|| "Threat model synthesized from non-standard provider output.".into());
+
+        let boundaries = first_array(object, &["boundaries", "trust_boundaries"])
+            .map(|values| normalize_boundaries(values))
+            .transpose()?
+            .unwrap_or_default();
+
+        let surfaces = first_array(
+            object,
+            &["surfaces", "attack_surfaces", "security_concerns"],
+        )
+        .map(|values| normalize_surfaces(values))
+        .transpose()?
+        .unwrap_or_default();
+
+        let data_flows = first_array(object, &["data_flows", "dataflows", "sensitive_data_flows"])
+            .map(|values| normalize_data_flows(values))
+            .transpose()?
+            .unwrap_or_default();
+
+        Ok(ThreatModelOutput {
+            summary,
+            boundaries,
+            surfaces,
+            data_flows,
+        })
     }
 
     async fn record_event(
@@ -1715,6 +1781,196 @@ fn truncate_text(value: &str, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
+fn first_array<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Option<&'a Vec<serde_json::Value>> {
+    keys.iter().find_map(|key| object.get(*key)?.as_array())
+}
+
+fn first_string(
+    object: &serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value_to_string(object.get(*key)?))
+}
+
+fn value_to_string(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        serde_json::Value::Bool(value) => Some(value.to_string()),
+        serde_json::Value::Array(values) => {
+            let joined = values
+                .iter()
+                .filter_map(value_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            if joined.is_empty() {
+                None
+            } else {
+                Some(joined)
+            }
+        }
+        serde_json::Value::Object(_) => None,
+    }
+}
+
+fn value_to_usize(value: &serde_json::Value) -> Option<usize> {
+    match value {
+        serde_json::Value::Number(value) => value.as_u64().map(|value| value as usize),
+        serde_json::Value::String(value) => value.trim().parse::<usize>().ok(),
+        _ => None,
+    }
+}
+
+fn normalize_risk_level(value: Option<String>) -> String {
+    match value
+        .unwrap_or_else(|| "medium".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "critical" => "critical".to_string(),
+        "high" => "high".to_string(),
+        "medium" => "medium".to_string(),
+        "low" => "low".to_string(),
+        other if other.contains("critical") => "critical".to_string(),
+        other if other.contains("high") => "high".to_string(),
+        other if other.contains("low") => "low".to_string(),
+        _ => "medium".to_string(),
+    }
+}
+
+fn normalize_boundaries(values: &[serde_json::Value]) -> Result<Vec<TrustBoundary>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(TrustBoundary {
+                name: text.trim().to_string(),
+                description: text.trim().to_string(),
+                from_zone: "unknown".to_string(),
+                to_zone: "unknown".to_string(),
+            }),
+            serde_json::Value::Object(object) => {
+                let from_zone = first_string(
+                    object,
+                    &["from_zone", "source", "from", "origin", "trust_from"],
+                )
+                .unwrap_or_else(|| "unknown".to_string());
+                let to_zone =
+                    first_string(object, &["to_zone", "sink", "to", "target", "trust_to"])
+                        .unwrap_or_else(|| "unknown".to_string());
+                let description = first_string(object, &["description", "detail"])
+                    .unwrap_or_else(|| format!("{from_zone} -> {to_zone}"));
+                let name = first_string(object, &["name", "title", "boundary"])
+                    .unwrap_or_else(|| description.clone());
+
+                Ok(TrustBoundary {
+                    name,
+                    description,
+                    from_zone,
+                    to_zone,
+                })
+            }
+            _ => Err("Unsupported trust boundary entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
+fn normalize_surfaces(values: &[serde_json::Value]) -> Result<Vec<AttackSurface>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(AttackSurface {
+                name: text.trim().to_string(),
+                description: text.trim().to_string(),
+                endpoint: None,
+                file: None,
+                line: None,
+                risk_level: "medium".to_string(),
+            }),
+            serde_json::Value::Object(object) => {
+                let description = first_string(
+                    object,
+                    &["description", "detail", "recommendation", "notes"],
+                )
+                .unwrap_or_else(|| "Threat surface identified by provider output.".to_string());
+                let name = first_string(object, &["name", "concern", "title", "issue"])
+                    .unwrap_or_else(|| description.clone());
+                let endpoint = first_string(object, &["endpoint", "path", "route", "url"]);
+                let file = first_string(object, &["file", "location", "source_file"]);
+                let line = ["line", "line_number"]
+                    .iter()
+                    .find_map(|key| object.get(*key).and_then(value_to_usize));
+                let risk_level =
+                    normalize_risk_level(first_string(object, &["risk_level", "severity", "risk"]));
+
+                Ok(AttackSurface {
+                    name,
+                    description,
+                    endpoint,
+                    file,
+                    line,
+                    risk_level,
+                })
+            }
+            _ => Err("Unsupported attack surface entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
+fn normalize_data_flows(values: &[serde_json::Value]) -> Result<Vec<DataFlow>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(DataFlow {
+                name: text.trim().to_string(),
+                description: text.trim().to_string(),
+                source: "unknown".to_string(),
+                sink: "unknown".to_string(),
+                sensitive_data: "unknown".to_string(),
+            }),
+            serde_json::Value::Object(object) => {
+                let source = first_string(object, &["source", "from", "origin"])
+                    .unwrap_or_else(|| "unknown".to_string());
+                let sink = first_string(object, &["sink", "to", "target"])
+                    .unwrap_or_else(|| "unknown".to_string());
+                let sensitive_data =
+                    first_string(object, &["sensitive_data", "data", "data_type", "kind"])
+                        .unwrap_or_else(|| "unknown".to_string());
+                let description = first_string(object, &["description", "detail"])
+                    .unwrap_or_else(|| format!("{source} -> {sink}"));
+                let name = first_string(object, &["name", "title"]).unwrap_or_else(|| {
+                    if sensitive_data == "unknown" {
+                        description.clone()
+                    } else {
+                        sensitive_data.clone()
+                    }
+                });
+
+                Ok(DataFlow {
+                    name,
+                    description,
+                    source,
+                    sink,
+                    sensitive_data,
+                })
+            }
+            _ => Err("Unsupported data flow entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
 /// Internal struct for Phase 1 reconnaissance results.
 struct ReconOutput {
     file_count: usize,
@@ -1787,7 +2043,15 @@ You have been given detailed reconnaissance data about the codebase including:
   not \"potential injection vulnerabilities\"
 - Every surface must have a risk_level reflecting real exploitability, not theoretical risk
 - Aim for completeness — missing a real attack surface is worse than including a low-risk one
-- If the codebase has strong security controls, acknowledge them in the summary";
+- If the codebase has strong security controls, acknowledge them in the summary
+
+## Output Contract
+- Output must be a SINGLE raw JSON object
+- The top-level keys must be exactly: summary, boundaries, surfaces, data_flows
+- boundaries, surfaces, and data_flows must always be present, even when empty
+- Do NOT use alternate keys such as trust_boundaries, attack_surfaces, security_concerns, architectural_improvements, or code_review_notes
+- Do NOT add markdown, headings, or commentary before or after the JSON
+- risk_level must be exactly one of: critical, high, medium, low";
 
 const TYR_REFINEMENT_PROMPT: &str = "\
 You are Tyr, the threat model engine of Heimdall security scanner, in REFINEMENT mode. \
@@ -1812,7 +2076,10 @@ Quality bar:
 - risk_level should reflect actual exploitability: connected + exposed = higher risk
 
 Return the COMPLETE refined model (all boundaries, surfaces, data_flows), not just deltas. \
-Use the same JSON schema as the initial model. Return ONLY the JSON object.";
+Use the same JSON schema as the initial model. \
+Do NOT use alternate keys such as trust_boundaries, attack_surfaces, security_concerns, architectural_improvements, or code_review_notes. \
+boundaries, surfaces, and data_flows must always be present, even when empty. \
+Return ONLY the JSON object.";
 
 const TYR_JSON_REPAIR_PROMPT: &str = "\
 You repair malformed Heimdall Tyr outputs.
@@ -1979,5 +2246,49 @@ mod tests {
                 .contains("continued without a structured Tyr threat model")
         );
         assert!(fallback.summary.contains(&parse_error));
+    }
+
+    #[test]
+    fn parses_summary_only_json_with_missing_sections() {
+        let raw = r#"{"summary":"ok"}"#;
+        let parsed = super::TyrStage::parse_threat_model_output(raw).unwrap();
+
+        assert_eq!(parsed.summary, "ok");
+        assert!(parsed.boundaries.is_empty());
+        assert!(parsed.surfaces.is_empty());
+        assert!(parsed.data_flows.is_empty());
+    }
+
+    #[test]
+    fn normalizes_security_concerns_into_surfaces() {
+        let raw = r#"{
+            "summary": "backend service",
+            "security_concerns": [
+                {
+                    "concern": "SQL Injection Vulnerabilities",
+                    "description": "Unsanitized SQL string construction could be exploitable.",
+                    "severity": "High",
+                    "recommendation": "Use parameterized queries."
+                }
+            ],
+            "trust_boundaries": [
+                {
+                    "name": "Browser to API",
+                    "description": "User-controlled traffic enters the backend.",
+                    "source": "browser",
+                    "sink": "api"
+                }
+            ]
+        }"#;
+        let parsed = super::TyrStage::parse_threat_model_output(raw).unwrap();
+
+        assert_eq!(parsed.summary, "backend service");
+        assert_eq!(parsed.boundaries.len(), 1);
+        assert_eq!(parsed.boundaries[0].from_zone, "browser");
+        assert_eq!(parsed.boundaries[0].to_zone, "api");
+        assert_eq!(parsed.surfaces.len(), 1);
+        assert_eq!(parsed.surfaces[0].name, "SQL Injection Vulnerabilities");
+        assert_eq!(parsed.surfaces[0].risk_level, "high");
+        assert!(parsed.data_flows.is_empty());
     }
 }
