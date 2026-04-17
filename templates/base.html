@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/static/css/animations.css">
     <link rel="icon" href="data:,">
 </head>
-<body class="h-full bg-gray-900 text-gray-100 antialiased">
+<body class="h-full bg-white font-sans text-ink-900 antialiased">
     <div id="heimdall-floating-layer"
          class="pointer-events-none fixed inset-0 z-[80]">
     </div>
@@ -241,11 +241,12 @@
             {% block content %}{% endblock %}
         </main>
 
-        <footer class="border-t border-gray-800 mt-16">
-            <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-                <p class="text-center text-sm text-gray-500">
-                    Heimdall &mdash; Agentic Code Security Scanner &middot;
-                    <span class="text-gray-600">&copy; 2026 Codecraft Solutions ZA</span>
+        <footer class="mt-24 border-t border-ink-200">
+            <div class="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+                <p class="text-center text-xs tracking-wide text-ink-500">
+                    Heimdall &mdash; Agentic Code Security Scanner
+                    <span class="mx-2 text-ink-300">&middot;</span>
+                    <span class="text-ink-400">&copy; 2026 Codecraft Solutions ZA</span>
                 </p>
             </div>
         </footer>

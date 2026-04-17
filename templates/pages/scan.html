@@ -12,55 +12,60 @@
      data-scan-live="{{ 'true' if scan.is_live else 'false' }}"
      data-live-url="/api/scans/{{ scan.id }}/live"
      data-stream-url="/api/scans/{{ scan.id }}/progress/stream"
-     class="min-h-screen bg-[#f5f7fa] text-slate-900">
+     class="min-h-screen bg-white text-ink-900">
     <div class="flex min-h-screen">
         {% include "partials/app_sidebar.html" %}
 
         <div class="flex min-h-screen min-w-0 flex-1 flex-col">
             {% include "partials/app_topbar.html" %}
 
-            <main class="flex-1 overflow-hidden px-7 py-6">
-                <div class="space-y-6">
-                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div class="max-w-4xl">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
-                                    {{ repo.name }}
-                                </span>
-                                <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                                    {{ scan.scan_type|replace("_", " ") }}
-                                </span>
-                            </div>
+            <main class="flex-1 overflow-hidden px-10 py-16">
+                <div class="mx-auto max-w-6xl space-y-16">
 
-                            <h1 class="mt-3 text-2xl font-bold tracking-tight text-slate-900">Scan Details</h1>
-                            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
-                                <span class="font-mono text-slate-600">{{ scan.id }}</span>
+                    {# ── Header ── #}
+                    <header class="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+                        <div class="max-w-3xl">
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                                <span class="font-mono uppercase tracking-[0.16em] text-ink-900">{{ repo.name }}</span>
+                                <span class="text-ink-300">·</span>
+                                <span class="text-ink-500">{{ scan.scan_type|replace("_", " ") }}</span>
+                            </div>
+                            <h1 class="mt-4 font-serif text-5xl font-normal leading-[1.05] tracking-tightest text-ink-900">
+                                Scan Details
+                            </h1>
+                            <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-xs text-ink-500">
+                                <span class="text-ink-700">{{ scan.id }}</span>
+                                <span class="text-ink-300">·</span>
                                 <span>Updated {{ scan.updated_at }}</span>
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-6 text-sm">
                             <span id="scan-status-pill"
                                   data-status="{{ scan.status }}"
-                                  class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold
-                                      {{ 'bg-emerald-50 text-emerald-700' if scan.status == 'completed' else
-                                         'bg-amber-50 text-amber-700' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'verifying', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
-                                         'bg-rose-50 text-rose-700' if scan.status == 'failed' else
-                                         'bg-orange-50 text-orange-700' if scan.status == 'cancelled' else
-                                         'bg-slate-100 text-slate-700' }}">
+                                  class="inline-flex items-center gap-2
+                                      {{ 'text-ink-900' if scan.status == 'completed' else
+                                         'text-ink-900' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'verifying', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
+                                         'text-red-700' if scan.status == 'failed' else
+                                         'text-ink-500' }}">
+                                <span class="h-1.5 w-1.5 rounded-full
+                                      {{ 'bg-ink-900' if scan.status == 'completed' else
+                                         'bg-ink-900 animate-heimdall-pulse' if scan.is_live else
+                                         'bg-red-700' if scan.status == 'failed' else
+                                         'bg-ink-400' }}"></span>
                                 {{ scan.status_label }}
                             </span>
                             {% if scan.is_live %}
                             <button id="cancel-scan-btn"
                                     onclick="HeimdallScanPage.cancelScan('{{ scan.id }}', this)"
-                                    class="inline-flex items-center rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50">
+                                    class="border-b border-transparent pb-1 text-red-700 transition hover:border-red-700">
                                 Cancel Scan
                             </button>
                             {% endif %}
                             {% if scan.status == "failed" %}
                             <button id="retry-scan-btn"
                                     onclick="HeimdallScanPage.retryScan('{{ repo.id }}', this)"
-                                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+                                    class="inline-flex items-center gap-2 border-b border-ink-900 pb-1 font-medium text-ink-900 transition hover:border-ink-400">
                                 <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
                                 </svg>
@@ -68,30 +73,23 @@
                             </button>
                             {% endif %}
                         </div>
-                    </div>
+                    </header>
 
+                    {# ── Live panel ── #}
                     <section id="scan-live-panel"
-                             class="overflow-hidden rounded-2xl border px-5 py-4
-                                {{ 'border-blue-200 bg-blue-50' if scan.is_live else
-                                   'border-emerald-200 bg-emerald-50' if scan.status == 'completed' else
-                                   'border-rose-200 bg-rose-50' if scan.status == 'failed' else
-                                   'border-slate-200 bg-slate-100' }}">
-                        <div class="flex items-start gap-3">
+                             class="border-y border-ink-200 py-6">
+                        <div class="flex items-start gap-4">
                             <div id="scan-live-indicator"
-                                 class="mt-1 h-2.5 w-2.5 rounded-full
-                                    {{ 'animate-pulse bg-blue-500' if scan.is_live else
-                                       'bg-emerald-500' if scan.status == 'completed' else
-                                       'bg-rose-500' if scan.status == 'failed' else
-                                       'bg-slate-400' }}">
+                                 class="mt-2 h-1.5 w-1.5 rounded-full
+                                    {{ 'animate-heimdall-pulse bg-ink-900' if scan.is_live else
+                                       'bg-ink-900' if scan.status == 'completed' else
+                                       'bg-red-700' if scan.status == 'failed' else
+                                       'bg-ink-400' }}">
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                     <p id="scan-live-title"
-                                       class="text-sm font-semibold
-                                          {{ 'text-blue-900' if scan.is_live else
-                                             'text-emerald-900' if scan.status == 'completed' else
-                                             'text-rose-900' if scan.status == 'failed' else
-                                             'text-slate-900' }}">
+                                       class="text-base text-ink-900">
                                         {% if scan.is_live %}
                                         {{ current_task.title or "Live execution" }}
                                         {% elif scan.status == "completed" %}
@@ -103,21 +101,13 @@
                                         {% endif %}
                                     </p>
                                     <p id="scan-live-meta"
-                                       class="text-xs
-                                          {{ 'text-blue-600' if scan.is_live else
-                                             'text-emerald-600' if scan.status == 'completed' else
-                                             'text-rose-600' if scan.status == 'failed' else
-                                             'text-slate-500' }}">
+                                       class="font-mono text-xs text-ink-500">
                                         Last updated {{ scan.updated_at }}
                                     </p>
                                 </div>
                                 <p id="scan-live-message"
                                    style="word-break:break-all;overflow-wrap:anywhere"
-                                   class="mt-1 text-sm
-                                      {{ 'text-blue-700' if scan.is_live else
-                                         'text-emerald-700' if scan.status == 'completed' else
-                                         'text-rose-700' if scan.status == 'failed' else
-                                         'text-slate-600' }}">
+                                   class="mt-2 text-sm leading-6 text-ink-600">
                                     {% if scan.is_live %}
                                     {{ current_task.detail or "Reconciling persisted execution telemetry with the live worker stream." }}
                                     {% elif scan.status == "completed" %}
@@ -132,103 +122,89 @@
                         </div>
                     </section>
 
-                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        <div class="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">Critical</p>
-                            <p id="scan-count-critical" class="mt-3 text-3xl font-bold tracking-tight text-rose-700">{{ scan.critical_count }}</p>
+                    {# ── Severity stat row ── #}
+                    <section class="grid gap-10 sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-ink-200">
+                        <div class="xl:pr-10">
+                            <p class="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-red-700">
+                                <span class="h-1.5 w-1.5 rounded-full bg-red-700"></span>Critical
+                            </p>
+                            <p id="scan-count-critical" class="mt-4 font-serif text-5xl font-normal tracking-tightest text-red-700">{{ scan.critical_count }}</p>
                         </div>
-                        <div class="rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700">High</p>
-                            <p id="scan-count-high" class="mt-3 text-3xl font-bold tracking-tight text-orange-700">{{ scan.high_count }}</p>
+                        <div class="xl:px-10">
+                            <p class="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-amber-700">
+                                <span class="h-1.5 w-1.5 rounded-full bg-amber-700"></span>High
+                            </p>
+                            <p id="scan-count-high" class="mt-4 font-serif text-5xl font-normal tracking-tightest text-amber-700">{{ scan.high_count }}</p>
                         </div>
-                        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Medium</p>
-                            <p id="scan-count-medium" class="mt-3 text-3xl font-bold tracking-tight text-amber-700">{{ scan.medium_count }}</p>
+                        <div class="xl:px-10">
+                            <p class="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-900">
+                                <span class="h-1.5 w-1.5 rounded-full bg-ink-900"></span>Medium
+                            </p>
+                            <p id="scan-count-medium" class="mt-4 font-serif text-5xl font-normal tracking-tightest text-ink-900">{{ scan.medium_count }}</p>
                         </div>
-                        <div class="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Low</p>
-                            <p id="scan-count-low" class="mt-3 text-3xl font-bold tracking-tight text-blue-700">{{ scan.low_count }}</p>
+                        <div class="xl:pl-10">
+                            <p class="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-500">
+                                <span class="h-1.5 w-1.5 rounded-full bg-ink-500"></span>Low
+                            </p>
+                            <p id="scan-count-low" class="mt-4 font-serif text-5xl font-normal tracking-tightest text-ink-500">{{ scan.low_count }}</p>
                         </div>
-                    </div>
+                    </section>
 
-                    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_360px]">
-                        <div class="space-y-6">
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div class="flex items-center justify-between gap-4">
+                    {# ── Pipeline + Log + Rail ── #}
+                    <div class="grid gap-16 xl:grid-cols-[minmax(0,1.45fr)_320px]">
+                        <div class="space-y-16">
+                            <section>
+                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
                                     <div>
-                                        <h2 class="text-sm font-semibold text-slate-900">Pipeline Stages</h2>
-                                        <p class="mt-1 text-sm text-slate-500">Canonical scan stages with the latest persisted status for each stage.</p>
+                                        <p class="section-num">01 · Pipeline Stages</p>
+                                        <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Execution graph</h2>
+                                        <p class="mt-2 text-sm text-ink-500">Canonical scan stages with the latest persisted status.</p>
                                     </div>
-                                    <p class="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">Execution graph</p>
                                 </div>
 
-                                <div id="scan-stage-list" class="mt-4 space-y-3">
+                                <ol id="scan-stage-list" class="mt-4 divide-y divide-ink-200">
                                     {% for stage in stages %}
-                                    <div data-stage-row="{{ stage.stage }}"
-                                         data-status="{{ stage.status }}"
-                                         class="overflow-hidden rounded-xl border border-slate-200 px-4 py-4">
-                                        <div class="flex items-start justify-between gap-4">
-                                            <div class="flex min-w-0 items-start gap-3">
-                                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full
-                                                    {{ 'bg-emerald-50 text-emerald-600' if stage.status == 'completed' else
-                                                       'bg-blue-50 text-blue-600' if stage.status == 'running' else
-                                                       'bg-rose-50 text-rose-600' if stage.status == 'failed' else
-                                                       'bg-slate-100 text-slate-400' }}">
-                                                    {% if stage.status == "completed" %}
-                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5l3 3 7-7" />
-                                                    </svg>
-                                                    {% elif stage.status == "running" %}
-                                                    <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                                                        <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                        <path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 018.66 5H17a1 1 0 000 2h6a1 1 0 001-1V2a1 1 0 10-2 0v2.05A12 12 0 0012 0v2z"></path>
-                                                    </svg>
-                                                    {% elif stage.status == "failed" %}
-                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" />
-                                                    </svg>
-                                                    {% else %}
-                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
-                                                        <circle cx="10" cy="10" r="6"></circle>
-                                                    </svg>
-                                                    {% endif %}
-                                                </span>
-
-                                                <div class="min-w-0">
-                                                    <div class="flex flex-wrap items-center gap-2">
-                                                        <p class="text-sm font-semibold text-slate-900">{{ stage.label }}</p>
-                                                        {% if stage.attempt > 1 %}
-                                                        <span class="text-xs font-medium text-slate-400">Attempt {{ stage.attempt }}</span>
-                                                        {% endif %}
-                                                    </div>
-                                                    <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{{ stage.status|replace("_", " ") }}</p>
-                                                    {% if stage.timestamp %}
-                                                    <p class="mt-2 text-sm text-slate-500">{{ stage.timestamp }}</p>
-                                                    {% endif %}
-                                                    {% if stage.error %}
-                                                    <p class="mt-2 text-sm text-rose-600" style="word-break:break-all;overflow-wrap:anywhere">{{ stage.error }}</p>
-                                                    {% endif %}
-                                                </div>
+                                    <li data-stage-row="{{ stage.stage }}"
+                                        data-status="{{ stage.status }}"
+                                        class="grid grid-cols-[56px_1fr_auto] items-baseline gap-5 py-5">
+                                        <span class="font-mono text-[11px] tracking-[0.18em] text-ink-400">{{ "%02d"|format(loop.index) }}</span>
+                                        <div class="min-w-0">
+                                            <div class="flex flex-wrap items-center gap-3">
+                                                <p class="text-sm text-ink-900">{{ stage.label }}</p>
+                                                {% if stage.attempt > 1 %}
+                                                <span class="font-mono text-[11px] text-ink-400">Attempt {{ stage.attempt }}</span>
+                                                {% endif %}
                                             </div>
-
-                                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold
-                                                {{ 'bg-emerald-50 text-emerald-700' if stage.status == 'completed' else
-                                                   'bg-blue-50 text-blue-700' if stage.status == 'running' else
-                                                   'bg-rose-50 text-rose-700' if stage.status == 'failed' else
-                                                   'bg-slate-100 text-slate-700' }}">
-                                                {{ stage.status|replace("_", " ")|title }}
-                                            </span>
+                                            {% if stage.timestamp %}
+                                            <p class="mt-2 font-mono text-xs text-ink-500">{{ stage.timestamp }}</p>
+                                            {% endif %}
+                                            {% if stage.error %}
+                                            <p class="mt-2 text-sm text-red-700" style="word-break:break-all;overflow-wrap:anywhere">{{ stage.error }}</p>
+                                            {% endif %}
                                         </div>
-                                    </div>
+                                        <span class="inline-flex items-center gap-2 text-xs capitalize
+                                            {{ 'text-ink-900' if stage.status == 'completed' else
+                                               'text-ink-900' if stage.status == 'running' else
+                                               'text-red-700' if stage.status == 'failed' else
+                                               'text-ink-500' }}">
+                                            <span class="h-1.5 w-1.5 rounded-full
+                                                {{ 'bg-ink-900' if stage.status == 'completed' else
+                                                   'bg-ink-900 animate-heimdall-pulse' if stage.status == 'running' else
+                                                   'bg-red-700' if stage.status == 'failed' else
+                                                   'bg-ink-400' }}"></span>
+                                            {{ stage.status|replace("_", " ") }}
+                                        </span>
+                                    </li>
                                     {% endfor %}
-                                </div>
+                                </ol>
                             </section>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div class="flex items-center justify-between gap-4">
+                            <section>
+                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
                                     <div>
-                                        <h2 class="text-sm font-semibold text-slate-900">Execution Log</h2>
-                                        <p id="scan-activity-state" class="mt-1 text-sm text-slate-500">
+                                        <p class="section-num">02 · Execution Log</p>
+                                        <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Persisted events</h2>
+                                        <p id="scan-activity-state" class="mt-2 text-sm text-ink-500">
                                             {% if scan.is_live %}
                                             Reconciling persisted execution telemetry and live worker events.
                                             {% else %}
@@ -236,26 +212,24 @@
                                             {% endif %}
                                         </p>
                                     </div>
-                                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Persisted events</span>
                                 </div>
 
-                                <ol id="scan-activity-feed" class="mt-4 space-y-3">
+                                <ol id="scan-activity-feed" class="divide-y divide-ink-200">
                                     {% for activity in activities %}
-                                    <li data-activity-key="{{ activity.key }}"
-                                        class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                                    <li data-activity-key="{{ activity.key }}" class="py-4">
                                         <div class="flex items-start gap-3">
-                                            <span class="mt-1 h-2.5 w-2.5 rounded-full
-                                                {{ 'bg-emerald-500' if activity.tone == 'success' else
-                                                   'bg-amber-500' if activity.tone == 'warning' else
-                                                   'bg-blue-500' if activity.tone == 'active' else
-                                                   'bg-slate-400' }}">
+                                            <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full
+                                                {{ 'bg-ink-900' if activity.tone == 'success' else
+                                                   'bg-amber-700' if activity.tone == 'warning' else
+                                                   'bg-ink-900' if activity.tone == 'active' else
+                                                   'bg-ink-400' }}">
                                             </span>
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                                                    <p class="text-sm font-semibold text-slate-900">{{ activity.title }}</p>
-                                                    <p class="text-xs text-slate-400">{{ activity.timestamp }}</p>
+                                                    <p class="text-sm text-ink-900">{{ activity.title }}</p>
+                                                    <p class="font-mono text-[11px] text-ink-400">{{ activity.timestamp }}</p>
                                                 </div>
-                                                <p class="mt-1 break-all text-sm text-slate-500">{{ activity.detail }}</p>
+                                                <p class="mt-1 break-all text-sm text-ink-500">{{ activity.detail }}</p>
                                             </div>
                                         </div>
                                     </li>
@@ -264,110 +238,111 @@
                             </section>
                         </div>
 
-                        <aside class="space-y-6">
-                            <section id="scan-current-task" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div>
-                                        <h2 class="text-sm font-semibold text-slate-900">Current Operation</h2>
-                                        <p class="mt-1 text-sm text-slate-500">The most recent running task inside the pipeline.</p>
+                        <aside class="space-y-16">
+                            <section id="scan-current-task">
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">Current Operation</p>
+                                    <div class="mt-3 flex items-center justify-between gap-3">
+                                        <h2 class="text-sm text-ink-900">Live task</h2>
+                                        <span id="scan-current-task-stage"
+                                              class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em]
+                                              {{ 'text-ink-900' if current_task.stage else 'text-ink-400' }}">
+                                            <span class="h-1 w-1 rounded-full
+                                                {{ 'bg-ink-900 animate-heimdall-pulse' if current_task.stage else 'bg-ink-300' }}"></span>
+                                            {{ current_task.stage|replace("_", " ") if current_task.stage else "Idle" }}
+                                        </span>
                                     </div>
-                                    {% if current_task.stage %}
-                                    <span id="scan-current-task-stage"
-                                          class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                        {{ current_task.stage|replace("_", " ") }}
-                                    </span>
-                                    {% else %}
-                                    <span id="scan-current-task-stage"
-                                          class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                                        Idle
-                                    </span>
-                                    {% endif %}
                                 </div>
 
                                 <div class="mt-4">
-                                    <p id="scan-current-task-title" class="text-base font-semibold text-slate-900">
+                                    <p id="scan-current-task-title" class="text-base text-ink-900">
                                         {{ current_task.title }}
                                     </p>
-                                    <p id="scan-current-task-detail" class="mt-2 text-sm leading-6 text-slate-600">
+                                    <p id="scan-current-task-detail" class="mt-2 text-sm leading-6 text-ink-600">
                                         {{ current_task.detail }}
                                     </p>
                                 </div>
 
                                 <div id="scan-current-task-progress-wrap"
-                                     class="mt-4 {% if current_task.progress_pct is none %}hidden{% endif %}">
-                                    <div class="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                     class="mt-5 {% if current_task.progress_pct is none %}hidden{% endif %}">
+                                    <div class="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">
                                         <span>Progress</span>
                                         <span id="scan-current-task-progress-label">{{ current_task.progress_pct }}%</span>
                                     </div>
-                                    <div class="mt-2 h-2 rounded-full bg-slate-100">
+                                    <div class="mt-2 h-px bg-ink-200">
                                         <div id="scan-current-task-progress-bar"
-                                             class="h-2 rounded-full bg-blue-500 transition-all duration-300"
+                                             class="h-px bg-ink-900 transition-all duration-300"
                                              style="width: {{ current_task.progress_pct or 0 }}%"></div>
                                     </div>
                                 </div>
                             </section>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div>
-                                    <h2 class="text-sm font-semibold text-slate-900">Agent Trace</h2>
-                                    <p class="mt-1 text-sm text-slate-500">Recent tool calls and sub-operations recorded during the run.</p>
+                            <section>
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">Agent Trace</p>
+                                    <h2 class="mt-2 text-sm text-ink-900">Tool calls</h2>
+                                    <p class="mt-2 text-sm text-ink-500">Recent sub-operations recorded during the run.</p>
                                 </div>
 
-                                <div id="scan-agent-calls" class="mt-4 space-y-3">
+                                <div id="scan-agent-calls" class="divide-y divide-ink-200">
                                     {% if agent_calls|length > 0 %}
                                     {% for call in agent_calls %}
-                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                    <div class="py-4">
                                         <div class="flex items-start justify-between gap-3">
                                             <div>
-                                                <p class="text-sm font-semibold text-slate-900">{{ call.label }}</p>
-                                                <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{{ call.stage|replace("_", " ") }}</p>
+                                                <p class="text-sm text-ink-900">{{ call.label }}</p>
+                                                <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">{{ call.stage|replace("_", " ") }}</p>
                                             </div>
-                                            <span class="text-xs font-semibold text-slate-500">
+                                            <span class="font-mono text-xs text-ink-500">
                                                 {% if call.duration_ms %}{{ call.duration_ms }} ms{% else %}Pending{% endif %}
                                             </span>
                                         </div>
                                         {% if call.error %}
-                                        <p class="mt-2 text-sm text-rose-600">{{ call.error }}</p>
+                                        <p class="mt-2 text-sm text-red-700">{{ call.error }}</p>
                                         {% endif %}
                                     </div>
                                     {% endfor %}
                                     {% else %}
-                                    <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
-                                        <p class="font-medium text-slate-600">No agent operations yet</p>
-                                        <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
+                                    <div class="border border-dashed border-ink-200 px-4 py-6 text-center text-sm">
+                                        <p class="text-ink-900">No agent operations yet</p>
+                                        <p class="mt-1 text-ink-400">AI calls will appear here as each pipeline stage runs.</p>
                                     </div>
                                     {% endif %}
                                 </div>
                             </section>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div>
-                                    <h2 class="text-sm font-semibold text-slate-900">Next Steps</h2>
-                                    <p class="mt-1 text-sm text-slate-500">Use the outputs from this run to review, remediate, and escalate issues.</p>
+                            <section>
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">Next Steps</p>
+                                    <h2 class="mt-2 text-sm text-ink-900">After this run</h2>
                                 </div>
 
-                                <div class="mt-4 space-y-3">
-                                    <a href="/scans/{{ scan.id }}/findings"
-                                       class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50">
-                                        <div>
-                                            <p class="text-sm font-semibold text-slate-900">Findings</p>
-                                            <p class="mt-1 text-sm text-slate-500">Inspect vulnerabilities, severity, and triage state.</p>
-                                        </div>
-                                        <span class="text-sm font-semibold text-blue-600">Open</span>
-                                    </a>
-                                    <a href="/scans/{{ scan.id }}/threat-model"
-                                       class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50">
-                                        <div>
-                                            <p class="text-sm font-semibold text-slate-900">Threat Model</p>
-                                            <p class="mt-1 text-sm text-slate-500">Review the synthesized architecture and attack-path context.</p>
-                                        </div>
-                                        <span class="text-sm font-semibold text-blue-600">Open</span>
-                                    </a>
-                                    <div class="rounded-xl bg-slate-50 px-4 py-4">
-                                        <p class="text-sm font-semibold text-slate-900"><span id="scan-total-findings">{{ scan.finding_count }}</span> total findings</p>
-                                        <p class="mt-1 text-sm text-slate-500">Total issues discovered in this run across all severities.</p>
-                                    </div>
-                                </div>
+                                <ul class="divide-y divide-ink-200">
+                                    <li>
+                                        <a href="/scans/{{ scan.id }}/findings"
+                                           class="flex items-center justify-between gap-4 py-4 transition hover:bg-ink-50">
+                                            <div>
+                                                <p class="text-sm text-ink-900">Findings</p>
+                                                <p class="mt-1 text-sm text-ink-500">Inspect vulnerabilities and triage state.</p>
+                                            </div>
+                                            <span class="text-ink-300">→</span>
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="/scans/{{ scan.id }}/threat-model"
+                                           class="flex items-center justify-between gap-4 py-4 transition hover:bg-ink-50">
+                                            <div>
+                                                <p class="text-sm text-ink-900">Threat Model</p>
+                                                <p class="mt-1 text-sm text-ink-500">Review architecture and attack-path context.</p>
+                                            </div>
+                                            <span class="text-ink-300">→</span>
+                                        </a>
+                                    </li>
+                                    <li class="py-4">
+                                        <p class="text-sm text-ink-900"><span id="scan-total-findings">{{ scan.finding_count }}</span> total findings</p>
+                                        <p class="mt-1 text-sm text-ink-500">Total issues discovered in this run across all severities.</p>
+                                    </li>
+                                </ul>
                             </section>
                         </aside>
                     </div>
@@ -584,7 +559,7 @@ window.HeimdallScanPage = {
         this.root.dataset.scanStatus = scan.status;
         this.root.dataset.scanLive = scan.is_live ? 'true' : 'false';
 
-        this.setStatus(scan.status, scan.updated_at);
+        this.setStatus(scan.status, scan.updated_at, scan.is_live);
         this.setCounts(snapshot.counts || {});
         this.setLivePanel(scan, snapshot.current_task || {});
         this.renderCurrentTask(snapshot.current_task || {});
@@ -637,99 +612,61 @@ window.HeimdallScanPage = {
         }).format(date);
     },
 
-    statusBadgeClass(status) {
-        switch (status) {
-            case 'completed':
-                return 'bg-emerald-50 text-emerald-700';
-            case 'failed':
-                return 'bg-rose-50 text-rose-700';
-            case 'queued':
-            case 'ingesting':
-            case 'modeling':
-            case 'hunting':
-            case 'validating':
-            case 'reporting':
-            case 'static_analysis':
-                return 'bg-amber-50 text-amber-700';
-            default:
-                return 'bg-slate-100 text-slate-700';
-        }
+    pad2(n) {
+        return String(n).padStart(2, '0');
     },
 
-    stageBadgeClass(status) {
-        switch (status) {
-            case 'completed':
-                return 'bg-emerald-50 text-emerald-700';
-            case 'running':
-                return 'bg-blue-50 text-blue-700';
-            case 'failed':
-                return 'bg-rose-50 text-rose-700';
-            default:
-                return 'bg-slate-100 text-slate-700';
-        }
+    statusColor(status, isLive) {
+        if (status === 'completed') return 'text-ink-900';
+        if (status === 'failed') return 'text-red-700';
+        if (isLive) return 'text-ink-900';
+        return 'text-ink-500';
     },
 
-    stageIconClass(status) {
-        switch (status) {
-            case 'completed':
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600';
-            case 'running':
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600';
-            case 'failed':
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600';
-            default:
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400';
-        }
+    statusDotClass(status, isLive) {
+        if (status === 'completed') return 'bg-ink-900';
+        if (status === 'failed') return 'bg-red-700';
+        if (isLive) return 'bg-ink-900 animate-heimdall-pulse';
+        return 'bg-ink-400';
     },
 
-    stageIcon(status) {
-        if (status === 'completed') {
-            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5l3 3 7-7" /></svg>';
-        }
-        if (status === 'running') {
-            return '<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 018.66 5H17a1 1 0 000 2h6a1 1 0 001-1V2a1 1 0 10-2 0v2.05A12 12 0 0012 0v2z"></path></svg>';
-        }
-        if (status === 'failed') {
-            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" /></svg>';
-        }
-        return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="6"></circle></svg>';
+    stageColor(status) {
+        if (status === 'completed' || status === 'running') return 'text-ink-900';
+        if (status === 'failed') return 'text-red-700';
+        return 'text-ink-500';
+    },
+
+    stageDot(status) {
+        if (status === 'completed') return 'bg-ink-900';
+        if (status === 'running') return 'bg-ink-900 animate-heimdall-pulse';
+        if (status === 'failed') return 'bg-red-700';
+        return 'bg-ink-400';
     },
 
     activityTone(item) {
-        if (item.tone) {
-            return item.tone;
-        }
+        if (item.tone) return item.tone;
         switch (item.status) {
-            case 'completed':
-                return 'success';
-            case 'failed':
-                return 'error';
-            case 'running':
-                return 'active';
-            default:
-                return 'neutral';
+            case 'completed': return 'success';
+            case 'failed': return 'error';
+            case 'running': return 'active';
+            default: return 'neutral';
         }
     },
 
     toneDotClass(tone) {
         switch (tone) {
-            case 'success':
-                return 'bg-emerald-500';
-            case 'warning':
-                return 'bg-amber-500';
-            case 'error':
-                return 'bg-rose-500';
-            case 'active':
-                return 'bg-blue-500';
-            default:
-                return 'bg-slate-400';
+            case 'success': return 'bg-ink-900';
+            case 'warning': return 'bg-amber-700';
+            case 'error': return 'bg-red-700';
+            case 'active': return 'bg-ink-900';
+            default: return 'bg-ink-400';
         }
     },
 
-    setStatus(status, timestamp) {
+    setStatus(status, timestamp, isLive) {
         this.statusPill.dataset.status = status;
-        this.statusPill.className = `inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${this.statusBadgeClass(status)}`;
-        this.statusPill.textContent = this.humanize(status);
+        this.statusPill.className = `inline-flex items-center gap-2 ${this.statusColor(status, isLive)}`;
+        this.statusPill.innerHTML = `<span class="h-1.5 w-1.5 rounded-full ${this.statusDotClass(status, isLive)}"></span>${this.humanize(status)}`;
 
         if (timestamp) {
             this.liveMeta.textContent = `Last updated ${this.formatTimestamp(timestamp)}`;
@@ -737,83 +674,47 @@ window.HeimdallScanPage = {
     },
 
     setCounts(counts) {
-        if (typeof counts.total !== 'undefined') {
-            this.counts.total.textContent = counts.total;
-        }
-        if (typeof counts.critical !== 'undefined') {
-            this.counts.critical.textContent = counts.critical;
-        }
-        if (typeof counts.high !== 'undefined') {
-            this.counts.high.textContent = counts.high;
-        }
-        if (typeof counts.medium !== 'undefined') {
-            this.counts.medium.textContent = counts.medium;
-        }
-        if (typeof counts.low !== 'undefined') {
-            this.counts.low.textContent = counts.low;
-        }
+        if (typeof counts.total !== 'undefined') this.counts.total.textContent = counts.total;
+        if (typeof counts.critical !== 'undefined') this.counts.critical.textContent = counts.critical;
+        if (typeof counts.high !== 'undefined') this.counts.high.textContent = counts.high;
+        if (typeof counts.medium !== 'undefined') this.counts.medium.textContent = counts.medium;
+        if (typeof counts.low !== 'undefined') this.counts.low.textContent = counts.low;
     },
 
     setLivePanel(scan, currentTask) {
         const isLive = Boolean(scan.is_live);
-        let panelClass = 'rounded-2xl border px-5 py-4 ';
-        let indicatorClass = 'mt-1 h-2.5 w-2.5 rounded-full ';
-        let titleClass = 'text-sm font-semibold ';
-        let messageClass = 'mt-1 text-sm ';
-        let metaClass = 'text-xs ';
-
+        let indicatorClass = 'mt-2 h-1.5 w-1.5 rounded-full ';
         if (isLive) {
-            panelClass += 'border-blue-200 bg-blue-50';
-            indicatorClass += 'animate-pulse bg-blue-500';
-            titleClass += 'text-blue-900';
-            messageClass += 'text-blue-700';
-            metaClass += 'text-blue-600';
+            indicatorClass += 'animate-heimdall-pulse bg-ink-900';
             this.liveTitle.textContent = currentTask.title || 'Live execution';
             this.liveMessage.textContent = currentTask.detail || 'Reconciling persisted execution telemetry with the live worker stream.';
             this.activityState.textContent = 'Reconciling persisted execution telemetry and live worker events.';
         } else if (scan.status === 'completed') {
-            panelClass += 'border-emerald-200 bg-emerald-50';
-            indicatorClass += 'bg-emerald-500';
-            titleClass += 'text-emerald-900';
-            messageClass += 'text-emerald-700';
-            metaClass += 'text-emerald-600';
+            indicatorClass += 'bg-ink-900';
             this.liveTitle.textContent = 'Scan completed';
             this.liveMessage.textContent = `This run finished with ${this.counts.total.textContent || 0} findings.`;
             this.activityState.textContent = 'Recorded execution history for this run.';
         } else if (scan.status === 'failed') {
-            panelClass += 'border-rose-200 bg-rose-50';
-            indicatorClass += 'bg-rose-500';
-            titleClass += 'text-rose-900';
-            messageClass += 'text-rose-700';
-            metaClass += 'text-rose-600';
+            indicatorClass += 'bg-red-700';
             this.liveTitle.textContent = 'Scan failed';
             this.liveMessage.textContent = scan.error_message || currentTask.detail || 'The scan worker reported a failure.';
             this.activityState.textContent = 'Run finished with an error. Review the execution log for the exact failure point.';
         } else {
-            panelClass += 'border-slate-200 bg-slate-100';
-            indicatorClass += 'bg-slate-400';
-            titleClass += 'text-slate-900';
-            messageClass += 'text-slate-600';
-            metaClass += 'text-slate-500';
+            indicatorClass += 'bg-ink-400';
             this.liveTitle.textContent = 'Scan activity snapshot';
             this.liveMessage.textContent = currentTask.detail || 'This scan is no longer active.';
             this.activityState.textContent = 'Recorded execution history for this run.';
         }
 
-        this.livePanel.className = panelClass;
         this.liveIndicator.className = indicatorClass;
-        this.liveTitle.className = titleClass;
-        this.liveMessage.className = messageClass;
-        this.liveMeta.className = metaClass;
         this.liveMeta.textContent = `Last updated ${this.formatTimestamp(scan.updated_at)}`;
     },
 
     renderCurrentTask(task) {
-        const stageLabel = task.stage ? this.humanize(task.stage) : 'Idle';
-        this.currentTaskStage.textContent = stageLabel;
-        this.currentTaskStage.className = task.stage
-            ? 'inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700'
-            : 'inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600';
+        const hasStage = Boolean(task.stage);
+        const stageLabel = hasStage ? this.humanize(task.stage) : 'Idle';
+        this.currentTaskStage.className = `inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] ${hasStage ? 'text-ink-900' : 'text-ink-400'}`;
+        this.currentTaskStage.innerHTML = `<span class="h-1 w-1 rounded-full ${hasStage ? 'bg-ink-900 animate-heimdall-pulse' : 'bg-ink-300'}"></span>${this.escapeHtml(stageLabel)}`;
         this.currentTaskTitle.textContent = task.title || 'Waiting for activity';
         this.currentTaskDetail.textContent = task.detail || 'Pipeline stages will stream progress here as they execute.';
 
@@ -829,36 +730,32 @@ window.HeimdallScanPage = {
     },
 
     renderStages(stages) {
-        this.stageList.innerHTML = stages.map((stage) => {
+        this.stageList.innerHTML = stages.map((stage, idx) => {
             const attempt = stage.attempt > 1
-                ? `<span class="text-xs font-medium text-slate-400">Attempt ${this.escapeHtml(stage.attempt)}</span>`
+                ? `<span class="font-mono text-[11px] text-ink-400">Attempt ${this.escapeHtml(stage.attempt)}</span>`
                 : '';
             const timestamp = stage.timestamp
-                ? `<p class="mt-2 text-sm text-slate-500">${this.escapeHtml(this.formatTimestamp(stage.timestamp))}</p>`
+                ? `<p class="mt-2 font-mono text-xs text-ink-500">${this.escapeHtml(this.formatTimestamp(stage.timestamp))}</p>`
                 : '';
             const error = stage.error
-                ? `<p class="mt-2 text-sm text-rose-600" style="word-break:break-all;overflow-wrap:anywhere">${this.escapeHtml(stage.error)}</p>`
+                ? `<p class="mt-2 text-sm text-red-700" style="word-break:break-all;overflow-wrap:anywhere">${this.escapeHtml(stage.error)}</p>`
                 : '';
             return `
-                <div data-stage-row="${this.escapeHtml(stage.stage)}" data-status="${this.escapeHtml(stage.status)}" class="overflow-hidden rounded-xl border border-slate-200 px-4 py-4">
-                    <div class="flex items-start justify-between gap-4">
-                        <div class="flex min-w-0 items-start gap-3">
-                            <span class="${this.stageIconClass(stage.status)}">${this.stageIcon(stage.status)}</span>
-                            <div class="min-w-0">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(stage.label || this.humanize(stage.stage))}</p>
-                                    ${attempt}
-                                </div>
-                                <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">${this.escapeHtml(this.humanize(stage.status))}</p>
-                                ${timestamp}
-                                ${error}
-                            </div>
+                <li data-stage-row="${this.escapeHtml(stage.stage)}" data-status="${this.escapeHtml(stage.status)}" class="grid grid-cols-[56px_1fr_auto] items-baseline gap-5 py-5">
+                    <span class="font-mono text-[11px] tracking-[0.18em] text-ink-400">${this.pad2(idx + 1)}</span>
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <p class="text-sm text-ink-900">${this.escapeHtml(stage.label || this.humanize(stage.stage))}</p>
+                            ${attempt}
                         </div>
-                        <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${this.stageBadgeClass(stage.status)}">
-                            ${this.escapeHtml(this.humanize(stage.status))}
-                        </span>
+                        ${timestamp}
+                        ${error}
                     </div>
-                </div>
+                    <span class="inline-flex items-center gap-2 text-xs capitalize ${this.stageColor(stage.status)}">
+                        <span class="h-1.5 w-1.5 rounded-full ${this.stageDot(stage.status)}"></span>
+                        ${this.escapeHtml(this.humanize(stage.status))}
+                    </span>
+                </li>
             `;
         }).join('');
     },
@@ -866,9 +763,9 @@ window.HeimdallScanPage = {
     renderActivity(activity) {
         if (!activity.length) {
             this.activityFeed.innerHTML = `
-                <li class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
-                    <p class="font-medium text-slate-600">No events yet</p>
-                    <p class="mt-1 text-slate-400">Execution timeline populates as stages complete.</p>
+                <li class="border border-dashed border-ink-200 px-4 py-6 text-center text-sm">
+                    <p class="text-ink-900">No events yet</p>
+                    <p class="mt-1 text-ink-400">Execution timeline populates as stages complete.</p>
                 </li>
             `;
             return;
@@ -878,15 +775,15 @@ window.HeimdallScanPage = {
             const tone = this.activityTone(item);
             const detail = item.detail || 'Execution activity recorded.';
             return `
-                <li data-activity-key="${this.escapeHtml(item.key || '')}" class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                <li data-activity-key="${this.escapeHtml(item.key || '')}" class="py-4">
                     <div class="flex items-start gap-3">
-                        <span class="mt-1 h-2.5 w-2.5 rounded-full ${this.toneDotClass(tone)}"></span>
+                        <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${this.toneDotClass(tone)}"></span>
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                                <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(item.title || this.humanize(item.event_type || 'activity'))}</p>
-                                <p class="text-xs text-slate-400">${this.escapeHtml(this.formatTimestamp(item.timestamp))}</p>
+                                <p class="text-sm text-ink-900">${this.escapeHtml(item.title || this.humanize(item.event_type || 'activity'))}</p>
+                                <p class="font-mono text-[11px] text-ink-400">${this.escapeHtml(this.formatTimestamp(item.timestamp))}</p>
                             </div>
-                            <p class="mt-1 break-all text-sm text-slate-500">${this.escapeHtml(detail)}</p>
+                            <p class="mt-1 break-all text-sm text-ink-500">${this.escapeHtml(detail)}</p>
                         </div>
                     </div>
                 </li>
@@ -897,9 +794,9 @@ window.HeimdallScanPage = {
     renderAgentCalls(calls) {
         if (!calls.length) {
             this.agentCalls.innerHTML = `
-                <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
-                    <p class="font-medium text-slate-600">No agent operations yet</p>
-                    <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
+                <div class="border border-dashed border-ink-200 px-4 py-6 text-center text-sm">
+                    <p class="text-ink-900">No agent operations yet</p>
+                    <p class="mt-1 text-ink-400">AI calls will appear here as each pipeline stage runs.</p>
                 </div>
             `;
             return;
@@ -910,16 +807,16 @@ window.HeimdallScanPage = {
                 ? `${call.duration_ms} ms`
                 : 'Pending';
             const error = call.error
-                ? `<p class="mt-2 text-sm text-rose-600">${this.escapeHtml(call.error)}</p>`
+                ? `<p class="mt-2 text-sm text-red-700">${this.escapeHtml(call.error)}</p>`
                 : '';
             return `
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div class="py-4">
                     <div class="flex items-start justify-between gap-3">
                         <div>
-                            <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
-                            <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
+                            <p class="text-sm text-ink-900">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
+                            <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
                         </div>
-                        <span class="text-xs font-semibold text-slate-500">${this.escapeHtml(duration)}</span>
+                        <span class="font-mono text-xs text-ink-500">${this.escapeHtml(duration)}</span>
                     </div>
                     ${error}
                 </div>

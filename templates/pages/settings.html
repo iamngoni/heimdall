@@ -6,432 +6,469 @@
 {% set active_nav = "settings" %}
 {% set breadcrumb_parent = "Settings" %}
 {% set breadcrumb_current = none %}
-<div class="min-h-screen bg-slate-100 text-slate-900">
+<div class="min-h-screen bg-white text-ink-900">
     <div class="flex min-h-screen">
         {% include "partials/app_sidebar.html" %}
 
         <div class="flex min-h-screen flex-1 flex-col">
             {% include "partials/app_topbar.html" %}
 
-            <main class="flex-1 px-7 py-6">
-                <div class="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
-                    <aside class="space-y-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                        <a href="#integrations" class="block rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">Integrations</a>
-                        <a href="#providers" class="block rounded-xl px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900">AI Providers</a>
-                        <a href="#profile" class="block rounded-xl px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900">Profile</a>
-                        <a href="#security" class="block rounded-xl px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900">Security</a>
-                        <a href="#keys" class="block rounded-xl px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900">API Keys</a>
-                    </aside>
+            <main class="flex-1 px-10 py-16">
+                <div class="mx-auto max-w-6xl space-y-16">
 
-                    <div class="space-y-6">
-                        {% if integration_error %}
-                        <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                            {% if integration_error == "github-account-in-use" %}
-                            That GitHub account is already linked to another Heimdall user.
-                            {% elif integration_error == "gitlab-account-in-use" %}
-                            That GitLab account is already linked to another Heimdall user.
-                            {% elif integration_error == "bitbucket-account-in-use" %}
-                            That Bitbucket account is already linked to another Heimdall user.
-                            {% else %}
-                            {{ integration_error }}
-                            {% endif %}
-                        </div>
-                        {% endif %}
+                    {# ── Header ── #}
+                    <header class="max-w-2xl">
+                        <p class="section-num">03 · Settings</p>
+                        <h1 class="mt-4 font-serif text-5xl font-normal leading-[1.05] tracking-tightest text-ink-900">
+                            Settings
+                        </h1>
+                        <p class="mt-5 max-w-measure text-base leading-7 text-ink-600">
+                            Integrations, AI providers, profile, security, and keys.
+                        </p>
+                    </header>
 
-                        <section id="integrations" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <div>
-                                <h1 class="text-2xl font-bold tracking-tight text-slate-900">Integrations</h1>
-                                <p class="mt-1 text-sm text-slate-500">Connect via personal access token (recommended) or OAuth.</p>
-                            </div>
+                    <div class="grid gap-16 xl:grid-cols-[220px_minmax(0,1fr)]">
+                        <aside class="sticky top-8 h-max">
+                            <nav class="space-y-1 border-l border-ink-200 pl-6 text-sm">
+                                <a href="#integrations" class="flex items-baseline gap-4 py-1.5 text-ink-900">
+                                    <span class="font-mono text-[10px] tracking-[0.18em] text-ink-400">01</span>
+                                    Integrations
+                                </a>
+                                <a href="#providers" class="flex items-baseline gap-4 py-1.5 text-ink-500 transition hover:text-ink-900">
+                                    <span class="font-mono text-[10px] tracking-[0.18em] text-ink-400">02</span>
+                                    AI Providers
+                                </a>
+                                <a href="#profile" class="flex items-baseline gap-4 py-1.5 text-ink-500 transition hover:text-ink-900">
+                                    <span class="font-mono text-[10px] tracking-[0.18em] text-ink-400">03</span>
+                                    Profile
+                                </a>
+                                <a href="#security" class="flex items-baseline gap-4 py-1.5 text-ink-500 transition hover:text-ink-900">
+                                    <span class="font-mono text-[10px] tracking-[0.18em] text-ink-400">04</span>
+                                    Security
+                                </a>
+                                <a href="#keys" class="flex items-baseline gap-4 py-1.5 text-ink-500 transition hover:text-ink-900">
+                                    <span class="font-mono text-[10px] tracking-[0.18em] text-ink-400">05</span>
+                                    API Keys
+                                </a>
+                            </nav>
+                        </aside>
 
-                            <div class="mt-6 space-y-4">
-                                {# ── GitHub ── #}
-                                <div class="rounded-2xl border border-slate-200 p-5">
-                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                                        <div class="flex items-center gap-4">
-                                            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">G</div>
-                                            <div>
-                                                <h2 class="text-sm font-semibold text-slate-900">GitHub</h2>
-                                                <p class="text-sm text-slate-500">
-                                                    {% if integrations.github.connected %}
-                                                    Connected via {{ integrations.github.token_source|upper }}{% if integrations.github.updated_at %} · updated {{ integrations.github.updated_at }}{% endif %}
-                                                    {% else %}
-                                                    Not connected
-                                                    {% endif %}
-                                                </p>
-                                                {% if integrations.github.scopes %}
-                                                <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.github.scopes }}</p>
-                                                {% endif %}
-                                            </div>
-                                        </div>
-
-                                        <div class="flex items-center gap-3">
-                                            {% if integrations.github.connected %}
-                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
-                                            <button hx-delete="/api/settings/integrations/github"
-                                                    hx-swap="none"
-                                                    hx-confirm="Disconnect GitHub? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
-                                                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-                                                Disconnect
-                                            </button>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                                        <p class="mb-3 text-xs font-medium text-slate-500">Personal Access Token</p>
-                                        <form hx-post="/api/settings/integrations/github/pat"
-                                              hx-ext="json-enc"
-                                              hx-target="#github-pat-feedback"
-                                              hx-swap="innerHTML"
-                                              class="flex gap-3">
-                                            <input type="password" name="token"
-                                                   class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                                   placeholder="ghp_... (Settings > Developer settings > Fine-grained tokens)">
-                                            <button type="submit"
-                                                    class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
-                                                Save
-                                            </button>
-                                        </form>
-                                        <div id="github-pat-feedback" class="mt-2"></div>
-                                        <p class="mt-2 text-xs text-slate-400">Required scope: <code class="rounded bg-slate-200 px-1 py-0.5">repo</code> (for private repos)</p>
-                                    </div>
-
-                                    <details class="mt-3">
-                                        <summary class="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-600">Or connect via OAuth</summary>
-                                        <div class="mt-2 flex justify-end">
-                                            <a href="/api/auth/github/authorize?next=%2Fsettings"
-                                               hx-boost="false"
-                                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                                {% if integrations.github.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %}
-                                            </a>
-                                        </div>
-                                    </details>
-                                </div>
-
-                                {# ── GitLab ── #}
-                                <div class="rounded-2xl border border-slate-200 p-5">
-                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                                        <div class="flex items-center gap-4">
-                                            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-bold text-white">L</div>
-                                            <div>
-                                                <h2 class="text-sm font-semibold text-slate-900">GitLab</h2>
-                                                <p class="text-sm text-slate-500">
-                                                    {% if integrations.gitlab.connected %}
-                                                    Connected via {{ integrations.gitlab.token_source|upper }}{% if integrations.gitlab.updated_at %} · updated {{ integrations.gitlab.updated_at }}{% endif %}
-                                                    {% else %}
-                                                    Not connected
-                                                    {% endif %}
-                                                </p>
-                                                {% if integrations.gitlab.scopes %}
-                                                <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.gitlab.scopes }}</p>
-                                                {% endif %}
-                                            </div>
-                                        </div>
-
-                                        <div class="flex items-center gap-3">
-                                            {% if integrations.gitlab.connected %}
-                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
-                                            <button hx-delete="/api/settings/integrations/gitlab"
-                                                    hx-swap="none"
-                                                    hx-confirm="Disconnect GitLab? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
-                                                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-                                                Disconnect
-                                            </button>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                                        <p class="mb-3 text-xs font-medium text-slate-500">Personal Access Token</p>
-                                        <form hx-post="/api/settings/integrations/gitlab/pat"
-                                              hx-ext="json-enc"
-                                              hx-target="#gitlab-pat-feedback"
-                                              hx-swap="innerHTML"
-                                              class="flex gap-3">
-                                            <input type="password" name="token"
-                                                   class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                                   placeholder="glpat-... (Settings > Access Tokens)">
-                                            <button type="submit"
-                                                    class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
-                                                Save
-                                            </button>
-                                        </form>
-                                        <div id="gitlab-pat-feedback" class="mt-2"></div>
-                                        <p class="mt-2 text-xs text-slate-400">Required scopes: <code class="rounded bg-slate-200 px-1 py-0.5">read_user</code> <code class="rounded bg-slate-200 px-1 py-0.5">read_repository</code></p>
-                                    </div>
-
-                                    <details class="mt-3">
-                                        <summary class="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-600">Or connect via OAuth</summary>
-                                        <div class="mt-2 flex justify-end">
-                                            <a href="/api/auth/gitlab/authorize?next=%2Fsettings"
-                                               hx-boost="false"
-                                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                                {% if integrations.gitlab.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %}
-                                            </a>
-                                        </div>
-                                    </details>
-                                </div>
-
-                                {# ── Bitbucket ── #}
-                                <div class="rounded-2xl border border-slate-200 p-5">
-                                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                                        <div class="flex items-center gap-4">
-                                            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-sm font-bold text-white">B</div>
-                                            <div>
-                                                <h2 class="text-sm font-semibold text-slate-900">Bitbucket</h2>
-                                                <p class="text-sm text-slate-500">
-                                                    {% if integrations.bitbucket.connected %}
-                                                    Connected via {{ integrations.bitbucket.token_source|upper }}{% if integrations.bitbucket.updated_at %} · updated {{ integrations.bitbucket.updated_at }}{% endif %}
-                                                    {% else %}
-                                                    Not connected
-                                                    {% endif %}
-                                                </p>
-                                                {% if integrations.bitbucket.scopes %}
-                                                <p class="mt-1 text-xs text-slate-400">Scopes: {{ integrations.bitbucket.scopes }}</p>
-                                                {% endif %}
-                                            </div>
-                                        </div>
-
-                                        <div class="flex items-center gap-3">
-                                            {% if integrations.bitbucket.connected %}
-                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">Connected</span>
-                                            <button hx-delete="/api/settings/integrations/bitbucket"
-                                                    hx-swap="none"
-                                                    hx-confirm="Disconnect Bitbucket? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
-                                                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-                                                Disconnect
-                                            </button>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                                        <p class="mb-3 text-xs font-medium text-slate-500">App Password</p>
-                                        <form hx-post="/api/settings/integrations/bitbucket/pat"
-                                              hx-ext="json-enc"
-                                              hx-target="#bitbucket-pat-feedback"
-                                              hx-swap="innerHTML"
-                                              class="flex flex-col gap-3">
-                                            <input type="email" name="username" required
-                                                   class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                                   placeholder="Bitbucket account email (you@example.com)">
-                                            <div class="flex gap-3">
-                                                <input type="password" name="token" required
-                                                       class="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                                       placeholder="App password">
-                                                <button type="submit"
-                                                        class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
-                                                    Save
-                                                </button>
-                                            </div>
-                                        </form>
-                                        <div id="bitbucket-pat-feedback" class="mt-2"></div>
-                                        <p class="mt-2 text-xs text-slate-400">Required scopes: <code class="rounded bg-slate-200 px-1 py-0.5">Repositories: Read</code> <code class="rounded bg-slate-200 px-1 py-0.5">Account: Read</code> <code class="rounded bg-slate-200 px-1 py-0.5">Pull requests: Read</code></p>
-                                    </div>
-
-                                    <details class="mt-3">
-                                        <summary class="cursor-pointer text-xs font-medium text-slate-400 hover:text-slate-600">Or connect via OAuth</summary>
-                                        <div class="mt-2 flex justify-end">
-                                            <a href="/api/auth/bitbucket/authorize?next=%2Fsettings"
-                                               hx-boost="false"
-                                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                                {% if integrations.bitbucket.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %}
-                                            </a>
-                                        </div>
-                                    </details>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="providers" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                                <div>
-                                    <h2 class="text-lg font-semibold text-slate-900">AI Providers</h2>
-                                    <p class="mt-1 text-sm text-slate-500">Current model: <span class="font-mono text-slate-700">{{ ai_config.default_model }}</span></p>
-                                </div>
-                            </div>
-
-                            <div class="mt-6 grid gap-4 lg:grid-cols-3">
-                                <div class="rounded-2xl border {{ 'border-emerald-200 bg-emerald-50' if ai_config.has_anthropic else 'border-slate-200 bg-slate-50' }} p-4">
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-sm font-semibold text-slate-900">Anthropic</span>
-                                        <span class="text-xs font-semibold {{ 'text-emerald-700' if ai_config.has_anthropic else 'text-slate-500' }}">
-                                            {{ 'Active' if ai_config.has_anthropic else 'Not set' }}
-                                        </span>
-                                    </div>
-                                    <p class="mt-2 text-sm text-slate-500">Claude models for threat modeling and report generation.</p>
-                                </div>
-                                <div class="rounded-2xl border {{ 'border-emerald-200 bg-emerald-50' if ai_config.has_openai else 'border-slate-200 bg-slate-50' }} p-4">
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-sm font-semibold text-slate-900">OpenAI</span>
-                                        <span class="text-xs font-semibold {{ 'text-emerald-700' if ai_config.has_openai else 'text-slate-500' }}">
-                                            {{ 'Active' if ai_config.has_openai else 'Not set' }}
-                                        </span>
-                                    </div>
-                                    <p class="mt-2 text-sm text-slate-500">Balanced provider choice for hosted or hybrid deployments.</p>
-                                </div>
-                                <div class="rounded-2xl border {{ 'border-emerald-200 bg-emerald-50' if ai_config.has_ollama else 'border-slate-200 bg-slate-50' }} p-4">
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-sm font-semibold text-slate-900">Ollama</span>
-                                        <span class="text-xs font-semibold {{ 'text-emerald-700' if ai_config.has_ollama else 'text-slate-500' }}">
-                                            {{ 'Active' if ai_config.has_ollama else 'Not set' }}
-                                        </span>
-                                    </div>
-                                    <p class="mt-2 text-sm text-slate-500">Local model support for self-hosted installations.</p>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section id="profile" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <h2 class="text-lg font-semibold text-slate-900">Profile</h2>
-                            <form hx-patch="/api/settings/profile"
-                                  hx-ext="json-enc"
-                                  hx-target="#profile-feedback"
-                                  hx-swap="innerHTML"
-                                  class="mt-6 grid gap-4 md:grid-cols-2">
-                                <label class="block">
-                                    <span class="mb-2 block text-sm font-medium text-slate-700">Email</span>
-                                    <input type="email" disabled value="{{ user.email }}"
-                                           class="w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm text-slate-500">
-                                </label>
-
-                                <label class="block">
-                                    <span class="mb-2 block text-sm font-medium text-slate-700">Display name</span>
-                                    <input type="text" name="display_name" value="{{ user.display_name or '' }}"
-                                           class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                                </label>
-
-                                <div class="md:col-span-2">
-                                    <div id="profile-feedback" class="mb-3"></div>
-                                    <button type="submit"
-                                            class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                        Save Profile
-                                    </button>
-                                </div>
-                            </form>
-                        </section>
-
-                        <section id="security" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <h2 class="text-lg font-semibold text-slate-900">Security</h2>
-                            <p class="mt-1 text-sm text-slate-500">Rotate your account password without touching provider integrations.</p>
-
-                            <form id="password-form" class="mt-6 grid gap-4 md:grid-cols-2">
-                                <label class="block">
-                                    <span class="mb-2 block text-sm font-medium text-slate-700">Current password</span>
-                                    <input id="current_password" type="password" required
-                                           class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                                </label>
-                                <label class="block">
-                                    <span class="mb-2 block text-sm font-medium text-slate-700">New password</span>
-                                    <input id="new_password" type="password" required minlength="8"
-                                           class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                           placeholder="At least 8 characters">
-                                </label>
-                                <div id="password-result" class="md:col-span-2"></div>
-                                <div class="md:col-span-2">
-                                    <button type="submit"
-                                            class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
-                                        Change Password
-                                    </button>
-                                </div>
-                            </form>
-                        </section>
-
-                        <section id="keys" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <div>
-                                <h2 class="text-lg font-semibold text-slate-900">Heimdall API Keys</h2>
-                                <p class="mt-1 text-sm text-slate-500">Store LLM provider credentials and verify them before use.</p>
-                            </div>
-
-                            <form id="add-key-form"
-                                  hx-post="/api/settings/api-keys"
-                                  hx-ext="json-enc"
-                                  hx-target="#key-list"
-                                  hx-swap="afterbegin"
-                                  hx-on::after-request="if(event.detail.successful) { this.reset(); const empty = document.getElementById('api-keys-empty'); if (empty) empty.remove(); }"
-                                  class="mt-6 grid gap-4 lg:grid-cols-[220px_220px_minmax(0,1fr)_auto]">
-                                <label class="block">
-                                    <span class="mb-2 block text-sm font-medium text-slate-700">Provider</span>
-                                    <select name="provider"
-                                            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                                        <option value="anthropic">Anthropic</option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="ollama">Ollama</option>
-                                    </select>
-                                </label>
-
-                                <label class="block">
-                                    <span class="mb-2 block text-sm font-medium text-slate-700">Label</span>
-                                    <input name="label"
-                                           class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                           placeholder="Production">
-                                </label>
-
-                                <label class="block">
-                                    <span class="mb-2 block text-sm font-medium text-slate-700">API key</span>
-                                    <input type="password" name="key" required
-                                           class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                           placeholder="sk-...">
-                                </label>
-
-                                <div class="flex items-end">
-                                    <button type="submit"
-                                            class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
-                                        Add Key
-                                    </button>
-                                </div>
-                            </form>
-
-                            <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                                <h3 class="text-sm font-semibold text-slate-900">Test a connection</h3>
-                                <form hx-post="/api/settings/test-connection"
-                                      hx-ext="json-enc"
-                                      hx-target="#test-result"
-                                      hx-swap="innerHTML"
-                                      class="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_auto]">
-                                    <select name="provider"
-                                            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                                        <option value="anthropic">Anthropic</option>
-                                        <option value="openai">OpenAI</option>
-                                        <option value="ollama">Ollama</option>
-                                    </select>
-                                    <input type="password" name="key" required
-                                           class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                           placeholder="Paste a key to validate">
-                                    <button type="submit"
-                                            class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
-                                        Test
-                                    </button>
-                                </form>
-                                <div id="test-result" class="mt-4"></div>
-                            </div>
-
-                            <div id="key-list" class="mt-6 space-y-3">
-                                {% if api_keys|length > 0 %}
-                                {% for key in api_keys %}
-                                <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 lg:flex-row lg:items-center lg:justify-between" id="key-{{ key.id }}">
-                                    <div>
-                                        <p class="text-sm font-semibold text-slate-900">{{ (key.provider or "Unknown")|capitalize }}{% if key.label %} · {{ key.label }}{% endif %}</p>
-                                        <p class="mt-1 text-xs text-slate-500">Created {{ key.created_at }}</p>
-                                    </div>
-                                    <button hx-delete="/api/settings/api-keys/{{ key.id }}"
-                                            hx-target="#key-{{ key.id }}"
-                                            hx-swap="outerHTML"
-                                            hx-confirm="Delete this API key?"
-                                            class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50">
-                                        Delete
-                                    </button>
-                                </div>
-                                {% endfor %}
+                        <div class="space-y-20">
+                            {% if integration_error %}
+                            <div class="border-l-2 border-l-amber-700 px-4 py-3 text-sm text-amber-700">
+                                {% if integration_error == "github-account-in-use" %}
+                                That GitHub account is already linked to another Heimdall user.
+                                {% elif integration_error == "gitlab-account-in-use" %}
+                                That GitLab account is already linked to another Heimdall user.
+                                {% elif integration_error == "bitbucket-account-in-use" %}
+                                That Bitbucket account is already linked to another Heimdall user.
                                 {% else %}
-                                <div id="api-keys-empty" class="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-sm">
-                                    <p class="font-medium text-slate-600">No API keys configured</p>
-                                    <p class="mt-1 text-slate-400">Add an Anthropic, OpenAI, or Ollama key above to enable AI-powered scanning.</p>
-                                </div>
+                                {{ integration_error }}
                                 {% endif %}
                             </div>
-                        </section>
+                            {% endif %}
+
+                            <section id="integrations">
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">01 · Integrations</p>
+                                    <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Source control</h2>
+                                    <p class="mt-2 text-sm text-ink-500">Connect via personal access token (recommended) or OAuth.</p>
+                                </div>
+
+                                <div class="divide-y divide-ink-200">
+                                    {# ── GitHub ── #}
+                                    <div class="py-8">
+                                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                            <div class="flex items-start gap-4">
+                                                <span class="flex h-8 w-8 shrink-0 items-center justify-center border border-ink-900 text-xs font-semibold text-ink-900">G</span>
+                                                <div>
+                                                    <h3 class="text-base text-ink-900">GitHub</h3>
+                                                    <p class="mt-1 text-sm text-ink-500">
+                                                        {% if integrations.github.connected %}
+                                                        Connected via {{ integrations.github.token_source|upper }}{% if integrations.github.updated_at %} · updated {{ integrations.github.updated_at }}{% endif %}
+                                                        {% else %}
+                                                        Not connected
+                                                        {% endif %}
+                                                    </p>
+                                                    {% if integrations.github.scopes %}
+                                                    <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">Scopes: {{ integrations.github.scopes }}</p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+
+                                            <div class="flex items-center gap-6 text-sm">
+                                                {% if integrations.github.connected %}
+                                                <span class="inline-flex items-center gap-1.5 text-xs text-ink-900">
+                                                    <span class="h-1.5 w-1.5 rounded-full bg-ink-900"></span>Connected
+                                                </span>
+                                                <button hx-delete="/api/settings/integrations/github"
+                                                        hx-swap="none"
+                                                        hx-confirm="Disconnect GitHub? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
+                                                        class="border-b border-transparent pb-1 text-red-700 transition hover:border-red-700">
+                                                    Disconnect
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-6 border-l-2 border-l-ink-200 pl-5">
+                                            <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Personal Access Token</p>
+                                            <form hx-post="/api/settings/integrations/github/pat"
+                                                  hx-ext="json-enc"
+                                                  hx-target="#github-pat-feedback"
+                                                  hx-swap="innerHTML"
+                                                  class="mt-3 flex gap-3">
+                                                <input type="password" name="token"
+                                                       class="flex-1 border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                                       placeholder="ghp_... (Settings > Developer settings > Fine-grained tokens)">
+                                                <button type="submit"
+                                                        class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                                    Save →
+                                                </button>
+                                            </form>
+                                            <div id="github-pat-feedback" class="mt-2"></div>
+                                            <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">Required scope: <code class="bg-ink-100 px-1 py-0.5 normal-case">repo</code> (for private repos)</p>
+                                        </div>
+
+                                        <details class="mt-4">
+                                            <summary class="cursor-pointer text-xs text-ink-400 transition hover:text-ink-700">Or connect via OAuth</summary>
+                                            <div class="mt-3">
+                                                <a href="/api/auth/github/authorize?next=%2Fsettings"
+                                                   hx-boost="false"
+                                                   class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                                    {% if integrations.github.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %} →
+                                                </a>
+                                            </div>
+                                        </details>
+                                    </div>
+
+                                    {# ── GitLab ── #}
+                                    <div class="py-8">
+                                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                            <div class="flex items-start gap-4">
+                                                <span class="flex h-8 w-8 shrink-0 items-center justify-center border border-ink-900 text-xs font-semibold text-ink-900">L</span>
+                                                <div>
+                                                    <h3 class="text-base text-ink-900">GitLab</h3>
+                                                    <p class="mt-1 text-sm text-ink-500">
+                                                        {% if integrations.gitlab.connected %}
+                                                        Connected via {{ integrations.gitlab.token_source|upper }}{% if integrations.gitlab.updated_at %} · updated {{ integrations.gitlab.updated_at }}{% endif %}
+                                                        {% else %}
+                                                        Not connected
+                                                        {% endif %}
+                                                    </p>
+                                                    {% if integrations.gitlab.scopes %}
+                                                    <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">Scopes: {{ integrations.gitlab.scopes }}</p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+
+                                            <div class="flex items-center gap-6 text-sm">
+                                                {% if integrations.gitlab.connected %}
+                                                <span class="inline-flex items-center gap-1.5 text-xs text-ink-900">
+                                                    <span class="h-1.5 w-1.5 rounded-full bg-ink-900"></span>Connected
+                                                </span>
+                                                <button hx-delete="/api/settings/integrations/gitlab"
+                                                        hx-swap="none"
+                                                        hx-confirm="Disconnect GitLab? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
+                                                        class="border-b border-transparent pb-1 text-red-700 transition hover:border-red-700">
+                                                    Disconnect
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-6 border-l-2 border-l-ink-200 pl-5">
+                                            <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Personal Access Token</p>
+                                            <form hx-post="/api/settings/integrations/gitlab/pat"
+                                                  hx-ext="json-enc"
+                                                  hx-target="#gitlab-pat-feedback"
+                                                  hx-swap="innerHTML"
+                                                  class="mt-3 flex gap-3">
+                                                <input type="password" name="token"
+                                                       class="flex-1 border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                                       placeholder="glpat-... (Settings > Access Tokens)">
+                                                <button type="submit"
+                                                        class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                                    Save →
+                                                </button>
+                                            </form>
+                                            <div id="gitlab-pat-feedback" class="mt-2"></div>
+                                            <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">Required scopes: <code class="bg-ink-100 px-1 py-0.5 normal-case">read_user</code> <code class="bg-ink-100 px-1 py-0.5 normal-case">read_repository</code></p>
+                                        </div>
+
+                                        <details class="mt-4">
+                                            <summary class="cursor-pointer text-xs text-ink-400 transition hover:text-ink-700">Or connect via OAuth</summary>
+                                            <div class="mt-3">
+                                                <a href="/api/auth/gitlab/authorize?next=%2Fsettings"
+                                                   hx-boost="false"
+                                                   class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                                    {% if integrations.gitlab.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %} →
+                                                </a>
+                                            </div>
+                                        </details>
+                                    </div>
+
+                                    {# ── Bitbucket ── #}
+                                    <div class="py-8">
+                                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                            <div class="flex items-start gap-4">
+                                                <span class="flex h-8 w-8 shrink-0 items-center justify-center border border-ink-900 text-xs font-semibold text-ink-900">B</span>
+                                                <div>
+                                                    <h3 class="text-base text-ink-900">Bitbucket</h3>
+                                                    <p class="mt-1 text-sm text-ink-500">
+                                                        {% if integrations.bitbucket.connected %}
+                                                        Connected via {{ integrations.bitbucket.token_source|upper }}{% if integrations.bitbucket.updated_at %} · updated {{ integrations.bitbucket.updated_at }}{% endif %}
+                                                        {% else %}
+                                                        Not connected
+                                                        {% endif %}
+                                                    </p>
+                                                    {% if integrations.bitbucket.scopes %}
+                                                    <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">Scopes: {{ integrations.bitbucket.scopes }}</p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+
+                                            <div class="flex items-center gap-6 text-sm">
+                                                {% if integrations.bitbucket.connected %}
+                                                <span class="inline-flex items-center gap-1.5 text-xs text-ink-900">
+                                                    <span class="h-1.5 w-1.5 rounded-full bg-ink-900"></span>Connected
+                                                </span>
+                                                <button hx-delete="/api/settings/integrations/bitbucket"
+                                                        hx-swap="none"
+                                                        hx-confirm="Disconnect Bitbucket? Repositories stay in Heimdall, but private resyncs will stop until you reconnect."
+                                                        class="border-b border-transparent pb-1 text-red-700 transition hover:border-red-700">
+                                                    Disconnect
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-6 border-l-2 border-l-ink-200 pl-5">
+                                            <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">App Password</p>
+                                            <form hx-post="/api/settings/integrations/bitbucket/pat"
+                                                  hx-ext="json-enc"
+                                                  hx-target="#bitbucket-pat-feedback"
+                                                  hx-swap="innerHTML"
+                                                  class="mt-3 space-y-3">
+                                                <input type="email" name="username" required
+                                                       class="w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                                       placeholder="Bitbucket account email (you@example.com)">
+                                                <div class="flex gap-3">
+                                                    <input type="password" name="token" required
+                                                           class="flex-1 border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                                           placeholder="App password">
+                                                    <button type="submit"
+                                                            class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                                        Save →
+                                                    </button>
+                                                </div>
+                                            </form>
+                                            <div id="bitbucket-pat-feedback" class="mt-2"></div>
+                                            <p class="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">Required scopes: <code class="bg-ink-100 px-1 py-0.5 normal-case">Repositories:Read</code> <code class="bg-ink-100 px-1 py-0.5 normal-case">Account:Read</code> <code class="bg-ink-100 px-1 py-0.5 normal-case">Pull requests:Read</code></p>
+                                        </div>
+
+                                        <details class="mt-4">
+                                            <summary class="cursor-pointer text-xs text-ink-400 transition hover:text-ink-700">Or connect via OAuth</summary>
+                                            <div class="mt-3">
+                                                <a href="/api/auth/bitbucket/authorize?next=%2Fsettings"
+                                                   hx-boost="false"
+                                                   class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                                    {% if integrations.bitbucket.token_source == "oauth" %}Reconnect{% else %}Connect via OAuth{% endif %} →
+                                                </a>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section id="providers">
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">02 · AI Providers</p>
+                                    <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Models</h2>
+                                    <p class="mt-2 text-sm text-ink-500">Current: <span class="font-mono text-sm text-ink-700">{{ ai_config.default_model }}</span></p>
+                                </div>
+
+                                <ul class="divide-y divide-ink-200">
+                                    <li class="flex items-center justify-between py-5">
+                                        <div>
+                                            <p class="text-base text-ink-900">Anthropic</p>
+                                            <p class="mt-1 text-sm text-ink-500">Claude models for threat modeling and report generation.</p>
+                                        </div>
+                                        <span class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] {{ 'text-ink-900' if ai_config.has_anthropic else 'text-ink-400' }}">
+                                            <span class="h-1 w-1 rounded-full {{ 'bg-ink-900' if ai_config.has_anthropic else 'bg-ink-300' }}"></span>
+                                            {{ 'Active' if ai_config.has_anthropic else 'Not set' }}
+                                        </span>
+                                    </li>
+                                    <li class="flex items-center justify-between py-5">
+                                        <div>
+                                            <p class="text-base text-ink-900">OpenAI</p>
+                                            <p class="mt-1 text-sm text-ink-500">Balanced provider choice for hosted or hybrid deployments.</p>
+                                        </div>
+                                        <span class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] {{ 'text-ink-900' if ai_config.has_openai else 'text-ink-400' }}">
+                                            <span class="h-1 w-1 rounded-full {{ 'bg-ink-900' if ai_config.has_openai else 'bg-ink-300' }}"></span>
+                                            {{ 'Active' if ai_config.has_openai else 'Not set' }}
+                                        </span>
+                                    </li>
+                                    <li class="flex items-center justify-between py-5">
+                                        <div>
+                                            <p class="text-base text-ink-900">Ollama</p>
+                                            <p class="mt-1 text-sm text-ink-500">Local model support for self-hosted installations.</p>
+                                        </div>
+                                        <span class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] {{ 'text-ink-900' if ai_config.has_ollama else 'text-ink-400' }}">
+                                            <span class="h-1 w-1 rounded-full {{ 'bg-ink-900' if ai_config.has_ollama else 'bg-ink-300' }}"></span>
+                                            {{ 'Active' if ai_config.has_ollama else 'Not set' }}
+                                        </span>
+                                    </li>
+                                </ul>
+                            </section>
+
+                            <section id="profile">
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">03 · Profile</p>
+                                    <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Account</h2>
+                                </div>
+                                <form hx-patch="/api/settings/profile"
+                                      hx-ext="json-enc"
+                                      hx-target="#profile-feedback"
+                                      hx-swap="innerHTML"
+                                      class="mt-8 grid gap-8 md:grid-cols-2">
+                                    <label class="block">
+                                        <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Email</span>
+                                        <input type="email" disabled value="{{ user.email }}"
+                                               class="mt-2 w-full border-0 border-b border-ink-200 bg-transparent px-0 py-2 text-sm text-ink-500">
+                                    </label>
+
+                                    <label class="block">
+                                        <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Display name</span>
+                                        <input type="text" name="display_name" value="{{ user.display_name or '' }}"
+                                               class="mt-2 w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
+                                    </label>
+
+                                    <div class="md:col-span-2">
+                                        <div id="profile-feedback" class="mb-3"></div>
+                                        <button type="submit"
+                                                class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                            Save Profile →
+                                        </button>
+                                    </div>
+                                </form>
+                            </section>
+
+                            <section id="security">
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">04 · Security</p>
+                                    <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Password</h2>
+                                    <p class="mt-2 text-sm text-ink-500">Rotate your account password without touching provider integrations.</p>
+                                </div>
+
+                                <form id="password-form" class="mt-8 grid gap-8 md:grid-cols-2">
+                                    <label class="block">
+                                        <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Current password</span>
+                                        <input id="current_password" type="password" required
+                                               class="mt-2 w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
+                                    </label>
+                                    <label class="block">
+                                        <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">New password</span>
+                                        <input id="new_password" type="password" required minlength="8"
+                                               class="mt-2 w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                               placeholder="At least 8 characters">
+                                    </label>
+                                    <div id="password-result" class="md:col-span-2"></div>
+                                    <div class="md:col-span-2">
+                                        <button type="submit"
+                                                class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                            Change Password →
+                                        </button>
+                                    </div>
+                                </form>
+                            </section>
+
+                            <section id="keys">
+                                <div class="border-b border-ink-200 pb-4">
+                                    <p class="section-num">05 · API Keys</p>
+                                    <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Heimdall API keys</h2>
+                                    <p class="mt-2 text-sm text-ink-500">Store LLM provider credentials and verify them before use.</p>
+                                </div>
+
+                                <form id="add-key-form"
+                                      hx-post="/api/settings/api-keys"
+                                      hx-ext="json-enc"
+                                      hx-target="#key-list"
+                                      hx-swap="afterbegin"
+                                      hx-on::after-request="if(event.detail.successful) { this.reset(); const empty = document.getElementById('api-keys-empty'); if (empty) empty.remove(); }"
+                                      class="mt-8 grid gap-8 lg:grid-cols-[200px_200px_minmax(0,1fr)_auto]">
+                                    <label class="block">
+                                        <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Provider</span>
+                                        <select name="provider"
+                                                class="mt-2 w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
+                                            <option value="anthropic">Anthropic</option>
+                                            <option value="openai">OpenAI</option>
+                                            <option value="ollama">Ollama</option>
+                                        </select>
+                                    </label>
+
+                                    <label class="block">
+                                        <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Label</span>
+                                        <input name="label"
+                                               class="mt-2 w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                               placeholder="Production">
+                                    </label>
+
+                                    <label class="block">
+                                        <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">API key</span>
+                                        <input type="password" name="key" required
+                                               class="mt-2 w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                               placeholder="sk-...">
+                                    </label>
+
+                                    <div class="flex items-end">
+                                        <button type="submit"
+                                                class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+                                            Add Key →
+                                        </button>
+                                    </div>
+                                </form>
+
+                                <div class="mt-12 border-t border-ink-200 pt-8">
+                                    <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Test a connection</p>
+                                    <form hx-post="/api/settings/test-connection"
+                                          hx-ext="json-enc"
+                                          hx-target="#test-result"
+                                          hx-swap="innerHTML"
+                                          class="mt-4 grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)_auto]">
+                                        <select name="provider"
+                                                class="w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
+                                            <option value="anthropic">Anthropic</option>
+                                            <option value="openai">OpenAI</option>
+                                            <option value="ollama">Ollama</option>
+                                        </select>
+                                        <input type="password" name="key" required
+                                               class="w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900"
+                                               placeholder="Paste a key to validate">
+                                        <button type="submit"
+                                                class="inline-flex items-end border-b border-transparent pb-1 text-sm text-ink-900 transition hover:border-ink-900">
+                                            Test →
+                                        </button>
+                                    </form>
+                                    <div id="test-result" class="mt-4"></div>
+                                </div>
+
+                                <div id="key-list" class="mt-12 border-t border-ink-200">
+                                    {% if api_keys|length > 0 %}
+                                    {% for key in api_keys %}
+                                    {% with key=key %}
+                                        {% include "partials/api_key_row.html" %}
+                                    {% endwith %}
+                                    {% endfor %}
+                                    {% else %}
+                                    <div id="api-keys-empty" class="border-b border-ink-200 py-8 text-center text-sm">
+                                        <p class="text-ink-900">No API keys configured</p>
+                                        <p class="mt-1 text-ink-400">Add an Anthropic, OpenAI, or Ollama key above to enable AI-powered scanning.</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </section>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -462,14 +499,14 @@ document.getElementById('password-form')?.addEventListener('submit', async (even
 
         const data = await response.json();
         if (response.ok && data.success) {
-            result.innerHTML = '<p class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">Password changed successfully.</p>';
+            result.innerHTML = '<p class="border-l-2 border-l-ink-900 px-4 py-3 text-sm text-ink-900">Password changed successfully.</p>';
             event.target.reset();
             return;
         }
 
-        result.innerHTML = '<p class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">' + (data.error ? data.error.message : 'Failed to change password.') + '</p>';
+        result.innerHTML = '<p class="border-l-2 border-l-red-700 px-4 py-3 text-sm text-red-700">' + (data.error ? data.error.message : 'Failed to change password.') + '</p>';
     } catch (_) {
-        result.innerHTML = '<p class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">Network error.</p>';
+        result.innerHTML = '<p class="border-l-2 border-l-red-700 px-4 py-3 text-sm text-red-700">Network error.</p>';
     }
 });
 </script>

@@ -1,47 +1,43 @@
-<header class="flex h-14 items-center border-b border-slate-200 bg-white px-7">
-    <div class="flex items-center gap-3 text-sm">
-        <span class="font-semibold text-slate-900">Heimdall</span>
-        <span class="text-slate-400">/</span>
-        <span class="text-slate-500">{{ breadcrumb_parent }}</span>
+<header class="flex h-14 items-center border-b border-ink-200 bg-white px-8">
+    <div class="flex items-center gap-3 font-mono text-xs tracking-wide text-ink-500">
+        <span class="text-ink-900">heimdall</span>
+        <span class="text-ink-300">/</span>
+        <span>{{ breadcrumb_parent|lower if breadcrumb_parent else "" }}</span>
         {% if breadcrumb_current %}
-        <span class="text-slate-400">/</span>
-        <span class="font-medium text-slate-900">{{ breadcrumb_current }}</span>
+        <span class="text-ink-300">/</span>
+        <span class="text-ink-900">{{ breadcrumb_current|lower }}</span>
         {% endif %}
     </div>
 
     <div class="relative ml-auto">
         <details>
-            <summary class="app-menu-summary flex list-none cursor-pointer items-center gap-2 rounded-full border border-transparent p-1 transition hover:border-slate-200 hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100">
-                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-xs font-semibold text-white shadow-sm">
+            <summary class="app-menu-summary flex list-none cursor-pointer items-center gap-2 border border-transparent px-1 py-1 transition hover:border-ink-200">
+                <div class="flex h-7 w-7 items-center justify-center border border-ink-900 text-[11px] font-semibold text-ink-900">
                     {{ user_initial }}
                 </div>
-                <svg class="h-4 w-4 text-slate-400" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+                <svg class="h-3.5 w-3.5 text-ink-400" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
                 </svg>
             </summary>
 
-            <div style="width: 18rem;" class="absolute right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_18px_48px_rgba(15,23,42,0.14)]">
-                <div class="border-b border-slate-100 px-3 py-3">
-                    <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Account</p>
-                    <p class="mt-1 text-sm font-medium text-slate-900">Workspace controls</p>
+            <div style="width: 18rem;" class="absolute right-0 top-full z-30 mt-2 overflow-hidden border border-ink-200 bg-white">
+                <div class="border-b border-ink-200 px-4 py-3">
+                    <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">01 · Account</p>
+                    <p class="mt-1 text-sm text-ink-900">Workspace controls</p>
                 </div>
 
-                <div class="mt-2 space-y-1">
+                <div class="py-1">
                     <a href="/settings"
-                       class="flex items-center justify-between rounded-xl px-3 py-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900">
+                       class="flex items-center justify-between px-4 py-3 text-sm text-ink-700 transition hover:bg-ink-50 hover:text-ink-900">
                         <span>Settings</span>
-                        <svg class="h-4 w-4 text-slate-300" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                            <path d="M8 6l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                        </svg>
+                        <span class="text-ink-300">→</span>
                     </a>
 
                     <button hx-post="/api/auth/logout"
                             hx-disabled-elt="this"
-                            class="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-70">
+                            class="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-ink-900 transition hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-70">
                         <span>Sign Out</span>
-                        <svg class="h-4 w-4 text-rose-300" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                            <path d="M12 6l-4 4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                        </svg>
+                        <span class="text-ink-300">→</span>
                     </button>
                 </div>
             </div>
