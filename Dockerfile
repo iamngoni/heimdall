@@ -35,19 +35,19 @@ RUN cargo build --release --bin heimdall --bin heimdall-mcp
 # Stage 2: Runtime
 FROM debian:bookworm-slim
 
-# Optional: install semgrep for enhanced static analysis
-ARG INSTALL_SEMGREP=true
-
+# Semgrep is a required runtime dependency of Heimdall's static analysis stage.
+# See src/pipeline/static_analysis/semgrep.rs — the binary must be on PATH or
+# the application will fail to start with a clear configuration error.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     curl \
     git \
-    && if [ "$INSTALL_SEMGREP" = "true" ]; then \
-        apt-get install -y --no-install-recommends python3 python3-pip && \
-        pip3 install semgrep --break-system-packages; \
-    fi \
-    && rm -rf /var/lib/apt/lists/*
+    python3 \
+    python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages semgrep \
+    && rm -rf /var/lib/apt/lists/* \
+    && semgrep --version
 
 WORKDIR /app
 

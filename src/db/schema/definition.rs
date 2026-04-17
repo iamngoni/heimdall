@@ -246,6 +246,17 @@ pub fn heimdall_schema() -> SchemaDef {
         // ---------------------------------------------------------------
         // 12. findings
         // ---------------------------------------------------------------
+        // Evidence invariant: every production finding ships with concrete
+        // evidence. `code_snippet` shows the vulnerable section (WHERE),
+        // `suggested_patch` + `fix_summary` show the remediation (HOW), and
+        // `references_json` points to the AUTHORITY for the fix. The
+        // `fix_type` column classifies remediation shape so the UI can render
+        // appropriately (code diff vs version picker vs config editor).
+        //
+        // `manifest_coordinates_json` carries structured upgrade data for
+        // dependency findings — {ecosystem, name, installed_version,
+        // fixed_version, advisory_id} — so UI and automation can consume it
+        // without re-parsing the patch text.
         .table("findings", |t| {
             t.uuid_pk("id");
             t.uuid("scan_id")
@@ -269,6 +280,12 @@ pub fn heimdall_schema() -> SchemaDef {
             t.int("line_end");
             t.text("code_snippet");
             t.text("suggested_patch");
+            t.text("fix_type")
+                .not_null()
+                .default_str("'manual_review'");
+            t.text("fix_summary");
+            t.jsonb("references_json");
+            t.jsonb("manifest_coordinates_json");
             t.jsonb("poc_exploit_json");
             t.boolean("poc_validated").not_null().default_bool(false);
             t.text("fingerprint").not_null();

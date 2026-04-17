@@ -11,28 +11,40 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
-use log::{info, warn};
+use anyhow::{Context, anyhow};
+use log::info;
 use sha2::{Digest, Sha256};
 
+use crate::config::SemgrepConfig;
 use crate::db::DatabaseOperations;
-use crate::models::HeimdallResult;
+use crate::models::{FindingEvidence, FindingFixType, HeimdallResult};
 use crate::util::sat_i32;
 
 /// Semgrep integration for enhanced static analysis.
-/// Runs semgrep as a subprocess and parses JSON output into findings.
-/// Falls back gracefully if semgrep is not installed.
+///
+/// Semgrep is a required runtime dependency — [`SemgrepConfig::from_env`]
+/// verifies the binary at startup. This stage never silently degrades; if the
+/// scan fails mid-flight the error is surfaced to the pipeline which records a
+/// `failed` scan event so operators can see degraded coverage.
 pub struct SemgrepStage {
     pub scan_id: uuid::Uuid,
     pub repo_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
+    pub config: SemgrepConfig,
 }
 
 impl SemgrepStage {
-    pub fn new(scan_id: uuid::Uuid, repo_id: uuid::Uuid, db: Arc<DatabaseOperations>) -> Self {
+    pub fn new(
+        scan_id: uuid::Uuid,
+        repo_id: uuid::Uuid,
+        db: Arc<DatabaseOperations>,
+        config: SemgrepConfig,
+    ) -> Self {
         Self {
             scan_id,
             repo_id,
             db,
+            config,
         }
     }
 
@@ -42,61 +54,52 @@ impl SemgrepStage {
         work_dir: &Path,
         existing_fingerprints: &HashSet<String>,
     ) -> HeimdallResult<usize> {
-        // Check if semgrep is available
-        if !self.semgrep_available().await {
-            info!(
-                "[{}] Semgrep not installed — skipping enhanced analysis",
-                self.scan_id
-            );
-            return Ok(0);
-        }
+        info!(
+            "[{}] Running semgrep scan (config={}, timeout={}s)",
+            self.scan_id, self.config.config, self.config.timeout_seconds
+        );
 
-        info!("[{}] Running semgrep scan", self.scan_id);
-
-        let output = tokio::process::Command::new("semgrep")
+        let timeout_str = self.config.timeout_seconds.to_string();
+        let output = tokio::process::Command::new(&self.config.binary_path)
             .args([
                 "scan",
                 "--json",
                 "--config",
-                "auto",
+                &self.config.config,
                 "--quiet",
                 "--timeout",
-                "120",
+                &timeout_str,
             ])
             .arg(work_dir)
             .output()
-            .await;
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to invoke semgrep at `{}` — binary was available at startup but is \
+                     no longer executable. Check container /tmp cleanup or PATH changes.",
+                    self.config.binary_path
+                )
+            })?;
 
-        let output = match output {
-            Ok(o) => o,
-            Err(e) => {
-                warn!("[{}] Failed to execute semgrep: {e}", self.scan_id);
-                return Ok(0);
-            }
-        };
-
-        // Semgrep may exit with non-zero even on partial success
+        // Semgrep exits non-zero on findings or partial failures; the JSON body
+        // is still the authoritative result. Only treat empty stdout + non-zero
+        // as a hard failure (it means semgrep crashed before producing output).
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.is_empty() {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                warn!(
-                    "[{}] Semgrep exited with {}: {}",
-                    self.scan_id,
-                    output.status,
-                    stderr.chars().take(500).collect::<String>()
-                );
-            }
-            return Ok(0);
-        }
-
-        let parsed: SemgrepOutput = match serde_json::from_str(&stdout) {
-            Ok(p) => p,
-            Err(e) => {
-                warn!("[{}] Failed to parse semgrep output: {e}", self.scan_id);
+            if output.status.success() {
+                info!("[{}] Semgrep produced no output", self.scan_id);
                 return Ok(0);
             }
-        };
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!(
+                "Semgrep exited with {} and no output. stderr: {}",
+                output.status,
+                stderr.chars().take(500).collect::<String>()
+            ));
+        }
+
+        let parsed: SemgrepOutput = serde_json::from_str(&stdout)
+            .context("Failed to parse semgrep JSON output — semgrep version may be incompatible")?;
 
         let mut count = 0usize;
         let work_dir_str = work_dir.to_string_lossy();
@@ -126,10 +129,8 @@ impl SemgrepStage {
                     .and_then(|m| m.confidence.as_deref()),
             );
 
-            let cwe = result
-                .extra
-                .metadata
-                .as_ref()
+            let metadata = result.extra.metadata.as_ref();
+            let cwe = metadata
                 .and_then(|m| m.cwe.as_ref())
                 .and_then(|cwes| cwes.first())
                 .map(|s| s.as_str());
@@ -139,6 +140,37 @@ impl SemgrepStage {
                 result.check_id,
                 result.extra.message.chars().take(200).collect::<String>()
             );
+
+            // Prefer semgrep's autofix (`fix` or `fix_regex`) when present; fall
+            // back to a plain-text suggestion derived from the rule message.
+            let suggested_patch = result
+                .extra
+                .fix
+                .clone()
+                .or_else(|| result.extra.fix_regex.as_ref().map(|fr| fr.replacement.clone()));
+
+            let fix_summary = suggested_patch
+                .as_ref()
+                .map(|_| format!("Apply the semgrep-suggested fix for rule `{}`.", result.check_id))
+                .unwrap_or_else(|| {
+                    format!(
+                        "Review the code against the `{}` rule and apply the guidance in the finding description.",
+                        result.check_id
+                    )
+                });
+
+            let references = metadata
+                .and_then(|m| m.references.clone())
+                .unwrap_or_default();
+
+            let evidence = FindingEvidence {
+                code_snippet: Some(result.extra.lines.clone().unwrap_or_default()),
+                suggested_patch,
+                fix_type: FindingFixType::CodeChange,
+                fix_summary: Some(fix_summary),
+                references,
+                manifest_coordinates: None,
+            };
 
             let _ = self
                 .db
@@ -154,9 +186,9 @@ impl SemgrepStage {
                     rel_path,
                     line,
                     Some(sat_i32(result.end.line as u64)),
-                    None,
                     &fingerprint,
                     None,
+                    &evidence,
                 )
                 .await;
 
@@ -172,15 +204,6 @@ impl SemgrepStage {
         );
 
         Ok(count)
-    }
-
-    async fn semgrep_available(&self) -> bool {
-        tokio::process::Command::new("which")
-            .arg("semgrep")
-            .output()
-            .await
-            .map(|o| o.status.success())
-            .unwrap_or(false)
     }
 }
 
@@ -239,8 +262,26 @@ struct SemgrepPosition {
 struct SemgrepExtra {
     message: String,
     severity: String,
+    /// The matched source lines from the target file. Semgrep includes this in
+    /// every result — we use it as the vulnerable code snippet so every finding
+    /// has concrete evidence attached.
+    #[serde(default)]
+    lines: Option<String>,
+    /// Autofix replacement text — when the rule author supplied a `fix:` block.
+    #[serde(default)]
+    fix: Option<String>,
+    /// Autofix via regex — some rules use `fix-regex:` instead of `fix:`.
+    #[serde(default)]
+    fix_regex: Option<SemgrepFixRegex>,
     #[serde(default)]
     metadata: Option<SemgrepMetadata>,
+}
+
+#[derive(serde::Deserialize)]
+struct SemgrepFixRegex {
+    /// Replacement string (after regex substitution).
+    #[serde(alias = "regex")]
+    replacement: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -249,6 +290,10 @@ struct SemgrepMetadata {
     cwe: Option<Vec<String>>,
     #[serde(default)]
     confidence: Option<String>,
+    /// External references (OWASP links, CVE records, blog posts) bundled with
+    /// semgrep rules. Surfaced on findings so operators can read background.
+    #[serde(default)]
+    references: Option<Vec<String>>,
 }
 
 #[cfg(test)]

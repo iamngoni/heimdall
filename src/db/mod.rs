@@ -1185,6 +1185,21 @@ impl DatabaseOperations {
     // Extended findings
     // -----------------------------------------------------------------------
 
+    /// Create a finding with full remediation evidence.
+    ///
+    /// This is the canonical entrypoint for all scan stages. The [`FindingEvidence`]
+    /// bundle enforces the invariant that every finding carries:
+    ///
+    /// - `code_snippet` — the vulnerable code section (WHERE)
+    /// - `suggested_patch` + `fix_summary` — how to remediate (HOW)
+    /// - `fix_type` — classification for UI/automation
+    /// - `references` — authoritative URLs
+    /// - `manifest_coordinates` — structured upgrade data for dep findings
+    ///
+    /// Stages should resist leaving evidence fields empty. If no remediation
+    /// is available, use [`FindingFixType::ManualReview`] explicitly — don't
+    /// silently omit.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_finding_full(
         &self,
         scan_id: Uuid,
@@ -1198,15 +1213,28 @@ impl DatabaseOperations {
         file_path: &str,
         line_start: i32,
         line_end: Option<i32>,
-        code_snippet: Option<&str>,
         fingerprint: &str,
         agent_reasoning: Option<&str>,
+        evidence: &FindingEvidence,
     ) -> HeimdallResult<Finding> {
+        let references_json = if evidence.references.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Array(
+                evidence
+                    .references
+                    .iter()
+                    .map(|r| serde_json::Value::String(r.clone()))
+                    .collect(),
+            ))
+        };
+
         sqlx::query_as::<_, Finding>(
             "INSERT INTO findings \
              (scan_id, repo_id, source, severity, confidence, title, description, cwe_id, \
-              file_path, line_start, line_end, code_snippet, fingerprint, agent_reasoning) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
+              file_path, line_start, line_end, code_snippet, suggested_patch, fix_type, \
+              fix_summary, references_json, manifest_coordinates_json, fingerprint, agent_reasoning) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) \
              RETURNING *",
         )
         .bind(scan_id)
@@ -1220,7 +1248,12 @@ impl DatabaseOperations {
         .bind(file_path)
         .bind(line_start)
         .bind(line_end)
-        .bind(code_snippet)
+        .bind(evidence.code_snippet.as_deref())
+        .bind(evidence.suggested_patch.as_deref())
+        .bind(evidence.fix_type.as_str())
+        .bind(evidence.fix_summary.as_deref())
+        .bind(references_json)
+        .bind(evidence.manifest_coordinates.as_ref())
         .bind(fingerprint)
         .bind(agent_reasoning)
         .fetch_one(&self.pool)

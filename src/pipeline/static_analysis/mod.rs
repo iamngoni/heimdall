@@ -15,9 +15,10 @@ use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::sync::LazyLock;
 
+use crate::config::SemgrepConfig;
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
-use crate::models::HeimdallResult;
+use crate::models::{FindingEvidence, FindingFixType, HeimdallResult};
 use crate::pipeline::deps_audit::DepsAuditStage;
 use crate::util::sat_i32_usize;
 
@@ -30,6 +31,7 @@ pub struct StaticAnalysisStage {
     pub repo_id: uuid::Uuid,
     pub db: Arc<DatabaseOperations>,
     pub work_dir: Option<std::path::PathBuf>,
+    pub semgrep_config: SemgrepConfig,
 }
 
 /// Context passed to the Hunt agent about what static analysis found.
@@ -39,6 +41,12 @@ pub struct StaticAnalysisContext {
 }
 
 /// A pattern rule for static analysis.
+///
+/// Every rule carries both a detection regex AND remediation guidance. The
+/// `fix_summary` and `fix_template` fields are required — a rule that detects
+/// a problem without telling operators how to fix it is not acceptable.
+/// `fix_type` classifies the remediation shape so the UI and downstream
+/// automation can render/act appropriately.
 struct Rule {
     name: &'static str,
     pattern: &'static str,
@@ -46,6 +54,18 @@ struct Rule {
     cwe: &'static str,
     description: &'static str,
     languages: &'static [&'static str],
+    /// One-liner plain-English summary of the remediation shown in triage
+    /// queues and finding headers.
+    fix_summary: &'static str,
+    /// Concrete replacement guidance — a code snippet, shell command, or
+    /// description of the safer API. Rendered as the suggested_patch when no
+    /// line-level diff can be generated.
+    fix_template: &'static str,
+    /// Classification of the fix (code edit vs config change vs manual review).
+    fix_type: FindingFixType,
+    /// Authoritative references — OWASP entries, CWE pages, RFC links.
+    /// Populated into `FindingEvidence::references` for every match.
+    references: &'static [&'static str],
 }
 
 const RULES: &[Rule] = &[
@@ -57,6 +77,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-89",
         description: "Potential SQL injection via string concatenation/interpolation",
         languages: &["rust", "python", "javascript", "typescript", "go", "java"],
+        fix_summary: "Use parameterized queries — never interpolate user input into SQL strings.",
+        fix_template: "// Replace string interpolation with parameter binding:\n// Before: db.query(format!(\"SELECT * FROM users WHERE id = {}\", user_id))\n// After:  sqlx::query(\"SELECT * FROM users WHERE id = $1\").bind(user_id)\n//\n// Each database driver exposes a parameterized API:\n//   Rust:        sqlx::query(\"... WHERE id = $1\").bind(value)\n//   Python:      cursor.execute(\"... WHERE id = %s\", (value,))\n//   JavaScript:  db.query(\"... WHERE id = $1\", [value])\n//   Go:          db.Query(\"... WHERE id = $1\", value)\n//   Java (JDBC): pstmt.setString(1, value)",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://owasp.org/www-community/attacks/SQL_Injection",
+            "https://cwe.mitre.org/data/definitions/89.html",
+        ],
     },
     Rule {
         name: "sql-injection-fstring",
@@ -65,6 +92,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-89",
         description: "SQL query built with f-string interpolation",
         languages: &["python"],
+        fix_summary: "Replace f-string SQL with parameterized queries using %s placeholders.",
+        fix_template: "# Before:\n# cursor.execute(f\"SELECT * FROM users WHERE name = '{name}'\")\n#\n# After (psycopg2 / sqlite3 / mysql-connector):\n# cursor.execute(\"SELECT * FROM users WHERE name = %s\", (name,))\n#\n# After (SQLAlchemy Core):\n# conn.execute(text(\"SELECT * FROM users WHERE name = :name\"), {\"name\": name})",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://owasp.org/www-community/attacks/SQL_Injection",
+            "https://bobby-tables.com/python",
+        ],
     },
     // Command injection
     Rule {
@@ -74,6 +108,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-78",
         description: "Potential command injection via string interpolation in shell command",
         languages: &["rust", "python", "javascript", "typescript", "go", "java"],
+        fix_summary: "Pass arguments as a list/array — never concatenate user input into shell strings.",
+        fix_template: "// Before: subprocess.call(\"ls \" + user_input, shell=True)\n// After:  subprocess.run([\"ls\", user_input], shell=False, check=True)\n//\n// Language-specific safe APIs:\n//   Python:     subprocess.run([prog, arg1, arg2], shell=False)\n//   Node.js:    require('child_process').execFile(prog, [arg1, arg2])\n//   Rust:       Command::new(prog).arg(arg1).arg(arg2).output()\n//   Go:         exec.Command(prog, arg1, arg2).Output()\n//\n// shell=True / bash -c is a code smell when the command includes user input.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://owasp.org/www-community/attacks/Command_Injection",
+            "https://cwe.mitre.org/data/definitions/78.html",
+        ],
     },
     // Hardcoded secrets
     Rule {
@@ -83,6 +124,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-798",
         description: "Potential hardcoded secret or API key",
         languages: &[],
+        fix_summary: "Move the secret to an environment variable or a secrets manager and rotate the exposed value.",
+        fix_template: "// 1. Remove the literal from source.\n// 2. Read from env at runtime:\n//    Rust:   std::env::var(\"API_KEY\")\n//    Python: os.environ[\"API_KEY\"]\n//    Node:   process.env.API_KEY\n// 3. Rotate the credential — assume it is already compromised if committed.\n// 4. Add the name (NOT the value) to .env.example and document in README.\n// 5. Ensure .env is listed in .gitignore.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://owasp.org/www-project-top-ten/2017/A3_2017-Sensitive_Data_Exposure",
+            "https://cwe.mitre.org/data/definitions/798.html",
+        ],
     },
     Rule {
         name: "aws-access-key",
@@ -91,6 +139,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-798",
         description: "AWS access key ID detected",
         languages: &[],
+        fix_summary: "Rotate the AWS key immediately and switch to IAM roles or env-var credentials.",
+        fix_template: "// URGENT:\n// 1. Rotate the key: AWS Console -> IAM -> Users -> Security credentials -> Make inactive, then Delete.\n// 2. Audit CloudTrail for unauthorized use over the key's lifetime.\n// 3. Remove the literal from source AND git history (use `git filter-repo`).\n// 4. Replace with one of:\n//    - IAM role (preferred for EC2/ECS/Lambda)\n//    - AWS SSO / Identity Center for local development\n//    - Environment variables loaded from a secrets manager (AWS Secrets Manager, Vault)",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html",
+            "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys_rotate.html",
+        ],
     },
     Rule {
         name: "private-key",
@@ -99,6 +154,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-321",
         description: "Private key embedded in source code",
         languages: &[],
+        fix_summary: "Rotate the key, remove it from source AND git history, load from a secret store at runtime.",
+        fix_template: "// 1. Treat the key as compromised — regenerate a new keypair.\n// 2. Revoke any certificates issued against the old key.\n// 3. Remove from git history: `git filter-repo --path <file> --invert-paths`\n//    (or use BFG Repo-Cleaner for larger repos).\n// 4. Load the new key at runtime:\n//    - Kubernetes: Secret mounted as a file\n//    - Vault / AWS Secrets Manager\n//    - Env var with base64-encoded PEM (dev only)\n// 5. Audit any systems that accepted signatures from the old key.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/321.html",
+            "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository",
+        ],
     },
     // Path traversal
     Rule {
@@ -108,6 +170,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-22",
         description: "Potential path traversal — file operation with user-controlled input",
         languages: &[],
+        fix_summary: "Validate path is inside an allowed root AFTER canonicalization; reject `..` and absolute paths from user input.",
+        fix_template: "// Safe pattern:\n// 1. Define an allow-list root: let root = PathBuf::from(\"/var/app/uploads\").canonicalize()?\n// 2. Join + canonicalize the user-supplied path.\n// 3. Verify the resolved path starts with the root.\n//\n// Rust example:\n//   let candidate = root.join(user_path).canonicalize()?;\n//   if !candidate.starts_with(&root) { return Err(\"path traversal\".into()); }\n//\n// Python:\n//   full = os.path.realpath(os.path.join(root, user_path))\n//   if not full.startswith(root + os.sep): raise SecurityError\n//\n// Never just strip `..` — attackers use encoding tricks (`..%2f`, `....//`).",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://owasp.org/www-community/attacks/Path_Traversal",
+            "https://cwe.mitre.org/data/definitions/22.html",
+        ],
     },
     // XSS
     Rule {
@@ -117,6 +186,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-79",
         description: "Potential XSS via innerHTML assignment",
         languages: &["javascript", "typescript"],
+        fix_summary: "Use `textContent` for plain text, or sanitize HTML with DOMPurify before assignment.",
+        fix_template: "// If you just need text:\n//   element.textContent = userInput;   // safe — no HTML parsing\n//\n// If you genuinely need HTML (rare):\n//   import DOMPurify from 'dompurify';\n//   element.innerHTML = DOMPurify.sanitize(userInput, { USE_PROFILES: { html: true } });\n//\n// In frameworks, prefer the framework's escaping:\n//   React:  {userInput}          // auto-escapes\n//   Vue:    {{ userInput }}      // auto-escapes\n//   Svelte: {userInput}          // auto-escapes",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://owasp.org/www-community/attacks/xss/",
+            "https://github.com/cure53/DOMPurify",
+        ],
     },
     Rule {
         name: "xss-dangerously-set",
@@ -125,6 +201,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-79",
         description: "React dangerouslySetInnerHTML usage — ensure input is sanitized",
         languages: &["javascript", "typescript"],
+        fix_summary: "Render as text with `{value}` if possible; otherwise sanitize with DOMPurify before passing to __html.",
+        fix_template: "// Prefer plain rendering (React auto-escapes):\n//   <div>{userContent}</div>\n//\n// If HTML is truly required:\n//   import DOMPurify from 'isomorphic-dompurify';\n//   <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(userContent) }} />\n//\n// Document WHY raw HTML is needed in a comment — this API is called\n// `dangerous` for a reason. Review any data that reaches it as untrusted.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html"],
     },
     // Deserialization
     Rule {
@@ -134,6 +214,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-502",
         description: "Unsafe deserialization detected",
         languages: &["python"],
+        fix_summary: "Never `pickle.loads` untrusted data; use JSON or `yaml.safe_load`.",
+        fix_template: "# For JSON-compatible data:\n#   json.loads(data)\n#\n# For YAML:\n#   yaml.safe_load(data)          # safe\n#   yaml.load(data)                # UNSAFE — arbitrary code execution\n#\n# If you must use pickle for trusted internal data:\n# - Sign the payload with HMAC and verify signature before unpickling.\n# - Document the trust boundary.\n#\n# pickle is arbitrary-code-execution by design. Treat any pickled blob\n# from outside the process as RCE.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/502.html",
+            "https://docs.python.org/3/library/pickle.html#restricting-globals",
+        ],
     },
     Rule {
         name: "unsafe-deserialization-java",
@@ -142,6 +229,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-502",
         description: "Java deserialization of untrusted data",
         languages: &["java"],
+        fix_summary: "Avoid Java serialization for untrusted data; use JSON (Jackson/Gson) or add an ObjectInputFilter.",
+        fix_template: "// Preferred: switch to JSON:\n//   ObjectMapper mapper = new ObjectMapper();\n//   MyType value = mapper.readValue(data, MyType.class);\n//\n// If you must use ObjectInputStream, install a serialization filter:\n//   ObjectInputStream ois = new ObjectInputStream(in);\n//   ois.setObjectInputFilter(filter ->\n//       filter.serialClass() == MyType.class\n//           ? ObjectInputFilter.Status.ALLOWED\n//           : ObjectInputFilter.Status.REJECTED);\n//\n// See JEP 290 (Java 9+).",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
+            "https://openjdk.org/jeps/290",
+        ],
     },
     // Weak crypto
     Rule {
@@ -151,6 +245,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-328",
         description: "Use of weak MD5 hash — consider SHA-256 or better",
         languages: &[],
+        fix_summary: "Replace MD5 with SHA-256 for integrity or bcrypt/argon2 for passwords.",
+        fix_template: "// For data integrity / fingerprinting:\n//   Rust:    use sha2::{Sha256, Digest}; Sha256::digest(data)\n//   Python:  hashlib.sha256(data).hexdigest()\n//   Node:    crypto.createHash('sha256').update(data).digest('hex')\n//\n// For password hashing (NEVER use MD5/SHA-256 directly):\n//   Rust:    argon2 crate\n//   Python:  passlib.hash.argon2 or bcrypt\n//   Node:    bcrypt or argon2\n//\n// MD5 is acceptable ONLY for non-security uses (checksumming large files,\n// cache keys) — and even then, SHA-256 has comparable performance now.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/328.html",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html",
+        ],
     },
     Rule {
         name: "weak-hash-sha1",
@@ -159,6 +260,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-328",
         description: "Use of SHA-1 hash — consider SHA-256 for security-sensitive contexts",
         languages: &[],
+        fix_summary: "Use SHA-256 (or SHA-3) anywhere collision resistance matters.",
+        fix_template: "// Replace SHA-1 with SHA-256 in:\n// - Certificate pinning\n// - Signature algorithms\n// - Content-addressable storage where collisions are exploitable\n//\n// SHA-1 remains acceptable for non-security uses (git object IDs, older\n// HMAC constructions where key strength carries security) but should not\n// be introduced into new code.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/328.html",
+            "https://shattered.io",
+        ],
     },
     // CSRF
     Rule {
@@ -168,6 +276,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-352",
         description: "POST endpoint without apparent CSRF protection",
         languages: &["python"],
+        fix_summary: "Add CSRF token validation via Flask-WTF or a same-origin check.",
+        fix_template: "# Flask with Flask-WTF:\n#   from flask_wtf.csrf import CSRFProtect\n#   csrf = CSRFProtect(app)\n#\n# For API endpoints consumed by SPAs, prefer:\n# - SameSite=Lax|Strict cookies (prevents cross-origin POST)\n# - Double-submit cookie pattern\n# - Origin / Referer header validation\n#\n# If the endpoint is truly public (no session), document it and add rate\n# limiting instead.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+            "https://flask-wtf.readthedocs.io/en/stable/csrf/",
+        ],
     },
     // Open redirect
     Rule {
@@ -177,6 +292,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-601",
         description: "Potential open redirect using user-controlled URL",
         languages: &[],
+        fix_summary: "Validate redirect targets against an allow-list of known-safe URLs/hosts.",
+        fix_template: "// Never redirect to an arbitrary user-supplied URL.\n// Instead:\n// 1. Maintain an allow-list of safe destinations (e.g., relative paths within your app).\n// 2. For external redirects, whitelist by hostname:\n//\n//   let target = parsed_url.host_str().ok_or(\"missing host\")?;\n//   let allowed = [\"example.com\", \"login.example.com\"];\n//   if !allowed.contains(&target) { return reject(); }\n//\n// 3. Prefer redirecting to a key that maps to a known URL server-side:\n//   GET /return?to=account  -> /account\n//   GET /return?to=billing  -> /billing",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/601.html",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html",
+        ],
     },
     // -----------------------------------------------------------------------
     // Injection (extended)
@@ -188,6 +310,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-90",
         description: "Potential LDAP injection via string interpolation in LDAP query",
         languages: &["python", "javascript", "typescript", "java"],
+        fix_summary: "Escape LDAP filter special characters (`* ( ) \\ NUL`) or use a parameterized LDAP library.",
+        fix_template: "// Escape LDAP filter metacharacters before interpolation:\n//   Python:  from ldap.filter import escape_filter_chars\n//            filter = f\"(uid={escape_filter_chars(username)})\"\n//   Java:    org.springframework.ldap.support.LdapEncoder.filterEncode(username)\n//   Node:    ldap-filter-escape package\n//\n// Characters requiring escape in filters: * ( ) \\ NUL\n// Characters requiring escape in DN: , + \" \\ < > ; leading/trailing spaces.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/90.html",
+            "https://cheatsheetseries.owasp.org/cheatsheets/LDAP_Injection_Prevention_Cheat_Sheet.html",
+        ],
     },
     Rule {
         name: "xxe-xml-parsing",
@@ -196,6 +325,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-611",
         description: "XML parsing without explicit XXE protection — disable external entities",
         languages: &["python", "java", "javascript", "typescript"],
+        fix_summary: "Disable external entity resolution and DTD loading in the XML parser.",
+        fix_template: "// Python (defusedxml is the safest choice):\n//   from defusedxml.ElementTree import parse\n//\n// Java:\n//   DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n//   dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n//   dbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\n//   dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\n//\n// Node (libxmljs):\n//   libxml.parseXml(data, { noent: false, dtdload: false });",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html",
+            "https://pypi.org/project/defusedxml/",
+        ],
     },
     Rule {
         name: "xpath-injection",
@@ -204,6 +340,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-643",
         description: "Potential XPath injection via string interpolation",
         languages: &[],
+        fix_summary: "Use parameterized XPath (XPath variables) instead of string concatenation.",
+        fix_template: "// Java (javax.xml.xpath with variable resolver):\n//   XPath xpath = XPathFactory.newInstance().newXPath();\n//   xpath.setXPathVariableResolver(v -> v.getLocalPart().equals(\"uid\") ? uid : null);\n//   xpath.evaluate(\"//user[uid=$uid]\", doc);\n//\n// Python (lxml):\n//   tree.xpath(\"//user[uid=$uid]\", uid=user_input)\n//\n// Never build XPath via string concatenation — the expression grammar\n// has its own injection surface analogous to SQL.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cwe.mitre.org/data/definitions/643.html"],
     },
     Rule {
         name: "ssti-template-injection",
@@ -212,6 +352,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-1336",
         description: "Potential server-side template injection (SSTI)",
         languages: &["python", "javascript", "typescript"],
+        fix_summary: "Never pass user input as the template SOURCE — pass it as template VARIABLES instead.",
+        fix_template: "# WRONG — user input becomes the template source:\n#   render_template_string(f\"Hello {user_name}\")\n#\n# RIGHT — user input is a variable:\n#   render_template_string(\"Hello {{ name }}\", name=user_name)\n#\n# Jinja2 sandbox (if you MUST execute user templates):\n#   from jinja2.sandbox import SandboxedEnvironment\n#   env = SandboxedEnvironment()\n#\n# SSTI leads to RCE in nearly every template engine. Treat user-supplied\n# template strings with the same care as user-supplied code.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://portswigger.net/research/server-side-template-injection",
+            "https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-side_Template_Injection",
+        ],
     },
     Rule {
         name: "nosql-injection",
@@ -220,6 +367,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-943",
         description: "Potential NoSQL injection via MongoDB operator in query",
         languages: &["javascript", "typescript", "python"],
+        fix_summary: "Cast/validate input types before query; reject objects when a scalar is expected.",
+        fix_template: "// Attack: login endpoint accepts { \"password\": { \"$ne\": null } } and matches any user.\n//\n// Defense:\n// 1. Validate input shape — reject objects when you expect a string:\n//    if (typeof req.body.password !== 'string') return 400;\n// 2. Use a schema validator (joi, zod, mongoose schemas with `SchemaType.cast`).\n// 3. Disable `$where` server-side (it evaluates JS): set `$where` in query filters.\n// 4. In Mongoose, call `.lean()` with `sanitizeFilter: true` or use `mongo-sanitize`.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/943.html",
+            "https://www.npmjs.com/package/mongo-sanitize",
+        ],
     },
     Rule {
         name: "header-injection-crlf",
@@ -228,6 +382,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-113",
         description: "HTTP header set with user-controlled value — potential CRLF injection",
         languages: &[],
+        fix_summary: "Strip `\\r` and `\\n` from any user-controlled header value, or reject outright.",
+        fix_template: "// Most modern frameworks reject CRLF in header values automatically — but\n// defense in depth:\n//\n//   let cleaned = user_value.replace('\\r', \"\").replace('\\n', \"\");\n//   if cleaned != user_value { return Err(\"invalid header\".into()); }\n//   response.headers_mut().insert(name, HeaderValue::from_str(&cleaned)?);\n//\n// Node / Express: the built-in `http` module rejects CRLF since v6+; still\n// validate if writing custom headers via raw sockets.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/113.html",
+            "https://owasp.org/www-community/attacks/HTTP_Response_Splitting",
+        ],
     },
     Rule {
         name: "log-injection",
@@ -236,6 +397,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-117",
         description: "User-controlled data in log output — potential log injection/forging",
         languages: &[],
+        fix_summary: "Log user input through a sanitizer that escapes/strips newlines, or use structured (JSON) logging.",
+        fix_template: "// Unsafe: log.info(\"user=\" + user_input)\n// Attacker submits: user=alice\\n[ERROR] fake log line\n//\n// Safe options:\n// 1. Structured logging (every field is a key=value pair; no injection):\n//    log.info(\"login_attempt\", user: user_input, ip: client_ip);\n// 2. Escape before logging:\n//    let safe = user_input.replace('\\n', \"\\\\n\").replace('\\r', \"\\\\r\");\n// 3. Limit logged length so attackers can't pollute rotating logs.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cwe.mitre.org/data/definitions/117.html"],
     },
     // -----------------------------------------------------------------------
     // Auth & Session
@@ -247,6 +412,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-798",
         description: "Hardcoded JWT secret — use environment variables for secrets",
         languages: &[],
+        fix_summary: "Rotate the secret, move it to environment variables or a secret manager, and regenerate all active tokens.",
+        fix_template: "// 1. Generate a new strong secret (>= 256 bits for HS256):\n//    openssl rand -hex 64\n// 2. Load at runtime:\n//    const secret = process.env.JWT_SECRET ?? throw new Error('JWT_SECRET missing');\n// 3. Invalidate all existing tokens (bump a `token_version` claim or short TTLs).\n// 4. Consider switching to RS256 (public/private keypair) so the secret is\n//    not required by services that only verify tokens.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/798.html",
+            "https://datatracker.ietf.org/doc/html/rfc7519",
+        ],
     },
     Rule {
         name: "permissive-cors",
@@ -255,6 +427,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-942",
         description: "Permissive CORS policy allowing all origins",
         languages: &[],
+        fix_summary: "Replace `*` with an explicit allow-list of trusted origins.",
+        fix_template: "// Express with cors middleware:\n//   app.use(cors({ origin: ['https://app.example.com', 'https://admin.example.com'] }));\n//\n// Actix-web:\n//   Cors::default()\n//       .allowed_origin(\"https://app.example.com\")\n//       .allowed_origin(\"https://admin.example.com\")\n//\n// Rules of thumb:\n// - `*` + credentials is impossible (browsers reject).\n// - Echoing the Origin header back is equivalent to `*` for attackers.\n// - Use an allow-list; keep it in config, not hardcoded.",
+        fix_type: FindingFixType::ConfigChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/942.html",
+            "https://owasp.org/www-community/attacks/CORS_OriginHeaderScrutiny",
+        ],
     },
     Rule {
         name: "insecure-cookie",
@@ -263,6 +442,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-614",
         description: "Cookie set without Secure or HttpOnly flag",
         languages: &[],
+        fix_summary: "Set `Secure`, `HttpOnly`, and `SameSite=Lax` (or `Strict`) on session cookies.",
+        fix_template: "// Express:\n//   res.cookie('session', token, {\n//     httpOnly: true,\n//     secure: true,         // HTTPS only\n//     sameSite: 'lax',      // or 'strict' for high-security\n//     maxAge: 3600_000,\n//   });\n//\n// Django: SESSION_COOKIE_SECURE = True, SESSION_COOKIE_HTTPONLY = True\n// Flask:  app.config['SESSION_COOKIE_SECURE'] = True\n//         app.config['SESSION_COOKIE_HTTPONLY'] = True\n//         app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'",
+        fix_type: FindingFixType::ConfigChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/614.html",
+            "https://owasp.org/www-community/controls/SecureCookieAttribute",
+        ],
     },
     Rule {
         name: "session-fixation",
@@ -271,6 +457,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-384",
         description: "Session ID set from user-controlled input — potential session fixation",
         languages: &["python", "javascript", "typescript"],
+        fix_summary: "Regenerate the session ID on every privilege transition (login, role change) and never accept client-supplied IDs.",
+        fix_template: "# Flask:\n#   from flask import session\n#   session.clear()\n#   session['user_id'] = user.id\n#   # Flask rotates the session cookie automatically on clear() + assignment.\n#\n# Django:\n#   from django.contrib.auth import login\n#   login(request, user)  # automatically rotates the session key.\n#\n# Express (express-session):\n#   req.session.regenerate(err => {\n#     req.session.userId = user.id;\n#     req.session.save();\n#   });",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/384.html",
+            "https://owasp.org/www-community/attacks/Session_fixation",
+        ],
     },
     Rule {
         name: "missing-auth-decorator",
@@ -279,6 +472,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-862",
         description: "Flask route without apparent authentication decorator",
         languages: &["python"],
+        fix_summary: "Add `@login_required` (or the project's auth decorator) to non-public routes.",
+        fix_template: "# Flask-Login:\n#   from flask_login import login_required\n#\n#   @app.route('/admin')\n#   @login_required\n#   def admin_panel():\n#       ...\n#\n# For API routes with role checks, compose decorators:\n#   @app.route('/admin/users')\n#   @login_required\n#   @require_role('admin')\n#   def list_users():\n#       ...\n#\n# If the route is intentionally public, add a `# @public_endpoint` marker\n# comment so future reviewers know the omission is deliberate.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/862.html",
+            "https://flask-login.readthedocs.io/",
+        ],
     },
     // -----------------------------------------------------------------------
     // Crypto
@@ -290,6 +490,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-338",
         description: "Weak random number generator — use cryptographically secure alternatives for security contexts",
         languages: &[],
+        fix_summary: "Use a CSPRNG: `secrets` in Python, `crypto.randomBytes` in Node, `rand::rngs::OsRng` in Rust.",
+        fix_template: "// Python:\n//   import secrets\n//   token = secrets.token_urlsafe(32)\n//   choice = secrets.choice(options)\n//\n// Node.js:\n//   const crypto = require('crypto');\n//   const token = crypto.randomBytes(32).toString('hex');\n//\n// Rust:\n//   use rand::rngs::OsRng;\n//   use rand::RngCore;\n//   let mut bytes = [0u8; 32];\n//   OsRng.fill_bytes(&mut bytes);\n//\n// Math.random / rand() / random.random are fine for games, simulations, and\n// non-security randomness. Anywhere an attacker could benefit from predicting\n// the value (tokens, passwords, IDs, IVs, nonces) — use a CSPRNG.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/338.html",
+            "https://docs.python.org/3/library/secrets.html",
+        ],
     },
     Rule {
         name: "ecb-mode",
@@ -298,6 +505,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-327",
         description: "ECB mode detected — use CBC, CTR, or GCM mode instead",
         languages: &[],
+        fix_summary: "Switch to AES-GCM (authenticated) or AES-CBC with a random IV and a separate MAC.",
+        fix_template: "// AES-GCM (recommended — authenticated encryption):\n//   Python: from cryptography.hazmat.primitives.ciphers.aead import AESGCM\n//   Node:   crypto.createCipheriv('aes-256-gcm', key, iv)\n//   Rust:   aes-gcm crate with Aes256Gcm::new(&key).encrypt(&nonce, plaintext)\n//\n// AES-CBC (if GCM unavailable) — pair with HMAC-SHA256 for integrity:\n//   Use a fresh 16-byte random IV per message.\n//   MAC the ciphertext separately.\n//\n// ECB encrypts identical blocks to identical ciphertext — patterns in the\n// plaintext leak through. See the famous `ECB Tux` image.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/327.html",
+            "https://cryptography.io/en/latest/hazmat/primitives/aead/",
+        ],
     },
     Rule {
         name: "hardcoded-iv-nonce",
@@ -306,6 +520,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-329",
         description: "Hardcoded IV/nonce — use a random value for each encryption",
         languages: &[],
+        fix_summary: "Generate a fresh random IV/nonce for every encryption; prepend it to the ciphertext.",
+        fix_template: "// AES-CBC: 16-byte IV\n// AES-GCM: 12-byte nonce (unique per key/message — never reused)\n// ChaCha20-Poly1305: 12-byte nonce\n//\n// Python:\n//   iv = os.urandom(16)\n// Node:\n//   const iv = crypto.randomBytes(12);\n// Rust:\n//   use rand::RngCore; let mut iv = [0u8; 12]; OsRng.fill_bytes(&mut iv);\n//\n// Store the IV alongside the ciphertext — it is NOT a secret, just unique.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cwe.mitre.org/data/definitions/329.html"],
     },
     // -----------------------------------------------------------------------
     // Data Exposure
@@ -317,6 +535,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-209",
         description: "Stack trace printed — may leak sensitive information to users",
         languages: &[],
+        fix_summary: "Log the stack trace server-side; return a generic error message to clients.",
+        fix_template: "// Pattern:\n//   try {\n//       risky_thing();\n//   } catch (err) {\n//       logger.error('operation failed', err);      // full trace to logs\n//       res.status(500).json({                       // sanitized to client\n//           error: 'internal_error',\n//           request_id: req.id,                      // helps correlate with logs\n//       });\n//   }\n//\n// NEVER send `err.message` or the stack to the response body in production.\n// Stack traces leak file paths, framework versions, ORM internals, etc.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/209.html",
+            "https://owasp.org/www-community/Improper_Error_Handling",
+        ],
     },
     Rule {
         name: "debug-mode-production",
@@ -325,6 +550,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-489",
         description: "Debug mode enabled — disable in production deployments",
         languages: &[],
+        fix_summary: "Read debug flag from environment; default to false in production.",
+        fix_template: "# Python (Flask/Django):\n#   DEBUG = os.environ.get('DEBUG', 'false').lower() == 'true'\n#\n# Node (Express):\n#   const isDev = process.env.NODE_ENV !== 'production';\n#   app.set('env', isDev ? 'development' : 'production');\n#\n# Debug mode typically exposes interactive consoles (Werkzeug debugger),\n# detailed tracebacks, and profiler data — all of which are RCE surfaces\n# in production.",
+        fix_type: FindingFixType::ConfigChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/489.html",
+            "https://docs.djangoproject.com/en/stable/ref/settings/#debug",
+        ],
     },
     Rule {
         name: "verbose-error-response",
@@ -333,6 +565,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-209",
         description: "Error details sent in response — may expose sensitive internal information",
         languages: &["javascript", "typescript", "java"],
+        fix_summary: "Map internal errors to generic client-safe codes; log the details server-side.",
+        fix_template: "// Centralized error handler (Express):\n//   app.use((err, req, res, next) => {\n//       logger.error({ err, req_id: req.id });\n//       res.status(err.status ?? 500).json({\n//           error: err.code ?? 'internal_error',\n//           request_id: req.id,\n//       });\n//   });\n//\n// Define an AppError type with stable, enumerable `.code` values. Map only\n// the code + message (not the stack or cause chain) to the response body.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cwe.mitre.org/data/definitions/209.html"],
     },
     Rule {
         name: "todo-with-secret",
@@ -341,6 +577,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-615",
         description: "Comment references secrets — ensure no credentials in source comments",
         languages: &[],
+        fix_summary: "Remove the comment or ensure no credentials are embedded; rotate anything that may have leaked.",
+        fix_template: "// 1. Read the comment carefully — does it reference a real secret?\n// 2. If yes: rotate the credential AND scrub the comment from git history.\n// 3. If it's just a TODO to wire up auth, rewrite without credential keywords.\n//\n// Example rewrites:\n//   Before: // TODO: use real api_key here, not 'test-key-12345'\n//   After:  // TODO(issue-42): load credentials from secrets manager",
+        fix_type: FindingFixType::ManualReview,
+        references: &["https://cwe.mitre.org/data/definitions/615.html"],
     },
     // -----------------------------------------------------------------------
     // Memory & Resource Safety
@@ -352,6 +592,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-120",
         description: "Use of unsafe C function prone to buffer overflow — use bounded alternatives",
         languages: &["c", "cpp"],
+        fix_summary: "Replace with bounded variants: `strncpy`/`strlcpy`, `snprintf`, `fgets`.",
+        fix_template: "// Unsafe -> Safe:\n//   gets(buf)         -> fgets(buf, sizeof(buf), stdin)\n//   strcpy(d, s)      -> strlcpy(d, s, sizeof(d))   // BSD, musl\n//                     -> snprintf(d, sizeof(d), \"%s\", s)\n//   strcat(d, s)      -> strlcat(d, s, sizeof(d))\n//   sprintf(buf, ...) -> snprintf(buf, sizeof(buf), ...)\n//\n// C++ alternative: use std::string and iostream; ditch C-string APIs\n// entirely where possible.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/120.html",
+            "https://man.openbsd.org/strlcpy",
+        ],
     },
     Rule {
         name: "use-after-free",
@@ -360,6 +607,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-416",
         description: "Memory deallocation detected — verify no use-after-free of freed pointer",
         languages: &["c", "cpp"],
+        fix_summary: "Set the pointer to NULL after free, or redesign with RAII / smart pointers.",
+        fix_template: "// Defensive pattern:\n//   free(ptr);\n//   ptr = NULL;  // any subsequent deref is a controlled NULL-deref, not UAF\n//\n// Better: use RAII wrappers and ownership:\n//   C++:  std::unique_ptr<T>, std::shared_ptr<T>\n//   C:    wrap lifecycle in a struct with explicit ownership semantics;\n//         run sanitizers (-fsanitize=address) in CI.\n//\n// Review every aliased pointer to the freed object — a use-after-free\n// usually manifests through a second pointer you forgot about.",
+        fix_type: FindingFixType::ManualReview,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/416.html",
+            "https://github.com/google/sanitizers/wiki/AddressSanitizer",
+        ],
     },
     Rule {
         name: "integer-overflow",
@@ -368,6 +622,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-190",
         description: "Potential integer overflow from narrowing cast",
         languages: &["rust", "java", "c", "cpp"],
+        fix_summary: "Use checked / saturating conversions, or widen the target type.",
+        fix_template: "// Rust:\n//   let small: u8 = value.try_into()?;           // returns Err on overflow\n//   let clamped: u8 = u8::try_from(value).unwrap_or(u8::MAX);\n//   let saturating: u8 = value.saturating_as::<u8>(); // with the num_traits crate\n//\n// Java:\n//   Math.toIntExact(longValue);  // throws ArithmeticException on overflow\n//\n// C/C++:\n//   Use fixed-width types (int32_t, uint64_t) and validate range before cast.\n//   Compile with -ftrapv or -fsanitize=signed-integer-overflow.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cwe.mitre.org/data/definitions/190.html"],
     },
     // -----------------------------------------------------------------------
     // Misc
@@ -379,6 +637,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-1333",
         description: "Potentially catastrophic regex — may cause ReDoS with crafted input",
         languages: &[],
+        fix_summary: "Rewrite the regex without nested quantifiers, or use a linear-time engine (RE2, Rust regex).",
+        fix_template: "// Catastrophic patterns to avoid:\n//   (.+)+          — nested quantifiers\n//   (a|a)*         — alternation overlapping quantifier\n//   .*.*           — unbounded backtracking corridor\n//\n// Safer alternatives:\n// 1. Use a linear-time regex engine:\n//    - Rust:   `regex` crate (always linear)\n//    - Go:     built-in regexp (RE2)\n//    - Python: `re2` (via the re2 package)\n// 2. Anchor patterns: ^pattern$ with explicit length limits on { }.\n// 3. Reject input longer than your expected max before matching.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/1333.html",
+            "https://github.com/google/re2",
+        ],
     },
     Rule {
         name: "ssrf",
@@ -387,6 +652,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-918",
         description: "HTTP request with user-controlled URL — potential SSRF",
         languages: &[],
+        fix_summary: "Resolve hostname, reject RFC1918 / link-local / metadata IPs, allow-list permitted destinations.",
+        fix_template: "// Defense layers (use all of them):\n// 1. Parse + validate the URL structure (scheme, host).\n// 2. Resolve DNS and check the resolved IP is not:\n//    - 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 (RFC1918)\n//    - 127.0.0.0/8 (loopback)\n//    - 169.254.0.0/16 (link-local, incl. AWS/GCP metadata 169.254.169.254)\n//    - ::1, fc00::/7, fe80::/10\n// 3. Allow-list schemes: http, https only.\n// 4. Disable redirect-following OR re-validate the final URL after each hop.\n// 5. Isolate the outbound egress — dedicated subnet, proxy, or sidecar.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/918.html",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+        ],
     },
     Rule {
         name: "toctou-race",
@@ -395,6 +667,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-367",
         description: "Time-of-check to time-of-use (TOCTOU) race condition on file operation",
         languages: &["python", "java", "c", "cpp"],
+        fix_summary: "Open the file once with the correct flags and handle errors — don't check existence separately.",
+        fix_template: "# Race-prone:\n#   if os.path.exists(path):\n#       with open(path) as f: ...\n#\n# Race-free (EAFP):\n#   try:\n#       with open(path) as f: ...\n#   except FileNotFoundError:\n#       ...\n#\n# For exclusive creation (prevent symlink attacks):\n#   fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)\n#\n# In C: open(path, O_CREAT | O_EXCL, mode) then operate on the fd.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cwe.mitre.org/data/definitions/367.html"],
     },
     Rule {
         name: "prototype-pollution",
@@ -403,6 +679,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-1321",
         description: "Potential prototype pollution via __proto__ or constructor.prototype",
         languages: &["javascript", "typescript"],
+        fix_summary: "Use Object.create(null), Map, or a structured-clone merge; reject keys `__proto__`, `constructor`, `prototype`.",
+        fix_template: "// Safer merge pattern:\n//   function safeMerge(target, source) {\n//       for (const key of Object.keys(source)) {\n//           if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;\n//           target[key] = source[key];\n//       }\n//   }\n//\n// Prefer Map for user-keyed data:\n//   const store = new Map();\n//   store.set(userKey, userValue);\n//\n// Libraries that mitigate this: lodash/defaultsDeep (patched >= 4.17.20),\n// `merge-options` with { concatArrays: true, ignoreUndefined: true }.",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://cwe.mitre.org/data/definitions/1321.html",
+            "https://learn.snyk.io/lesson/prototype-pollution/",
+        ],
     },
     // -----------------------------------------------------------------------
     // Additional Secrets
@@ -414,6 +697,13 @@ const RULES: &[Rule] = &[
         cwe: "CWE-798",
         description: "GitHub personal access token or OAuth token detected",
         languages: &[],
+        fix_summary: "Revoke the token immediately on GitHub, scrub from git history, replace with a GitHub App or OIDC.",
+        fix_template: "// URGENT:\n// 1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Revoke.\n// 2. `git filter-repo --path <file> --invert-paths` to scrub history.\n// 3. Force-push cleaned history (coordinate with collaborators).\n// 4. Replace:\n//    - CI: GitHub Actions with OIDC federation (no token storage required).\n//    - Bots: GitHub App with fine-grained permissions.\n//    - Dev tooling: gh CLI's device flow (no stored PAT).",
+        fix_type: FindingFixType::CodeChange,
+        references: &[
+            "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository",
+            "https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect",
+        ],
     },
     Rule {
         name: "slack-token",
@@ -422,6 +712,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-798",
         description: "Slack API token detected",
         languages: &[],
+        fix_summary: "Revoke the token in Slack, remove from history, move to a secret manager.",
+        fix_template: "// 1. Slack admin -> Apps -> manage -> revoke the token.\n// 2. If it was a bot token (xoxb-): rotate at the Slack App config page.\n// 3. `git filter-repo` to scrub history; notify collaborators.\n// 4. Store the new token in AWS Secrets Manager / Vault / GitHub Actions secrets.\n// 5. Review Slack audit log for any unauthorized messages/file access.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://api.slack.com/authentication/best-practices"],
     },
     Rule {
         name: "google-api-key",
@@ -430,6 +724,10 @@ const RULES: &[Rule] = &[
         cwe: "CWE-798",
         description: "Google API key detected",
         languages: &[],
+        fix_summary: "Restrict or rotate the key in Google Cloud Console; replace with OAuth2 or service account JSON.",
+        fix_template: "// 1. Google Cloud Console -> APIs & Services -> Credentials -> Restrict or Delete.\n// 2. Scrub from git history.\n// 3. Choose a safer auth mechanism:\n//    - Server-to-server: Service account key (short-lived via Workload Identity).\n//    - User-facing: OAuth2 with consent screen.\n//    - Client-side (browser/mobile): Restrict the API key by HTTP referrer / package name / IP.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cloud.google.com/docs/authentication/api-keys"],
     },
     Rule {
         name: "connection-string-password",
@@ -438,16 +736,26 @@ const RULES: &[Rule] = &[
         cwe: "CWE-798",
         description: "Connection string with embedded password detected",
         languages: &[],
+        fix_summary: "Move the password to an environment variable / secret manager; rotate the database credential.",
+        fix_template: "// Unsafe: const DB = \"postgres://user:hunter2@db.internal/app\";\n//\n// Safe:\n//   const pw = process.env.DB_PASSWORD;\n//   const DB = `postgres://user:${encodeURIComponent(pw)}@db.internal/app`;\n//\n// Better: use a secret manager and short-lived credentials:\n//   - AWS: RDS IAM authentication\n//   - GCP: Cloud SQL Auth Proxy + IAM\n//   - On-prem: HashiCorp Vault dynamic secrets\n//\n// Rotate the exposed password before shipping the fix — assume it is\n// already in someone's git-scraped credential dataset.",
+        fix_type: FindingFixType::CodeChange,
+        references: &["https://cwe.mitre.org/data/definitions/798.html"],
     },
 ];
 
 impl StaticAnalysisStage {
-    pub fn new(scan_id: uuid::Uuid, repo_id: uuid::Uuid, db: Arc<DatabaseOperations>) -> Self {
+    pub fn new(
+        scan_id: uuid::Uuid,
+        repo_id: uuid::Uuid,
+        db: Arc<DatabaseOperations>,
+        semgrep_config: SemgrepConfig,
+    ) -> Self {
         Self {
             scan_id,
             repo_id,
             db,
             work_dir: None,
+            semgrep_config,
         }
     }
 
@@ -508,6 +816,15 @@ impl StaticAnalysisStage {
                         let snippet = extract_snippet(&indexed_file.content, line_idx, 2);
                         let fingerprint = make_fingerprint(rule.name, file_path, line_num);
 
+                        let evidence = FindingEvidence {
+                            code_snippet: Some(snippet),
+                            suggested_patch: Some(rule.fix_template.to_string()),
+                            fix_type: rule.fix_type,
+                            fix_summary: Some(rule.fix_summary.to_string()),
+                            references: rule.references.iter().map(|s| s.to_string()).collect(),
+                            manifest_coordinates: None,
+                        };
+
                         let _ = self
                             .db
                             .create_finding_full(
@@ -522,9 +839,9 @@ impl StaticAnalysisStage {
                                 file_path,
                                 line_num,
                                 Some(line_num),
-                                Some(&snippet),
                                 &fingerprint,
                                 None,
+                                &evidence,
                             )
                             .await;
 

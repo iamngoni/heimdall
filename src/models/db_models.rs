@@ -313,14 +313,153 @@ pub struct Finding {
     pub file_path: String,
     pub line_start: i32,
     pub line_end: Option<i32>,
+    /// The vulnerable code section — concrete lines from the target file.
+    /// Every production finding is expected to carry this evidence. See
+    /// [`FindingEvidence`] and [`crate::db::DatabaseOperations::create_finding_full`].
     pub code_snippet: Option<String>,
+    /// Suggested fix — unified diff, replacement snippet, or structured patch
+    /// text. For dependency findings this is a manifest-format diff bumping
+    /// the version. For code findings this is either an autofix (from semgrep
+    /// or the hunt agent) or a hand-authored template from the rule.
     pub suggested_patch: Option<String>,
+    /// Classification of the fix (code edit vs dependency upgrade vs config
+    /// change vs manual review). Drives how the UI renders the fix and what
+    /// automation (PR bots, dependabot-style workflows) can do with it.
+    #[sqlx(default)]
+    pub fix_type: Option<String>,
+    /// Plain-English summary of the suggested fix. Always populated when a
+    /// concrete remediation exists. Rendered alongside the patch so operators
+    /// who skim triage queues can understand intent without reading a diff.
+    #[sqlx(default)]
+    pub fix_summary: Option<String>,
+    /// External references — advisory URLs (GHSA, CVE, OWASP), migration
+    /// guides, rule documentation. Stored as `jsonb` array of strings.
+    #[sqlx(default)]
+    pub references_json: Option<serde_json::Value>,
+    /// For dependency findings: ecosystem / package / installed version /
+    /// fixed version bundle. Lets the UI render upgrade guidance without
+    /// re-parsing the patch. `None` for code findings.
+    #[sqlx(default)]
+    pub manifest_coordinates_json: Option<serde_json::Value>,
     pub poc_exploit_json: Option<serde_json::Value>,
     pub poc_validated: bool,
     pub fingerprint: String,
     pub agent_reasoning: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Classification of a finding's remediation shape.
+///
+/// Drives UI rendering (code diff vs version picker vs config editor) and
+/// downstream automation (who can apply the fix automatically). Every finding
+/// carries one of these values — when there is no automatic remediation,
+/// [`FindingFixType::ManualReview`] is the honest choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingFixType {
+    /// Edit the vulnerable code in place (e.g., replace `md5(x)` with `sha256(x)`,
+    /// swap string interpolation for parameterized query binding).
+    CodeChange,
+    /// Bump a package version in a manifest file. Produced by the deps audit
+    /// stage. Suggested patch is a manifest-format diff; manifest_coordinates
+    /// carries ecosystem/name/versions for structured rendering.
+    DependencyUpgrade,
+    /// Change a configuration file or environment variable (e.g., set
+    /// `httponly=true` on cookies, flip `DEBUG=false`, disable ECB mode).
+    ConfigChange,
+    /// No mechanical fix available — human judgement required. Used for
+    /// architectural concerns, TOCTOU races, low-confidence matches, or
+    /// findings where the "right" answer depends on business logic.
+    ManualReview,
+}
+
+impl FindingFixType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FindingFixType::CodeChange => "code_change",
+            FindingFixType::DependencyUpgrade => "dependency_upgrade",
+            FindingFixType::ConfigChange => "config_change",
+            FindingFixType::ManualReview => "manual_review",
+        }
+    }
+}
+
+/// Bundle of remediation evidence attached to every finding.
+///
+/// This exists to enforce the invariant that a finding without evidence is
+/// meaningless. `code_snippet` shows WHERE the problem is. `suggested_patch`
+/// + `fix_summary` show HOW to fix it. `references` point to AUTHORITY for the
+/// remediation. `manifest_coordinates` carries structured upgrade data for
+/// dependency findings that UI and automation can consume directly.
+///
+/// Stages should construct this inline when creating findings — the fields
+/// are deliberately ergonomic (`Option<String>` / `Vec<String>`) so there is
+/// no excuse for leaving them empty when real data exists.
+#[derive(Debug, Clone, Default)]
+pub struct FindingEvidence {
+    /// Vulnerable code lines pulled from the target file with surrounding
+    /// context. Expected to always be populated for code / config / dep
+    /// findings. `None` is only acceptable for findings that genuinely have
+    /// no code locus (and those should be rare).
+    pub code_snippet: Option<String>,
+    /// The suggested replacement — either a unified diff (preferred) or a
+    /// replacement snippet. `None` only when the finding is [`FindingFixType::ManualReview`].
+    pub suggested_patch: Option<String>,
+    /// Classification of the remediation shape.
+    pub fix_type: FindingFixType,
+    /// One-liner summary of the fix in plain English. Always populated for
+    /// anything other than [`FindingFixType::ManualReview`].
+    pub fix_summary: Option<String>,
+    /// Authoritative URLs — advisories, CVE records, migration guides, OWASP
+    /// entries. Stored as `jsonb` array on the finding row.
+    pub references: Vec<String>,
+    /// For dependency findings: structured upgrade bundle. See the
+    /// [`ManifestCoordinates`] builder.
+    pub manifest_coordinates: Option<serde_json::Value>,
+}
+
+impl FindingEvidence {
+    /// Convenience constructor for code-change findings (static rules, taint,
+    /// hunt agent).
+    pub fn code_change(
+        code_snippet: impl Into<String>,
+        suggested_patch: impl Into<String>,
+        fix_summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            code_snippet: Some(code_snippet.into()),
+            suggested_patch: Some(suggested_patch.into()),
+            fix_type: FindingFixType::CodeChange,
+            fix_summary: Some(fix_summary.into()),
+            references: Vec::new(),
+            manifest_coordinates: None,
+        }
+    }
+
+    /// Convenience constructor for manual-review findings where no mechanical
+    /// fix exists — still carries the snippet so the UI can show evidence.
+    pub fn manual_review(code_snippet: Option<String>, fix_summary: impl Into<String>) -> Self {
+        Self {
+            code_snippet,
+            suggested_patch: None,
+            fix_type: FindingFixType::ManualReview,
+            fix_summary: Some(fix_summary.into()),
+            references: Vec::new(),
+            manifest_coordinates: None,
+        }
+    }
+
+    /// Attach references (advisory URLs, migration guides) to an evidence
+    /// bundle. Chainable.
+    pub fn with_references<I, S>(mut self, refs: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.references.extend(refs.into_iter().map(Into::into));
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

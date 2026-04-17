@@ -31,6 +31,25 @@ pub struct Config {
     pub gitlab_oauth: GitlabOAuthConfig,
     pub bitbucket_oauth: BitbucketOAuthConfig,
     pub webhook: WebhookConfig,
+    pub semgrep: SemgrepConfig,
+}
+
+/// Configuration for the Semgrep static analysis integration.
+///
+/// Semgrep is a required runtime dependency. `Config::from_env` verifies the
+/// binary is on PATH (or at `SEMGREP_BIN`) at startup so deployments fail fast
+/// instead of silently producing degraded scans.
+#[derive(Debug, Clone)]
+pub struct SemgrepConfig {
+    /// Path to the semgrep binary. Defaults to `semgrep` (resolved via PATH).
+    /// Override with `SEMGREP_BIN` for custom installs (e.g., virtualenv paths).
+    pub binary_path: String,
+    /// Rule config passed to `semgrep scan --config`. Defaults to `auto`.
+    /// Operators may set `SEMGREP_CONFIG` to pin registry rules (`p/owasp-top-ten`),
+    /// a local rules directory, or a registry URL.
+    pub config: String,
+    /// Per-scan timeout passed to semgrep (`--timeout`). Seconds. Default 120.
+    pub timeout_seconds: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +124,51 @@ impl Config {
             gitlab_oauth: GitlabOAuthConfig::from_env(),
             bitbucket_oauth: BitbucketOAuthConfig::from_env(),
             webhook: WebhookConfig::from_env(),
+            semgrep: SemgrepConfig::from_env()?,
+        })
+    }
+}
+
+impl SemgrepConfig {
+    fn from_env() -> Result<Self> {
+        let binary_path = env_nonempty_or("SEMGREP_BIN", "semgrep");
+        let config = env_nonempty_or("SEMGREP_CONFIG", "auto");
+        let timeout_seconds: u32 = env_nonempty("SEMGREP_TIMEOUT_SECS")
+            .map(|value| value.parse::<u32>())
+            .transpose()
+            .context("SEMGREP_TIMEOUT_SECS must be a positive integer")?
+            .unwrap_or(120);
+
+        // Fail-fast: verify the binary is invokable. `semgrep --version` exits 0
+        // when installed, so any error here means misconfiguration.
+        let probe = std::process::Command::new(&binary_path)
+            .arg("--version")
+            .output();
+
+        match probe {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!(
+                    "Semgrep found at `{binary_path}` but `--version` exited with {}: {}. \
+                     Install semgrep (`pip install semgrep`) or set SEMGREP_BIN to a valid binary.",
+                    output.status,
+                    stderr.trim()
+                );
+            }
+            Err(error) => {
+                anyhow::bail!(
+                    "Semgrep is a required runtime dependency but could not be executed at \
+                     `{binary_path}`: {error}. Install semgrep (`pip install semgrep`) or set \
+                     SEMGREP_BIN to the absolute path of the binary.",
+                );
+            }
+        }
+
+        Ok(SemgrepConfig {
+            binary_path,
+            config,
+            timeout_seconds,
         })
     }
 }
