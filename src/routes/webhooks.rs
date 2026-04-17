@@ -289,6 +289,7 @@ async fn trigger_scan_for_webhook(
         let model = runtime.model;
         let encryption_key = state.encryption_key;
         let data_dir = state.config.app.data_dir.clone();
+        let semgrep_config = state.config.semgrep.clone();
 
         let cancel_token = sse.register_cancellation_token(scan_id);
         tokio::spawn(async move {
@@ -300,6 +301,7 @@ async fn trigger_scan_for_webhook(
                 sse.clone(),
                 encryption_key,
                 data_dir,
+                semgrep_config,
                 cancel_token,
             );
             if let Err(e) = pipeline.run(&repo).await {

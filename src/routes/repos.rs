@@ -248,6 +248,7 @@ async fn trigger_scan(
         let model = runtime.model;
         let encryption_key = state.encryption_key;
         let data_dir = state.config.app.data_dir.clone();
+        let semgrep_config = state.config.semgrep.clone();
         let scan_id = scan.id;
         let repo_name = repo.name.clone();
 
@@ -261,6 +262,7 @@ async fn trigger_scan(
                 sse.clone(),
                 encryption_key,
                 data_dir,
+                semgrep_config,
                 cancel_token,
             );
             if let Err(e) = pipeline.run(&repo).await {

@@ -759,7 +759,7 @@ async fn update_theme(
         }
     };
 
-    let theme = body.theme.trim().to_string();
+    let theme = crate::templates::normalize_theme(body.theme.trim()).to_string();
     if !crate::templates::KNOWN_THEMES.contains(&theme.as_str()) {
         let msg = format!(
             "Unknown theme '{}'. Available: {}",

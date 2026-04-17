@@ -15,7 +15,16 @@ use std::sync::Arc;
 pub const DEFAULT_THEME: &str = "sentinel";
 
 /// Known theme identifiers.
-pub const KNOWN_THEMES: &[&str] = &["sentinel", "editorial"];
+pub const KNOWN_THEMES: &[&str] = &["sentinel", "oatmeal", "editorial"];
+
+/// Normalize legacy or invalid theme identifiers to a valid active theme.
+pub fn normalize_theme(theme: &str) -> &str {
+    match theme {
+        "classic" => DEFAULT_THEME,
+        candidate if KNOWN_THEMES.contains(&candidate) => candidate,
+        _ => DEFAULT_THEME,
+    }
+}
 
 /// Holds the minijinja template environment for a single theme.
 pub struct TemplateEngine {

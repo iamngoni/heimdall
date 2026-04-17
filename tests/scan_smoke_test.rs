@@ -5,6 +5,7 @@ use actix_web::{
     http::{StatusCode, header},
     test,
 };
+use heimdall::models::db_models::FindingEvidence;
 use heimdall::routes;
 use serde_json::Value;
 use uuid::Uuid;
@@ -64,9 +65,13 @@ async fn test_repo_scan_findings_smoke_flow() {
             "src/lib.rs",
             41,
             Some(44),
-            Some("let query = format!(\"SELECT * FROM users WHERE id = {}\", user_id);"),
             &format!("smoke-fingerprint-{}", Uuid::now_v7()),
-            Some("@@ -1 +1 @@\n-let query = format!(...)\n+let query = \"SELECT * FROM users WHERE id = $1\";"),
+            None,
+            &FindingEvidence::code_change(
+                "let query = format!(\"SELECT * FROM users WHERE id = {}\", user_id);",
+                "@@ -1 +1 @@\n-let query = format!(...)\n+let query = \"SELECT * FROM users WHERE id = $1\";",
+                "Replace string interpolation with a parameterized query.",
+            ),
         )
         .await
         .expect("Failed to create smoke test finding");

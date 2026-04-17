@@ -14,7 +14,7 @@ pub struct OsvQuery {
     pub version: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OsvPackage {
     pub name: String,
     pub ecosystem: String,
@@ -41,6 +41,10 @@ pub struct OsvVulnerability {
     pub summary: Option<String>,
     pub aliases: Option<Vec<String>>,
     pub severity: Option<Vec<OsvSeverity>>,
+    #[serde(default)]
+    pub affected: Option<Vec<OsvAffectedPackage>>,
+    #[serde(default)]
+    pub references: Option<Vec<OsvReference>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,6 +52,37 @@ pub struct OsvSeverity {
     #[serde(rename = "type")]
     pub score_type: String,
     pub score: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OsvAffectedPackage {
+    #[serde(default)]
+    pub package: Option<OsvPackage>,
+    #[serde(default)]
+    pub ranges: Vec<OsvRange>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OsvRange {
+    #[serde(default)]
+    pub events: Vec<OsvRangeEvent>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OsvRangeEvent {
+    #[serde(default)]
+    pub introduced: Option<String>,
+    #[serde(default)]
+    pub fixed: Option<String>,
+    #[serde(default)]
+    pub last_affected: Option<String>,
+    #[serde(default)]
+    pub limit: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OsvReference {
+    pub url: String,
 }
 
 /// Query OSV API in batches (max 1000 per request).
@@ -104,7 +139,17 @@ mod tests {
             "id": "GHSA-abcd-1234-efgh",
             "summary": "Test vulnerability",
             "aliases": ["CVE-2023-12345"],
-            "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]
+            "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+            "references": [{"url": "https://github.com/advisories/GHSA-abcd-1234-efgh"}],
+            "affected": [{
+                "package": {"name": "example", "ecosystem": "npm"},
+                "ranges": [{
+                    "events": [
+                        {"introduced": "0"},
+                        {"fixed": "1.2.3"}
+                    ]
+                }]
+            }]
         }"#;
         let vuln: OsvVulnerability = serde_json::from_str(json).unwrap();
         assert_eq!(vuln.id, "GHSA-abcd-1234-efgh");
@@ -112,6 +157,16 @@ mod tests {
             vuln.aliases
                 .unwrap()
                 .contains(&"CVE-2023-12345".to_string())
+        );
+        assert_eq!(
+            vuln.references.unwrap()[0].url,
+            "https://github.com/advisories/GHSA-abcd-1234-efgh"
+        );
+        assert_eq!(
+            vuln.affected.unwrap()[0].ranges[0].events[1]
+                .fixed
+                .as_deref(),
+            Some("1.2.3")
         );
     }
 }

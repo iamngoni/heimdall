@@ -16,7 +16,7 @@ use crate::ai::ModelProvider;
 use crate::ai::types::{CompletionRequest, Message, StopReason};
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
-use crate::models::HeimdallResult;
+use crate::models::{FindingEvidence, FindingFixType, HeimdallResult};
 use crate::pipeline::hunt::tools;
 use crate::pipeline::tyr::AttackSurface;
 use crate::util::{sat_i32, sat_i32_u128};
@@ -44,7 +44,11 @@ pub struct AgentFinding {
     pub line_start: i32,
     pub line_end: Option<i32>,
     pub description: String,
-    pub code_snippet: Option<String>,
+    pub code_snippet: String,
+    pub suggested_patch: String,
+    pub fix_summary: String,
+    pub fix_type: FindingFixType,
+    pub references: Vec<String>,
     pub reasoning: Option<String>,
 }
 
@@ -239,6 +243,33 @@ impl HuntAgent {
                         if tc.name == "report_finding" {
                             // Handle finding report
                             self.state = AgentState::ReportingFinding;
+                            let code_snippet = tc.arguments["code_snippet"]
+                                .as_str()
+                                .unwrap_or("")
+                                .trim()
+                                .to_string();
+                            let suggested_patch = tc.arguments["suggested_patch"]
+                                .as_str()
+                                .unwrap_or("")
+                                .trim()
+                                .to_string();
+                            let fix_summary = tc.arguments["fix_summary"]
+                                .as_str()
+                                .unwrap_or("")
+                                .trim()
+                                .to_string();
+
+                            if code_snippet.is_empty()
+                                || suggested_patch.is_empty()
+                                || fix_summary.is_empty()
+                            {
+                                self.messages.push(Message {
+                                    role: "user".to_string(),
+                                    content: "report_finding rejected: include `code_snippet`, `suggested_patch`, and `fix_summary` with concrete evidence and remediation.".to_string(),
+                                });
+                                continue;
+                            }
+
                             let finding = AgentFinding {
                                 title: tc.arguments["title"]
                                     .as_str()
@@ -263,9 +294,21 @@ impl HuntAgent {
                                     .as_str()
                                     .unwrap_or("")
                                     .to_string(),
-                                code_snippet: tc.arguments["code_snippet"]
-                                    .as_str()
-                                    .map(|s| s.to_string()),
+                                code_snippet,
+                                suggested_patch,
+                                fix_summary,
+                                fix_type: parse_fix_type(
+                                    tc.arguments["fix_type"].as_str().unwrap_or("code_change"),
+                                ),
+                                references: tc.arguments["references"]
+                                    .as_array()
+                                    .map(|values| {
+                                        values
+                                            .iter()
+                                            .filter_map(|value| value.as_str().map(str::to_string))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
                                 reasoning: tc.arguments["reasoning"]
                                     .as_str()
                                     .map(|s| s.to_string()),
@@ -300,9 +343,16 @@ impl HuntAgent {
                                     &finding.file_path,
                                     finding.line_start,
                                     finding.line_end,
-                                    finding.code_snippet.as_deref(),
                                     &fingerprint,
                                     finding.reasoning.as_deref(),
+                                    &FindingEvidence {
+                                        code_snippet: Some(finding.code_snippet.clone()),
+                                        suggested_patch: Some(finding.suggested_patch.clone()),
+                                        fix_type: finding.fix_type,
+                                        fix_summary: Some(finding.fix_summary.clone()),
+                                        references: finding.references.clone(),
+                                        manifest_coordinates: None,
+                                    },
                                 )
                                 .await;
                             self.record_event(
@@ -628,7 +678,18 @@ by reasoning like a senior security researcher and code auditor.
 - Only report findings you have strong evidence for — not theoretical concerns
 - Trace data flow from user input to dangerous sinks
 - Check for missing authentication, authorization, and input validation
-- Each finding needs: title, severity, file, line, description, and ideally a code snippet
-- For logic flaws, explain the concrete scenario that triggers the bug
-- Do NOT report findings that are clearly covered by existing static analysis
-- Be thorough but efficient — you have a limited iteration budget";
+        - Each finding needs: title, severity, file, line, description, code_snippet, fix_summary, and suggested_patch
+        - Choose the right `fix_type`: code_change, config_change, dependency_upgrade, or manual_review
+        - Even for manual review findings, provide a concrete next-step remediation block in `suggested_patch`
+        - For logic flaws, explain the concrete scenario that triggers the bug
+        - Do NOT report findings that are clearly covered by existing static analysis
+        - Be thorough but efficient — you have a limited iteration budget";
+
+fn parse_fix_type(value: &str) -> FindingFixType {
+    match value {
+        "dependency_upgrade" => FindingFixType::DependencyUpgrade,
+        "config_change" => FindingFixType::ConfigChange,
+        "manual_review" => FindingFixType::ManualReview,
+        _ => FindingFixType::CodeChange,
+    }
+}

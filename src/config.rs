@@ -159,7 +159,7 @@ impl SemgrepConfig {
             Err(error) => {
                 anyhow::bail!(
                     "Semgrep is a required runtime dependency but could not be executed at \
-                     `{binary_path}`: {error}. Install semgrep (`pip install semgrep`) or set \
+                     `{binary_path}`: {error}. Install semgrep (`pip install semgrep` or `brew install semgrep`) or set \
                      SEMGREP_BIN to the absolute path of the binary.",
                 );
             }

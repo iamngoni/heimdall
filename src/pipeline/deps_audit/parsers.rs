@@ -19,12 +19,52 @@ pub fn parse_manifest(ecosystem: &str, filename: &str, content: &str) -> Vec<Dep
     }
 }
 
+fn make_dependency(
+    name: impl Into<String>,
+    version: impl Into<String>,
+    declared_version: impl Into<String>,
+    ecosystem: &str,
+    content: &str,
+    line_start: usize,
+    line_end: usize,
+) -> Dependency {
+    Dependency {
+        name: name.into(),
+        version: version.into(),
+        declared_version: declared_version.into(),
+        ecosystem: ecosystem.to_string(),
+        line_start: line_start as i32,
+        line_end: Some(line_end as i32),
+        code_snippet: snippet_for_range(content, line_start, line_end),
+    }
+}
+
+fn snippet_for_range(content: &str, line_start: usize, line_end: usize) -> String {
+    let lines = content.lines().collect::<Vec<_>>();
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    let start = line_start.max(1).min(lines.len());
+    let end = line_end.max(start).min(lines.len());
+    lines[start - 1..end].join("\n")
+}
+
+fn find_line_number(content: &str, needle: &str) -> usize {
+    content
+        .lines()
+        .enumerate()
+        .find(|(_, line)| line.contains(needle))
+        .map(|(idx, _)| idx + 1)
+        .unwrap_or(1)
+}
+
 /// Parse Cargo.toml [dependencies] section.
 fn parse_cargo_toml(content: &str) -> Vec<Dependency> {
     let mut deps = Vec::new();
     let mut in_deps = false;
 
-    for line in content.lines() {
+    for (line_idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
 
         if trimmed.starts_with('[') {
@@ -38,26 +78,28 @@ fn parse_cargo_toml(content: &str) -> Vec<Dependency> {
             continue;
         }
 
-        // name = "version" or name = { version = "..." }
         if let Some((name, rest)) = trimmed.split_once('=') {
             let name = name.trim();
             let rest = rest.trim();
 
-            let version = if rest.starts_with('"') {
+            let declared_version = if rest.starts_with('"') {
                 rest.trim_matches('"').to_string()
             } else if rest.starts_with('{') {
-                // Inline table: extract version field
                 extract_inline_version(rest)
             } else {
                 continue;
             };
 
-            if !version.is_empty() {
-                deps.push(Dependency {
-                    name: name.to_string(),
-                    version,
-                    ecosystem: "crates.io".to_string(),
-                });
+            if !declared_version.is_empty() {
+                deps.push(make_dependency(
+                    name,
+                    declared_version.clone(),
+                    declared_version,
+                    "crates.io",
+                    content,
+                    line_idx + 1,
+                    line_idx + 1,
+                ));
             }
         }
     }
@@ -70,23 +112,28 @@ fn parse_cargo_lock(content: &str) -> Vec<Dependency> {
     let mut deps = Vec::new();
     let mut name = String::new();
     let mut version = String::new();
+    let mut version_line = 1usize;
     let mut in_package = false;
 
-    for line in content.lines() {
+    for (line_idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
 
         if trimmed == "[[package]]" {
-            // Emit previous package if complete
             if in_package && !name.is_empty() && !version.is_empty() {
-                deps.push(Dependency {
-                    name: std::mem::take(&mut name),
-                    version: std::mem::take(&mut version),
-                    ecosystem: "crates.io".to_string(),
-                });
+                deps.push(make_dependency(
+                    std::mem::take(&mut name),
+                    version.clone(),
+                    std::mem::take(&mut version),
+                    "crates.io",
+                    content,
+                    version_line,
+                    version_line,
+                ));
             }
             in_package = true;
             name.clear();
             version.clear();
+            version_line = line_idx + 1;
             continue;
         }
 
@@ -99,19 +146,25 @@ fn parse_cargo_lock(content: &str) -> Vec<Dependency> {
             let val = val.trim().trim_matches('"');
             match key {
                 "name" => name = val.to_string(),
-                "version" => version = val.to_string(),
+                "version" => {
+                    version = val.to_string();
+                    version_line = line_idx + 1;
+                }
                 _ => {}
             }
         }
     }
 
-    // Emit last package
     if in_package && !name.is_empty() && !version.is_empty() {
-        deps.push(Dependency {
+        deps.push(make_dependency(
             name,
+            version.clone(),
             version,
-            ecosystem: "crates.io".to_string(),
-        });
+            "crates.io",
+            content,
+            version_line,
+            version_line,
+        ));
     }
 
     deps
@@ -126,54 +179,60 @@ fn parse_package_lock_json(content: &str) -> Vec<Dependency> {
         Err(_) => return deps,
     };
 
-    // package-lock.json v2/v3 uses "packages" with "" as root
     if let Some(packages) = json.get("packages").and_then(|v| v.as_object()) {
         for (path, info) in packages {
-            // Skip the root package (empty path)
             if path.is_empty() {
                 continue;
             }
-            // Extract name from the path (e.g., "node_modules/express")
+
             let name = path.rsplit("node_modules/").next().unwrap_or(path);
             let version = info.get("version").and_then(|v| v.as_str()).unwrap_or("");
-
             if !name.is_empty() && !version.is_empty() {
-                deps.push(Dependency {
-                    name: name.to_string(),
-                    version: version.to_string(),
-                    ecosystem: "npm".to_string(),
-                });
+                let line_number = find_line_number(content, &format!("\"{path}\""));
+                deps.push(make_dependency(
+                    name,
+                    version,
+                    version,
+                    "npm",
+                    content,
+                    line_number,
+                    line_number,
+                ));
             }
         }
-    }
-    // Fallback: package-lock.json v1 uses "dependencies"
-    else if let Some(dependencies) = json.get("dependencies").and_then(|v| v.as_object()) {
+    } else if let Some(dependencies) = json.get("dependencies").and_then(|v| v.as_object()) {
         fn walk_v1_deps(
             obj: &serde_json::Map<String, serde_json::Value>,
+            content: &str,
             deps: &mut Vec<Dependency>,
         ) {
             for (name, info) in obj {
                 if let Some(version) = info.get("version").and_then(|v| v.as_str()) {
-                    deps.push(Dependency {
-                        name: name.clone(),
-                        version: version.to_string(),
-                        ecosystem: "npm".to_string(),
-                    });
+                    let line_number = find_line_number(content, &format!("\"{name}\""));
+                    deps.push(make_dependency(
+                        name,
+                        version,
+                        version,
+                        "npm",
+                        content,
+                        line_number,
+                        line_number,
+                    ));
                 }
-                // Recurse into nested dependencies
+
                 if let Some(nested) = info.get("dependencies").and_then(|v| v.as_object()) {
-                    walk_v1_deps(nested, deps);
+                    walk_v1_deps(nested, content, deps);
                 }
             }
         }
-        walk_v1_deps(dependencies, &mut deps);
+
+        walk_v1_deps(dependencies, content, &mut deps);
     }
 
     deps
 }
 
 fn extract_inline_version(table: &str) -> String {
-    // Simple extraction: find version = "..."
     for part in table.split(',') {
         let part = part.trim().trim_matches(|c| c == '{' || c == '}');
         if let Some((key, val)) = part.split_once('=') {
@@ -197,15 +256,19 @@ fn parse_package_json(content: &str) -> Vec<Dependency> {
     for key in &["dependencies", "devDependencies"] {
         if let Some(obj) = json.get(key).and_then(|v| v.as_object()) {
             for (name, version) in obj {
-                if let Some(v) = version.as_str() {
-                    // Strip leading ^, ~, >=, etc.
-                    let clean = v.trim_start_matches(|c: char| !c.is_ascii_digit());
+                if let Some(declared_version) = version.as_str() {
+                    let clean = declared_version.trim_start_matches(|c: char| !c.is_ascii_digit());
                     if !clean.is_empty() {
-                        deps.push(Dependency {
-                            name: name.clone(),
-                            version: clean.to_string(),
-                            ecosystem: "npm".to_string(),
-                        });
+                        let line_number = find_line_number(content, &format!("\"{name}\""));
+                        deps.push(make_dependency(
+                            name,
+                            clean,
+                            declared_version,
+                            "npm",
+                            content,
+                            line_number,
+                            line_number,
+                        ));
                     }
                 }
             }
@@ -219,34 +282,35 @@ fn parse_package_json(content: &str) -> Vec<Dependency> {
 fn parse_requirements_txt(content: &str) -> Vec<Dependency> {
     let mut deps = Vec::new();
 
-    for line in content.lines() {
+    for (line_idx, line) in content.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with('-') {
             continue;
         }
 
-        // Strip inline comments
         let line = if let Some(idx) = line.find('#') {
             line[..idx].trim()
         } else {
             line
         };
 
-        // Handle ==, >=, ~=, <=, !=
         let separators = ["==", ">=", "~=", "<=", "!=", ">", "<"];
         let mut found = false;
         for sep in &separators {
             if let Some(idx) = line.find(sep) {
                 let name = line[..idx].trim();
-                let version = line[idx + sep.len()..].trim();
-                // Take first version in compound specifiers (e.g., ">=1.0,<2.0")
-                let version = version.split(',').next().unwrap_or(version).trim();
-                if !name.is_empty() && !version.is_empty() {
-                    deps.push(Dependency {
-                        name: name.to_string(),
-                        version: version.to_string(),
-                        ecosystem: "PyPI".to_string(),
-                    });
+                let version_spec = line[idx + sep.len()..].trim();
+                let declared_version = version_spec.split(',').next().unwrap_or(version_spec).trim();
+                if !name.is_empty() && !declared_version.is_empty() {
+                    deps.push(make_dependency(
+                        name,
+                        declared_version,
+                        declared_version,
+                        "PyPI",
+                        content,
+                        line_idx + 1,
+                        line_idx + 1,
+                    ));
                 }
                 found = true;
                 break;
@@ -254,12 +318,15 @@ fn parse_requirements_txt(content: &str) -> Vec<Dependency> {
         }
 
         if !found && !line.is_empty() {
-            // Package name without version
-            deps.push(Dependency {
-                name: line.to_string(),
-                version: String::new(),
-                ecosystem: "PyPI".to_string(),
-            });
+            deps.push(make_dependency(
+                line,
+                "",
+                "",
+                "PyPI",
+                content,
+                line_idx + 1,
+                line_idx + 1,
+            ));
         }
     }
 
@@ -271,7 +338,7 @@ fn parse_go_mod(content: &str) -> Vec<Dependency> {
     let mut deps = Vec::new();
     let mut in_require = false;
 
-    for line in content.lines() {
+    for (line_idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
 
         if trimmed.starts_with("require (") || trimmed == "require (" {
@@ -285,27 +352,35 @@ fn parse_go_mod(content: &str) -> Vec<Dependency> {
         }
 
         if trimmed.starts_with("require ") && !trimmed.contains('(') {
-            // Single-line require
             let parts: Vec<&str> = trimmed["require ".len()..].split_whitespace().collect();
             if parts.len() >= 2 {
-                deps.push(Dependency {
-                    name: parts[0].to_string(),
-                    version: parts[1].trim_start_matches('v').to_string(),
-                    ecosystem: "Go".to_string(),
-                });
+                let declared_version = parts[1];
+                deps.push(make_dependency(
+                    parts[0],
+                    declared_version.trim_start_matches('v'),
+                    declared_version,
+                    "Go",
+                    content,
+                    line_idx + 1,
+                    line_idx + 1,
+                ));
             }
             continue;
         }
 
         if in_require {
-            // Lines inside require block: "module/path v1.2.3"
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
             if parts.len() >= 2 && !parts[0].starts_with("//") {
-                deps.push(Dependency {
-                    name: parts[0].to_string(),
-                    version: parts[1].trim_start_matches('v').to_string(),
-                    ecosystem: "Go".to_string(),
-                });
+                let declared_version = parts[1];
+                deps.push(make_dependency(
+                    parts[0],
+                    declared_version.trim_start_matches('v'),
+                    declared_version,
+                    "Go",
+                    content,
+                    line_idx + 1,
+                    line_idx + 1,
+                ));
             }
         }
     }
@@ -320,8 +395,9 @@ fn parse_pom_xml(content: &str) -> Vec<Dependency> {
     let mut group_id = String::new();
     let mut artifact_id = String::new();
     let mut version = String::new();
+    let mut dependency_start_line = 1usize;
 
-    for line in content.lines() {
+    for (line_idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
 
         if trimmed == "<dependency>" {
@@ -329,6 +405,7 @@ fn parse_pom_xml(content: &str) -> Vec<Dependency> {
             group_id.clear();
             artifact_id.clear();
             version.clear();
+            dependency_start_line = line_idx + 1;
             continue;
         }
 
@@ -338,11 +415,15 @@ fn parse_pom_xml(content: &str) -> Vec<Dependency> {
                 && !version.is_empty()
                 && !version.contains("${")
             {
-                deps.push(Dependency {
-                    name: format!("{}:{}", group_id, artifact_id),
-                    version: version.clone(),
-                    ecosystem: "Maven".to_string(),
-                });
+                deps.push(make_dependency(
+                    format!("{}:{}", group_id, artifact_id),
+                    version.clone(),
+                    version.clone(),
+                    "Maven",
+                    content,
+                    dependency_start_line,
+                    line_idx + 1,
+                ));
             }
             in_dependency = false;
             continue;
@@ -413,6 +494,7 @@ tempfile = "3.5"
         assert_eq!(deps.len(), 3);
         assert_eq!(deps[0].name, "express");
         assert_eq!(deps[0].version, "4.18.2");
+        assert_eq!(deps[0].declared_version, "^4.18.2");
     }
 
     #[test]
@@ -443,6 +525,7 @@ require (
         assert_eq!(deps.len(), 2);
         assert_eq!(deps[0].name, "github.com/gin-gonic/gin");
         assert_eq!(deps[0].version, "1.9.1");
+        assert_eq!(deps[0].declared_version, "v1.9.1");
     }
 
     #[test]
@@ -462,7 +545,7 @@ require (
 </dependencies>
 "#;
         let deps = parse_pom_xml(content);
-        assert_eq!(deps.len(), 1); // junit skipped due to ${...}
+        assert_eq!(deps.len(), 1);
         assert_eq!(deps[0].name, "org.springframework:spring-core");
         assert_eq!(deps[0].version, "5.3.30");
     }

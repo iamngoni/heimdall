@@ -1,0 +1,497 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block body %}
+{% set active_nav = "settings" %}
+{% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set initial_settings_tab = "integrations" if integration_error else "profile" %}
+
+<div class="min-h-screen" style="background:var(--hm-shell-bg);color:var(--hm-text-900)">
+    <div class="mx-auto flex min-h-screen max-w-[1440px] gap-6 px-6 py-6 lg:px-8 lg:py-8">
+
+        {# ── LEFT RAIL ─────────────────────────────────────────────── #}
+        <div class="hidden lg:block lg:shrink-0">
+            {% include "partials/app_sidebar.html" %}
+        </div>
+
+        {# ── RIGHT PAPER PANEL ─────────────────────────────────────── #}
+        <section class="hm-oatmeal-paper flex min-w-0 flex-1 flex-col overflow-hidden">
+
+            {# Top bar: breadcrumb + user menu #}
+            <div class="flex items-center justify-between border-b px-8 py-5" style="border-color:var(--hm-border)">
+                <nav class="flex items-center gap-2 text-[13px]" aria-label="Breadcrumb">
+                    <a href="/" style="color:var(--hm-text-600)" class="transition hover:text-[color:var(--hm-text-900)]">Heimdall</a>
+                    <span style="color:var(--hm-text-400)">/</span>
+                    <span style="color:var(--hm-text-400)">Settings</span>
+                </nav>
+                <button type="button"
+                        class="flex items-center gap-2 rounded-full px-2 py-1.5 transition"
+                        style="background:var(--hm-surface-muted);color:var(--hm-text-900)">
+                    <span class="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold"
+                          style="background:var(--mist-100);color:var(--mist-950)">{{ user_initial | default('?') }}</span>
+                    <svg class="h-3.5 w-3.5" style="color:var(--hm-text-500)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6" />
+                    </svg>
+                </button>
+            </div>
+
+            {# Page header #}
+            <div class="px-8 pt-10 pb-6 lg:px-12">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em]" style="color:var(--hm-text-500)">Workspace</p>
+                <h1 class="mt-3 font-display text-[44px] font-semibold leading-[1.02] tracking-[-0.03em]" style="color:var(--hm-text-900)">Settings</h1>
+                <p class="mt-3 max-w-xl text-[15px] leading-relaxed" style="color:var(--hm-text-500)">Manage your workspace, integrations, and preferences from a single panel.</p>
+            </div>
+
+            {% if integration_error %}
+            <div class="mx-8 mb-6 flex items-start gap-3 rounded-2xl px-5 py-4 text-sm lg:mx-12" style="background:var(--hm-warning-bg);border:1px solid var(--hm-warning-border);color:var(--hm-warning-text)">
+                <svg class="mt-0.5 h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 0 0-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
+                </svg>
+                <div>
+                    {% if integration_error == "github-account-in-use" %}
+                    That GitHub account is already linked to another Heimdall user.
+                    {% elif integration_error == "gitlab-account-in-use" %}
+                    That GitLab account is already linked to another Heimdall user.
+                    {% elif integration_error == "bitbucket-account-in-use" %}
+                    That Bitbucket account is already linked to another Heimdall user.
+                    {% else %}
+                    {{ integration_error }}
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {# Body: vertical tab list + active panel #}
+            <div class="flex-1 overflow-hidden px-8 pb-10 lg:px-12">
+                <div class="grid h-full gap-10 lg:grid-cols-[220px_minmax(0,1fr)]">
+
+                    {# Sub-tab nav #}
+                    <nav class="flex flex-col gap-1" data-settings-tabs aria-label="Settings sections">
+                        {% set tabs = [
+                            {"id": "profile", "label": "Profile"},
+                            {"id": "appearance", "label": "Appearance"},
+                            {"id": "integrations", "label": "Integrations", "count": vcs_connected, "total": 3},
+                            {"id": "providers", "label": "AI Providers", "count": ai_connected, "total": 3},
+                            {"id": "keys", "label": "API Keys"},
+                            {"id": "security", "label": "Security"}
+                        ] %}
+                        {% for tab in tabs %}
+                        <button type="button"
+                                data-settings-tab="{{ tab.id }}"
+                                class="hm-oatmeal-tab flex items-center justify-between rounded-full px-4 py-2.5 text-left text-[14px] transition {{ 'hm-oatmeal-tab-active' if initial_settings_tab == tab.id else 'hm-oatmeal-tab-idle' }}">
+                            <span>{{ tab.label }}</span>
+                            {% if tab.count is defined %}
+                            <span class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                  style="background:rgba(255,255,255,0.06);color:var(--hm-text-500)">{{ tab.count }}/{{ tab.total }}</span>
+                            {% endif %}
+                        </button>
+                        {% endfor %}
+                    </nav>
+
+                    {# Active tab content #}
+                    <div class="min-w-0">
+
+                        {# ── Profile ─────────────────────────────── #}
+                        <section data-settings-panel="profile" {% if initial_settings_tab != 'profile' %}hidden{% endif %}>
+                            <header class="mb-6">
+                                <h2 class="font-display text-2xl font-semibold tracking-[-0.02em]" style="color:var(--hm-text-900)">Profile</h2>
+                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Personal details used across Heimdall.</p>
+                            </header>
+
+                            <form hx-patch="/api/settings/profile"
+                                  hx-ext="json-enc"
+                                  hx-on::after-request="window.HeimdallUI.notify({ message: 'Profile saved', tone: 'success' })"
+                                  class="space-y-5">
+                                <div class="grid gap-5 sm:grid-cols-2">
+                                    <label class="block">
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Display name</span>
+                                        <input type="text" name="display_name" value="{{ user.display_name | default('') }}"
+                                               class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
+                                               style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Email</span>
+                                        <input type="email" value="{{ user.email | default('') }}" readonly
+                                               class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
+                                               style="background:var(--hm-surface-muted);border-color:var(--hm-border);color:var(--hm-text-500)"/>
+                                    </label>
+                                </div>
+                                <div class="flex justify-end pt-2">
+                                    <button type="submit" class="hm-oatmeal-action px-5 py-2 text-sm">Save profile</button>
+                                </div>
+                            </form>
+                        </section>
+
+                        {# ── Appearance ─────────────────────────── #}
+                        <section data-settings-panel="appearance" {% if initial_settings_tab != 'appearance' %}hidden{% endif %}>
+                            <header class="mb-6">
+                                <h2 class="font-display text-2xl font-semibold tracking-[-0.02em]" style="color:var(--hm-text-900)">Appearance</h2>
+                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Choose how Heimdall looks to you.</p>
+                            </header>
+
+                            <div>
+                                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                                    {% set theme_meta = {
+                                        "sentinel": {"label": "Sentinel", "tagline": "Cool slate with blue accents"},
+                                        "oatmeal": {"label": "Oatmeal", "tagline": "All-dark mist, pill buttons"},
+                                        "editorial": {"label": "Editorial", "tagline": "Monochrome ink, typography-driven"}
+                                    } %}
+                                    {% for theme_id in available_themes %}
+                                    {% set meta = theme_meta[theme_id] %}
+                                    {% set selected = current_theme == theme_id %}
+                                    <button type="button"
+                                            onclick="selectTheme('{{ theme_id }}')"
+                                            class="group relative flex flex-col overflow-hidden rounded-2xl border text-left transition"
+                                            style="background:{{ 'var(--hm-surface-strong)' if selected else 'var(--hm-surface-muted)' }};border-color:{{ 'var(--hm-text-900)' if selected else 'var(--hm-border)' }}">
+                                        <div class="h-32 border-b"
+                                             style="border-color:var(--hm-border);background:{{ '#0f1214' if theme_id == 'oatmeal' else ('#f8fafc' if theme_id == 'sentinel' else '#fafafa') }}">
+                                            {% if theme_id == 'sentinel' %}
+                                            <div class="flex h-full">
+                                                <div class="w-8" style="background:#1b2536"></div>
+                                                <div class="flex flex-1 flex-col gap-1.5 p-2">
+                                                    <div class="h-2 w-16 rounded" style="background:#cbd5e1"></div>
+                                                    <div class="mt-1 flex gap-1.5">
+                                                        <div class="h-12 flex-1 rounded" style="background:#ffffff;border:1px solid #e2e8f0"></div>
+                                                        <div class="h-12 flex-1 rounded" style="background:#ffffff;border:1px solid #e2e8f0"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% elif theme_id == 'oatmeal' %}
+                                            <div class="flex h-full">
+                                                <div class="w-10 p-1.5" style="background:#090b0c">
+                                                    <div class="h-4 w-full rounded" style="background:#161b1d"></div>
+                                                    <div class="mt-1 h-4 w-full rounded" style="background:rgba(255,255,255,0.08)"></div>
+                                                </div>
+                                                <div class="flex flex-1 flex-col gap-1.5 p-2" style="background:#161b1d">
+                                                    <div class="h-2 w-14 rounded" style="background:#22292b"></div>
+                                                    <div class="mt-1 flex gap-1.5">
+                                                        <div class="h-12 flex-1 rounded" style="background:#1b2123;border:1px solid rgba(255,255,255,0.06)"></div>
+                                                        <div class="h-12 flex-1 rounded" style="background:#1b2123;border:1px solid rgba(255,255,255,0.06)"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% else %}
+                                            <div class="flex h-full flex-col p-2.5">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="h-2 w-10 rounded" style="background:#171717"></div>
+                                                    <div class="h-3 w-3 border" style="border-color:#171717"></div>
+                                                </div>
+                                                <div class="mt-2 h-px w-full" style="background:#e5e5e5"></div>
+                                                <div class="mt-2 space-y-1">
+                                                    <div class="h-1.5 w-3/4 rounded-sm" style="background:#d4d4d4"></div>
+                                                    <div class="h-1.5 w-5/6 rounded-sm" style="background:#d4d4d4"></div>
+                                                    <div class="h-1.5 w-2/3 rounded-sm" style="background:#d4d4d4"></div>
+                                                </div>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex items-start gap-3 p-4">
+                                            <span class="mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border"
+                                                  style="border-color:{{ 'var(--hm-text-900)' if selected else 'var(--hm-border-strong)' }};background:{{ 'var(--hm-text-900)' if selected else 'transparent' }}">
+                                                {% if selected %}
+                                                <svg class="h-2.5 w-2.5" viewBox="0 0 12 12" fill="none" stroke="#090b0c" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.5 6.2l2.5 2.5L9.5 3.7"/></svg>
+                                                {% endif %}
+                                            </span>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2">
+                                                    <p class="font-display text-[15px] font-semibold" style="color:var(--hm-text-900)">{{ meta.label }}</p>
+                                                    {% if selected %}
+                                                    <span class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                                          style="background:var(--mist-100);color:var(--mist-950)">Active</span>
+                                                    {% endif %}
+                                                </div>
+                                                <p class="mt-1 text-[12px] leading-relaxed" style="color:var(--hm-text-500)">{{ meta.tagline }}</p>
+                                            </div>
+                                        </div>
+                                    </button>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </section>
+
+                        {# ── Integrations ─────────────────────── #}
+                        <section data-settings-panel="integrations" {% if initial_settings_tab != 'integrations' %}hidden{% endif %}>
+                            <header class="mb-6">
+                                <h2 class="font-display text-2xl font-semibold tracking-[-0.02em]" style="color:var(--hm-text-900)">Integrations</h2>
+                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Connect the repositories Heimdall can scan.</p>
+                            </header>
+
+                            <div class="overflow-hidden rounded-2xl border" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
+                                {% set providers = [
+                                    {"id": "github", "label": "GitHub", "state": integrations.github},
+                                    {"id": "gitlab", "label": "GitLab", "state": integrations.gitlab},
+                                    {"id": "bitbucket", "label": "Bitbucket", "state": integrations.bitbucket}
+                                ] %}
+                                {% for provider in providers %}
+                                <details class="group border-b last:border-b-0" style="border-color:var(--hm-border)">
+                                    <summary class="flex cursor-pointer items-center justify-between px-5 py-4 transition">
+                                        <div class="flex items-center gap-3">
+                                            <span class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold"
+                                                  style="background:var(--hm-surface-deep);color:var(--hm-text-900)">
+                                                {{ provider.label[0] }}
+                                            </span>
+                                            <div>
+                                                <p class="font-display text-[15px] font-semibold" style="color:var(--hm-text-900)">{{ provider.label }}</p>
+                                                <p class="text-[12px]" style="color:var(--hm-text-500)">
+                                                    {% if provider.state.connected %}
+                                                        Connected as {{ provider.state.account | default('your account') }}
+                                                    {% else %}
+                                                        Not connected
+                                                    {% endif %}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            {% if provider.state.connected %}
+                                            <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                                                  style="background:var(--hm-positive-bg);color:var(--hm-positive-text);border:1px solid var(--hm-positive-border)">Active</span>
+                                            {% else %}
+                                            <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                                                  style="background:var(--hm-surface-deep);color:var(--hm-text-500)">Inactive</span>
+                                            {% endif %}
+                                            <svg class="h-4 w-4 transition group-open:rotate-180" style="color:var(--hm-text-500)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/>
+                                            </svg>
+                                        </div>
+                                    </summary>
+                                    <div class="border-t px-5 py-5" style="border-color:var(--hm-border);background:var(--hm-surface-muted)">
+                                        <div class="flex flex-wrap items-center gap-3">
+                                            {% if provider.state.connected %}
+                                            <button type="button"
+                                                    hx-delete="/api/settings/integrations/{{ provider.id }}"
+                                                    hx-confirm="Disconnect {{ provider.label }}?"
+                                                    hx-swap="none"
+                                                    hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('{{ provider.label }} disconnected'); setTimeout(function(){ window.location.reload(); }, 400); }"
+                                                    class="hm-oatmeal-action-soft px-4 py-1.5 text-xs">Disconnect</button>
+                                            {% else %}
+                                            <a href="/api/auth/{{ provider.id }}/authorize?next=%2Fsettings"
+                                               class="hm-oatmeal-action px-4 py-1.5 text-xs">Connect {{ provider.label }}</a>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </details>
+                                {% endfor %}
+                            </div>
+                        </section>
+
+                        {# ── AI Providers ──────────────────────── #}
+                        <section data-settings-panel="providers" {% if initial_settings_tab != 'providers' %}hidden{% endif %}>
+                            <header class="mb-6">
+                                <h2 class="font-display text-2xl font-semibold tracking-[-0.02em]" style="color:var(--hm-text-900)">AI Providers</h2>
+                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Model backends available to the Heimdall agents.</p>
+                            </header>
+
+                            <div class="overflow-hidden rounded-2xl border" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
+                                {% set ai_providers = [
+                                    {"id": "anthropic", "label": "Anthropic", "status": ai_config.has_anthropic},
+                                    {"id": "openai", "label": "OpenAI", "status": ai_config.has_openai},
+                                    {"id": "ollama", "label": "Ollama (local)", "status": ai_config.has_ollama}
+                                ] %}
+                                {% for provider in ai_providers %}
+                                <div class="flex items-center justify-between border-b px-5 py-4 last:border-b-0" style="border-color:var(--hm-border)">
+                                    <div class="flex items-center gap-3">
+                                        <span class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold"
+                                              style="background:var(--hm-surface-deep);color:var(--hm-text-900)">{{ provider.label[0] }}</span>
+                                        <div>
+                                            <p class="font-display text-[15px] font-semibold" style="color:var(--hm-text-900)">{{ provider.label }}</p>
+                                            <p class="text-[12px]" style="color:var(--hm-text-500)">
+                                                {% if provider.status %}Configured{% else %}No key configured{% endif %}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {% if provider.status %}
+                                    <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                                          style="background:var(--hm-positive-bg);color:var(--hm-positive-text);border:1px solid var(--hm-positive-border)">Ready</span>
+                                    {% else %}
+                                    <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                                          style="background:var(--hm-surface-deep);color:var(--hm-text-500)">Idle</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+
+                            <p class="mt-4 text-[12px]" style="color:var(--hm-text-500)">Default model: <span style="color:var(--hm-text-900)">{{ ai_config.default_model | default('—') }}</span></p>
+                        </section>
+
+                        {# ── API Keys ───────────────────────────── #}
+                        <section data-settings-panel="keys" {% if initial_settings_tab != 'keys' %}hidden{% endif %}>
+                            <header class="mb-6">
+                                <h2 class="font-display text-2xl font-semibold tracking-[-0.02em]" style="color:var(--hm-text-900)">API Keys</h2>
+                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Credentials scoped to this workspace.</p>
+                            </header>
+
+                            <div class="rounded-2xl border p-5" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
+                                <form hx-post="/api/settings/api-keys"
+                                      hx-ext="json-enc"
+                                      hx-swap="none"
+                                      hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('Key added'); setTimeout(function(){ window.location.reload(); }, 400); }"
+                                      class="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+                                    <label class="block">
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Provider</span>
+                                        <select name="provider" class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
+                                                style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)">
+                                            <option value="anthropic">Anthropic</option>
+                                            <option value="openai">OpenAI</option>
+                                            <option value="ollama">Ollama</option>
+                                        </select>
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Secret</span>
+                                        <input type="password" name="key" placeholder="sk-..." required
+                                               class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm font-mono"
+                                               style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>
+                                    </label>
+                                    <div class="flex items-end">
+                                        <button type="submit" class="hm-oatmeal-action w-full px-5 py-2.5 text-sm sm:w-auto">Add key</button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <div class="mt-6 overflow-hidden rounded-2xl border" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
+                                {% if api_keys and api_keys | length > 0 %}
+                                {% for key in api_keys %}
+                                <div class="flex items-center justify-between border-b px-5 py-3 last:border-b-0" style="border-color:var(--hm-border)">
+                                    <div class="flex items-center gap-3">
+                                        <span class="flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold"
+                                              style="background:var(--hm-surface-deep);color:var(--hm-text-900)">{{ key.provider[0] | upper }}</span>
+                                        <div>
+                                            <p class="font-display text-[14px] font-semibold capitalize" style="color:var(--hm-text-900)">{{ key.provider }}</p>
+                                            <p class="text-[11px]" style="color:var(--hm-text-500)">Added {{ key.created_at }}</p>
+                                        </div>
+                                    </div>
+                                    <button type="button"
+                                            hx-delete="/api/settings/api-keys/{{ key.id }}"
+                                            hx-confirm="Delete this key?"
+                                            hx-swap="none"
+                                            hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('Key deleted'); setTimeout(function(){ window.location.reload(); }, 400); }"
+                                            class="hm-oatmeal-action-soft px-3 py-1.5 text-xs">Delete</button>
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <div class="px-5 py-6 text-center text-sm" style="color:var(--hm-text-500)">No keys stored yet.</div>
+                                {% endif %}
+                            </div>
+                        </section>
+
+                        {# ── Security ───────────────────────────── #}
+                        <section data-settings-panel="security" {% if initial_settings_tab != 'security' %}hidden{% endif %}>
+                            <header class="mb-6">
+                                <h2 class="font-display text-2xl font-semibold tracking-[-0.02em]" style="color:var(--hm-text-900)">Security</h2>
+                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Password and session management.</p>
+                            </header>
+
+                            <form id="password-form"
+                                  hx-post="/api/settings/change-password"
+                                  hx-ext="json-enc"
+                                  hx-swap="none"
+                                  hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('Password updated'); this.reset(); } else { var msg='Failed to update password'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }"
+                                  class="rounded-2xl border p-5 space-y-4"
+                                  style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
+                                <label class="block">
+                                    <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Current password</span>
+                                    <input type="password" name="current_password" required
+                                           class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
+                                           style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>
+                                </label>
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    <label class="block">
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">New password</span>
+                                        <input type="password" name="new_password" required minlength="8"
+                                               class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
+                                               style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Confirm</span>
+                                        <input type="password" name="confirm_password" required minlength="8"
+                                               class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
+                                               style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>
+                                    </label>
+                                </div>
+                                <div class="flex justify-end pt-2">
+                                    <button type="submit" class="hm-oatmeal-action px-5 py-2 text-sm">Update password</button>
+                                </div>
+                            </form>
+                        </section>
+
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+const settingsTabButtons = Array.from(document.querySelectorAll('[data-settings-tab]'));
+const settingsTabPanels = Array.from(document.querySelectorAll('[data-settings-panel]'));
+
+function setSettingsTab(tabName, updateHash) {
+    settingsTabButtons.forEach(function(button) {
+        const isActive = button.dataset.settingsTab === tabName;
+        button.classList.toggle('hm-oatmeal-tab-active', isActive);
+        button.classList.toggle('hm-oatmeal-tab-idle', !isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+
+    settingsTabPanels.forEach(function(panel) {
+        const isActive = panel.dataset.settingsPanel === tabName;
+        panel.hidden = !isActive;
+    });
+
+    if (updateHash && window.history.replaceState) {
+        window.history.replaceState(null, '', '#' + tabName);
+    }
+}
+
+settingsTabButtons.forEach(function(button) {
+    button.addEventListener('click', function() {
+        setSettingsTab(button.dataset.settingsTab, true);
+    });
+});
+
+// Deep link via hash
+(function() {
+    const hash = (window.location.hash || '').replace('#', '');
+    if (hash && document.querySelector('[data-settings-panel="' + hash + '"]')) {
+        setSettingsTab(hash, false);
+    }
+})();
+
+// Theme selector — direct fetch to /api/settings/theme
+function selectTheme(themeId) {
+    if (!window.HeimdallUI) return;
+    window.HeimdallUI.fetch('/api/settings/theme', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: themeId }),
+    }).then(function(res) {
+        if (res.ok) {
+            window.HeimdallUI.success('Theme applied — reloading');
+            setTimeout(function() { window.location.reload(); }, 400);
+        } else {
+            res.json().then(function(data) {
+                window.HeimdallUI.error(data && data.error ? data.error.message : 'Failed to save theme');
+            }).catch(function() { window.HeimdallUI.error('Failed to save theme'); });
+        }
+    }).catch(function() {
+        window.HeimdallUI.error('Network error');
+    });
+}
+
+// Password confirmation guard
+(function() {
+    const form = document.getElementById('password-form');
+    if (!form) return;
+    form.addEventListener('htmx:configRequest', function(evt) {
+        const fd = new FormData(form);
+        if (fd.get('new_password') !== fd.get('confirm_password')) {
+            evt.preventDefault();
+            if (window.HeimdallUI) {
+                window.HeimdallUI.notify({ message: 'Passwords do not match', tone: 'error' });
+            }
+        }
+    });
+})();
+</script>
+{% endblock %}

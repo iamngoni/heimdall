@@ -188,6 +188,7 @@ impl ScanWorker {
             Arc::clone(&self.state.sse),
             self.state.encryption_key,
             self.state.config.app.data_dir.clone(),
+            self.state.config.semgrep.clone(),
             cancel_token,
         );
 

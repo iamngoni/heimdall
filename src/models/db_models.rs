@@ -374,6 +374,12 @@ pub enum FindingFixType {
     ManualReview,
 }
 
+impl Default for FindingFixType {
+    fn default() -> Self {
+        Self::ManualReview
+    }
+}
+
 impl FindingFixType {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -434,6 +440,39 @@ impl FindingEvidence {
             fix_summary: Some(fix_summary.into()),
             references: Vec::new(),
             manifest_coordinates: None,
+        }
+    }
+
+    /// Convenience constructor for config / IaC fixes.
+    pub fn config_change(
+        code_snippet: impl Into<String>,
+        suggested_patch: impl Into<String>,
+        fix_summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            code_snippet: Some(code_snippet.into()),
+            suggested_patch: Some(suggested_patch.into()),
+            fix_type: FindingFixType::ConfigChange,
+            fix_summary: Some(fix_summary.into()),
+            references: Vec::new(),
+            manifest_coordinates: None,
+        }
+    }
+
+    /// Convenience constructor for dependency upgrade findings.
+    pub fn dependency_upgrade(
+        code_snippet: impl Into<String>,
+        suggested_patch: impl Into<String>,
+        fix_summary: impl Into<String>,
+        manifest_coordinates: serde_json::Value,
+    ) -> Self {
+        Self {
+            code_snippet: Some(code_snippet.into()),
+            suggested_patch: Some(suggested_patch.into()),
+            fix_type: FindingFixType::DependencyUpgrade,
+            fix_summary: Some(fix_summary.into()),
+            references: Vec::new(),
+            manifest_coordinates: Some(manifest_coordinates),
         }
     }
 

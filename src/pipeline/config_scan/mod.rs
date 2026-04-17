@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
-use crate::models::HeimdallResult;
+use crate::models::{FindingEvidence, HeimdallResult};
 use crate::util::sat_i32_usize;
 
 use rules::CONFIG_RULES;
@@ -80,6 +80,8 @@ impl ConfigScanStage {
                 if rule.whole_file {
                     if !re.is_match(&indexed_file.content) {
                         let fingerprint = make_fingerprint(rule.name, file_path, 1);
+                        let (snippet, line_end) = leading_excerpt(&indexed_file.content, 12);
+                        let evidence = build_config_evidence(rule, file_path, snippet);
                         let _ = self
                             .db
                             .create_finding_full(
@@ -93,10 +95,10 @@ impl ConfigScanStage {
                                 Some(rule.cwe),
                                 file_path,
                                 1,
-                                None,
-                                None,
+                                line_end,
                                 &fingerprint,
                                 None,
+                                &evidence,
                             )
                             .await;
                         total_findings += 1;
@@ -110,6 +112,7 @@ impl ConfigScanStage {
                         let line_num = sat_i32_usize(line_idx + 1);
                         let snippet = extract_snippet(&indexed_file.content, line_idx, 2);
                         let fingerprint = make_fingerprint(rule.name, file_path, line_num);
+                        let evidence = build_config_evidence(rule, file_path, snippet);
 
                         let _ = self
                             .db
@@ -125,9 +128,9 @@ impl ConfigScanStage {
                                 file_path,
                                 line_num,
                                 Some(line_num),
-                                Some(&snippet),
                                 &fingerprint,
                                 None,
+                                &evidence,
                             )
                             .await;
 
@@ -223,6 +226,131 @@ fn extract_snippet(content: &str, center_line: usize, context: usize) -> String 
     let start = center_line.saturating_sub(context);
     let end = std::cmp::min(center_line + context + 1, lines.len());
     lines[start..end].join("\n")
+}
+
+fn leading_excerpt(content: &str, max_lines: usize) -> (String, Option<i32>) {
+    let lines = content.lines().take(max_lines).collect::<Vec<_>>();
+    if lines.is_empty() {
+        return (String::new(), None);
+    }
+
+    (
+        lines.join("\n"),
+        Some(lines.len() as i32),
+    )
+}
+
+fn build_config_evidence(
+    rule: &rules::ConfigRule,
+    file_path: &str,
+    snippet: String,
+) -> FindingEvidence {
+    FindingEvidence::config_change(
+        snippet,
+        config_fix_guidance(rule, file_path),
+        config_fix_summary(rule),
+    )
+    .with_references([cwe_reference(rule.cwe)])
+}
+
+fn config_fix_summary(rule: &rules::ConfigRule) -> String {
+    match rule.name {
+        name if name.contains("secret") || name.contains("credentials") => {
+            "Move the secret out of configuration, rotate it, and load it from a secret store."
+                .to_string()
+        }
+        name if name.contains("latest") || name.contains("unpinned") => {
+            "Pin the mutable dependency reference to a specific version or immutable digest."
+                .to_string()
+        }
+        name if name.contains("root") || name.contains("privileged") => {
+            "Drop privileges and run the workload with the minimum permissions it actually needs."
+                .to_string()
+        }
+        name if name.contains("wildcard")
+            || name.contains("wide-open")
+            || name.contains("permissions-write-all")
+            || name.contains("host-network")
+            || name.contains("host-pid") =>
+        {
+            "Tighten the exposed security boundary to the minimum allow-list required."
+                .to_string()
+        }
+        name if name.contains("debug") => {
+            "Disable debug / development behavior in production configuration.".to_string()
+        }
+        name if name.contains("no-tls") => {
+            "Re-enable TLS verification and trust only expected certificates.".to_string()
+        }
+        name if name.contains("healthcheck") => {
+            "Add a health check so orchestration can detect unhealthy instances.".to_string()
+        }
+        name if name.contains("resource-limits") => {
+            "Define CPU and memory requests/limits for the workload.".to_string()
+        }
+        _ => format!("Update this configuration to address: {}.", rule.description),
+    }
+}
+
+fn config_fix_guidance(rule: &rules::ConfigRule, file_path: &str) -> String {
+    match rule.name {
+        name if name.contains("secret") || name.contains("credentials") => format!(
+            "// {}\n// 1. Remove the hardcoded credential from `{}`.\n// 2. Rotate the exposed value.\n// 3. Load it from a secret manager or runtime environment variable.\n// 4. Keep only the variable NAME in config templates, never the secret VALUE.",
+            rule.description, file_path
+        ),
+        name if name.contains("latest") => format!(
+            "// {}\n// Replace the mutable `:latest` tag with an explicit version or digest.\n// Example: `image: my-service:1.24.3` or `image: my-service@sha256:<digest>`.",
+            rule.description
+        ),
+        name if name.contains("unpinned-action") => format!(
+            "// {}\n// Replace tag-based GitHub Action references with a full commit SHA.\n// Example:\n//   uses: actions/checkout@v4\n// becomes\n//   uses: actions/checkout@<40-char commit SHA>",
+            rule.description
+        ),
+        name if name.contains("root") || name.contains("privileged") => format!(
+            "// {}\n// Add an explicit non-root runtime user or securityContext.\n// Examples:\n//   Dockerfile: `USER 10001`\n//   Kubernetes: `runAsNonRoot: true`, `allowPrivilegeEscalation: false`",
+            rule.description
+        ),
+        name if name.contains("wildcard")
+            || name.contains("wide-open")
+            || name.contains("permissions-write-all")
+            || name.contains("host-network")
+            || name.contains("host-pid") =>
+        {
+            format!(
+                "// {}\n// Replace the broad setting with an explicit allow-list or disable the host-level escape hatch.\n// Keep only the minimum privileges / CIDRs / origins / permissions required for the workload.",
+                rule.description
+            )
+        }
+        name if name.contains("debug") => format!(
+            "// {}\n// Set the production-safe value instead.\n// Examples:\n//   DEBUG=false\n//   FLASK_DEBUG=0\n//   NODE_ENV=production",
+            rule.description
+        ),
+        name if name.contains("no-tls") => format!(
+            "// {}\n// Re-enable certificate validation.\n// Examples:\n//   SSL_VERIFY=true\n//   TLS_VERIFY=true\n//   VERIFY_SSL=true",
+            rule.description
+        ),
+        name if name.contains("healthcheck") => format!(
+            "// {}\n// Add a liveness / readiness probe or Docker HEALTHCHECK that exercises a cheap application endpoint.",
+            rule.description
+        ),
+        name if name.contains("npm-install") => format!(
+            "// {}\n// In CI, prefer `npm ci` so installs are reproducible and locked to package-lock.json.",
+            rule.description
+        ),
+        name if name.contains("resource-limits") => format!(
+            "// {}\n// Add CPU/memory requests and limits.\n// Example:\n// resources:\n//   requests:\n//     cpu: 100m\n//     memory: 128Mi\n//   limits:\n//     cpu: 500m\n//     memory: 512Mi",
+            rule.description
+        ),
+        _ => format!(
+            "// {}\n// Update the configuration in `{}` so the insecure setting is removed or the missing hardening control is added.",
+            rule.description, file_path
+        ),
+    }
+}
+
+fn cwe_reference(cwe_id: &str) -> String {
+    let numeric = cwe_id.trim_start_matches("CWE-");
+    format!("https://cwe.mitre.org/data/definitions/{numeric}.html")
 }
 
 fn make_fingerprint(rule: &str, file: &str, line: i32) -> String {

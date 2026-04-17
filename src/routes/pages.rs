@@ -97,7 +97,7 @@ fn get_user(req: &HttpRequest) -> Option<AuthenticatedUser> {
 /// Get the user's theme, falling back to the default.
 fn user_theme(req: &HttpRequest) -> String {
     get_user(req)
-        .map(|u| u.theme)
+        .map(|u| crate::templates::normalize_theme(&u.theme).to_string())
         .unwrap_or_else(|| crate::templates::DEFAULT_THEME.to_string())
 }
 
@@ -1064,7 +1064,7 @@ async fn settings_page(
         })),
         api_keys => key_values,
         integration_error => query.integration_error.clone(),
-        current_theme => user.theme.clone(),
+        current_theme => crate::templates::normalize_theme(&user.theme).to_string(),
         available_themes => crate::templates::KNOWN_THEMES,
     };
 

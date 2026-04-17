@@ -8,6 +8,7 @@
 //
 
 use std::collections::HashSet;
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -147,25 +148,49 @@ impl SemgrepStage {
                 .extra
                 .fix
                 .clone()
-                .or_else(|| result.extra.fix_regex.as_ref().map(|fr| fr.replacement.clone()));
-
-            let fix_summary = suggested_patch
-                .as_ref()
-                .map(|_| format!("Apply the semgrep-suggested fix for rule `{}`.", result.check_id))
+                .or_else(|| {
+                    result.extra.fix_regex.as_ref().map(|fr| {
+                        format!(
+                            "// Regex-based semgrep guidance\n// Within the matched snippet, replace /{}/ with `{}`{}",
+                            fr.regex,
+                            fr.replacement,
+                            fr.count
+                                .map(|count| format!(" (apply to {count} occurrence(s))"))
+                                .unwrap_or_default()
+                        )
+                    })
+                })
                 .unwrap_or_else(|| {
                     format!(
-                        "Review the code against the `{}` rule and apply the guidance in the finding description.",
-                        result.check_id
+                        "// Guidance from semgrep rule `{}`\n{}",
+                        result.check_id, result.extra.message
                     )
                 });
+
+            let fix_summary =
+                format!("Apply the semgrep-suggested remediation for rule `{}`.", result.check_id);
 
             let references = metadata
                 .and_then(|m| m.references.clone())
                 .unwrap_or_default();
 
+            let code_snippet = result
+                .extra
+                .lines
+                .clone()
+                .filter(|snippet| !snippet.trim().is_empty())
+                .or_else(|| {
+                    load_file_excerpt(
+                        work_dir,
+                        rel_path,
+                        result.start.line as usize,
+                        result.end.line as usize,
+                    )
+                });
+
             let evidence = FindingEvidence {
-                code_snippet: Some(result.extra.lines.clone().unwrap_or_default()),
-                suggested_patch,
+                code_snippet,
+                suggested_patch: Some(suggested_patch),
                 fix_type: FindingFixType::CodeChange,
                 fix_summary: Some(fix_summary),
                 references,
@@ -279,9 +304,12 @@ struct SemgrepExtra {
 
 #[derive(serde::Deserialize)]
 struct SemgrepFixRegex {
+    #[serde(default)]
+    regex: String,
     /// Replacement string (after regex substitution).
-    #[serde(alias = "regex")]
     replacement: String,
+    #[serde(default)]
+    count: Option<u32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -294,6 +322,34 @@ struct SemgrepMetadata {
     /// semgrep rules. Surfaced on findings so operators can read background.
     #[serde(default)]
     references: Option<Vec<String>>,
+}
+
+fn load_file_excerpt(
+    work_dir: &Path,
+    relative_path: &str,
+    start_line: usize,
+    end_line: usize,
+) -> Option<String> {
+    let path = work_dir.join(relative_path);
+    let content = fs::read_to_string(path).ok()?;
+    let lines = content.lines().collect::<Vec<_>>();
+    if lines.is_empty() {
+        return None;
+    }
+
+    let start = start_line.max(1);
+    let end = end_line.max(start).min(lines.len());
+
+    Some(
+        (start..=end)
+            .filter_map(|line_number| {
+                lines
+                    .get(line_number - 1)
+                    .map(|line| format!("{line_number:>5} | {line}"))
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 #[cfg(test)]

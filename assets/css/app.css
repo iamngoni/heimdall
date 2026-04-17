@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -202,4 +204,467 @@ tbody tr {
 }
 [data-theme="editorial"] .link-editorial:hover {
     border-bottom-color: currentColor;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Oatmeal theme — warm mist palette from the oatmeal-mist
+   reference (hue ~83, oklch-approximated in hex).
+   Paper-like surfaces, espresso ink, Familjen Grotesk display.
+   Buttons are rounded-full pills; primary is near-black on cream.
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="oatmeal"] {
+    color-scheme: dark;
+    /* Mist palette — converted from the oatmeal-mist-familjen reference
+       (oklch values, hue ~197-228 — a cool, desaturated neutral).
+       Oatmeal is an all-dark theme: mist-950 shell with mist-900/800
+       elevated surfaces, light text, inverted (light) accent pills. */
+    --mist-50:  #f9fbfb;
+    --mist-100: #f1f3f3;
+    --mist-200: #e3e7e8;
+    --mist-300: #d0d6d8;
+    --mist-400: #9ca8ab;
+    --mist-500: #67787c;
+    --mist-600: #4b585b;
+    --mist-700: #394447;
+    --mist-800: #22292b;
+    --mist-900: #161b1d;
+    --mist-950: #090b0c;
+
+    /* Shell & surfaces — all dark, elevation via mist-900/800 */
+    --hm-shell-bg: #090b0c;
+    --hm-shell-alt: #0f1214;
+    --hm-surface: #161b1d;          /* primary card surface */
+    --hm-surface-strong: #1b2123;   /* slightly raised */
+    --hm-surface-muted: #0f1214;    /* slightly sunk */
+    --hm-surface-deep: #22292b;     /* deepest chip/pill background */
+    --hm-border: rgba(255, 255, 255, 0.06);
+    --hm-border-strong: rgba(255, 255, 255, 0.12);
+
+    /* Sidebar — identical to shell, active via raised dark pill */
+    --hm-sidebar-bg: #090b0c;
+    --hm-sidebar-active: rgba(255, 255, 255, 0.08);
+    --hm-sidebar-hover: rgba(255, 255, 255, 0.04);
+
+    /* Accent inverted — primary pill is LIGHT on dark */
+    --hm-accent: #f1f3f3;
+    --hm-accent-hover: #ffffff;
+    --hm-accent-strong: #f9fbfb;
+    --hm-accent-text: #090b0c;       /* text on accent pill */
+    --hm-accent-soft: rgba(255, 255, 255, 0.08);
+    --hm-accent-shadow: rgba(0, 0, 0, 0.5);
+
+    /* Text — light on dark */
+    --hm-text-900: #f9fbfb;
+    --hm-text-700: #e3e7e8;
+    --hm-text-600: #c2cbcd;
+    --hm-text-500: #9ca8ab;
+    --hm-text-400: #67787c;
+
+    --hm-content-bg: #090b0c;
+
+    /* Status colours — muted dark variants */
+    --hm-positive-bg: rgba(155, 195, 160, 0.10);
+    --hm-positive-border: rgba(155, 195, 160, 0.28);
+    --hm-positive-text: #b6d7b9;
+    --hm-warning-bg: rgba(221, 193, 125, 0.10);
+    --hm-warning-border: rgba(221, 193, 125, 0.28);
+    --hm-warning-text: #e6cc8e;
+    --hm-danger-bg: rgba(220, 143, 132, 0.10);
+    --hm-danger-border: rgba(220, 143, 132, 0.28);
+    --hm-danger-text: #e6a59a;
+}
+
+[data-theme="oatmeal"] {
+    background: var(--hm-shell-bg);
+    color: var(--hm-text-900);
+    font-family: "Familjen Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+[data-theme="oatmeal"] h1,
+[data-theme="oatmeal"] h2,
+[data-theme="oatmeal"] h3,
+[data-theme="oatmeal"] .hm-oatmeal-display {
+    font-family: "Familjen Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] input,
+[data-theme="oatmeal"] select,
+[data-theme="oatmeal"] textarea {
+    background: var(--hm-surface-muted);
+    color: var(--hm-text-900);
+    border-color: var(--hm-border-strong);
+}
+
+[data-theme="oatmeal"] input::placeholder,
+[data-theme="oatmeal"] textarea::placeholder {
+    color: var(--hm-text-500);
+}
+
+[data-theme="oatmeal"] input:focus,
+[data-theme="oatmeal"] select:focus,
+[data-theme="oatmeal"] textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="oatmeal"] *:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.3);
+    outline-offset: 2px;
+}
+
+[data-theme="oatmeal"] ::selection {
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] ::-webkit-scrollbar-track {
+    background: var(--mist-950);
+}
+
+[data-theme="oatmeal"] ::-webkit-scrollbar-thumb {
+    background: var(--mist-800);
+    border-radius: 999px;
+}
+
+[data-theme="oatmeal"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--mist-700);
+}
+
+[data-theme="oatmeal"] .hm-nav-active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--mist-50);
+}
+
+[data-theme="oatmeal"] .hm-nav-idle:hover {
+    background-color: var(--hm-sidebar-hover);
+}
+
+/* ── Oatmeal component primitives (all dark) ──────────────────── */
+
+/* Rail / sidebar — same as shell, no visible seam */
+[data-theme="oatmeal"] .hm-oatmeal-rail {
+    background: var(--hm-shell-bg);
+    color: var(--hm-text-900);
+}
+
+/* Workspace identity card — raised dark card on the dark shell */
+[data-theme="oatmeal"] .hm-oatmeal-identity {
+    background: var(--hm-surface);
+    color: var(--hm-text-900);
+    border-radius: 1.25rem;
+    border: 1px solid var(--hm-border);
+}
+
+/* Nav row on the dark rail */
+[data-theme="oatmeal"] .hm-oatmeal-nav-item {
+    color: var(--hm-text-500);
+    border-radius: 1rem;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-nav-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-nav-item.is-active {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--hm-text-900);
+}
+
+/* Content panel — dark surface, subtly raised from shell */
+[data-theme="oatmeal"] .hm-oatmeal-paper {
+    background: var(--hm-surface);
+    color: var(--hm-text-900);
+    border-radius: 1.75rem;
+    border: 1px solid var(--hm-border);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
+/* Inner card inside content — slightly raised */
+[data-theme="oatmeal"] .hm-oatmeal-panel {
+    background: var(--hm-surface-strong);
+    border: 1px solid var(--hm-border);
+    border-radius: 1.25rem;
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-panel-soft {
+    background: var(--hm-surface-muted);
+    border: 1px solid var(--hm-border);
+    border-radius: 1.25rem;
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-wash {
+    background-image: linear-gradient(180deg, var(--hm-surface), var(--hm-surface-muted));
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-pill {
+    border: 1px solid var(--hm-border-strong);
+    background: var(--hm-surface-deep);
+    color: var(--hm-text-700);
+    border-radius: 999px;
+}
+
+/* Primary pill — INVERTED: light pill on dark bg */
+[data-theme="oatmeal"] .hm-oatmeal-action {
+    background: var(--hm-accent);
+    color: var(--hm-accent-text);
+    border-radius: 999px;
+    font-weight: 500;
+    transition: background-color 150ms ease;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-action:hover {
+    background: var(--hm-accent-hover);
+}
+
+/* Soft pill — subtle white overlay on dark */
+[data-theme="oatmeal"] .hm-oatmeal-action-soft {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--hm-text-900);
+    border-radius: 999px;
+    font-weight: 500;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-action-soft:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+/* Tabs list — active = raised dark chip; idle = transparent */
+[data-theme="oatmeal"] .hm-oatmeal-tab-active {
+    background: var(--hm-surface-deep);
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-tab-idle {
+    color: var(--hm-text-500);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-tab-idle:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-rule {
+    border-color: var(--hm-border);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-muted {
+    color: var(--hm-text-500);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-kicker {
+    color: var(--hm-text-500);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+/* Shell / page wrapper colour mapping (all-dark) */
+[data-theme="oatmeal"] .bg-\[\#f5f7fa\],
+[data-theme="oatmeal"] .bg-slate-100 {
+    background-color: var(--hm-shell-bg) !important;
+}
+
+/* Sidebar dock — stays dark (shell background) */
+[data-theme="oatmeal"] .bg-\[\#1b2536\] {
+    background-color: var(--hm-shell-bg) !important;
+    box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* White → dark surface */
+[data-theme="oatmeal"] .bg-white {
+    background-color: var(--hm-surface) !important;
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .bg-white\/58,
+[data-theme="oatmeal"] .bg-white\/60,
+[data-theme="oatmeal"] .bg-white\/64,
+[data-theme="oatmeal"] .bg-white\/70,
+[data-theme="oatmeal"] .bg-white\/72,
+[data-theme="oatmeal"] .bg-white\/78,
+[data-theme="oatmeal"] .bg-white\/80 {
+    background-color: var(--hm-surface) !important;
+    color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .bg-slate-50,
+[data-theme="oatmeal"] .bg-slate-50\/80,
+[data-theme="oatmeal"] .bg-amber-50\/90 {
+    background-color: var(--hm-surface-muted) !important;
+}
+
+[data-theme="oatmeal"] .bg-slate-200,
+[data-theme="oatmeal"] .bg-slate-200\/50,
+[data-theme="oatmeal"] .bg-slate-200\/70 {
+    background-color: var(--hm-surface-deep) !important;
+}
+
+[data-theme="oatmeal"] .bg-slate-300,
+[data-theme="oatmeal"] .bg-slate-400,
+[data-theme="oatmeal"] .bg-slate-400\/40 {
+    background-color: var(--hm-border-strong) !important;
+}
+
+/* Dark blocks should stay dark — leave the original slate-900/950 color */
+[data-theme="oatmeal"] .bg-slate-900 {
+    background-color: var(--mist-950) !important;
+    color: var(--hm-text-900) !important;
+}
+
+/* Blue accent — invert to light pill on dark */
+[data-theme="oatmeal"] .bg-blue-500,
+[data-theme="oatmeal"] .bg-blue-600 {
+    background-color: var(--hm-accent) !important;
+    color: var(--hm-accent-text) !important;
+    box-shadow: none !important;
+}
+
+[data-theme="oatmeal"] .bg-blue-50 {
+    background-color: var(--hm-accent-soft) !important;
+}
+
+[data-theme="oatmeal"] .bg-emerald-50 {
+    background-color: var(--hm-positive-bg) !important;
+}
+
+[data-theme="oatmeal"] .bg-amber-50 {
+    background-color: var(--hm-warning-bg) !important;
+}
+
+[data-theme="oatmeal"] .bg-rose-50 {
+    background-color: var(--hm-danger-bg) !important;
+}
+
+[data-theme="oatmeal"] .border-slate-100,
+[data-theme="oatmeal"] .border-slate-200,
+[data-theme="oatmeal"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--hm-border) !important;
+}
+
+[data-theme="oatmeal"] .border-slate-300 {
+    border-color: var(--hm-border-strong) !important;
+}
+
+[data-theme="oatmeal"] .border-blue-500,
+[data-theme="oatmeal"] .focus\:border-blue-400:focus {
+    border-color: var(--hm-accent) !important;
+}
+
+[data-theme="oatmeal"] .border-emerald-200 {
+    border-color: var(--hm-positive-border) !important;
+}
+
+[data-theme="oatmeal"] .border-amber-200 {
+    border-color: var(--hm-warning-border) !important;
+}
+
+[data-theme="oatmeal"] .border-rose-200 {
+    border-color: var(--hm-danger-border) !important;
+}
+
+[data-theme="oatmeal"] .text-slate-900,
+[data-theme="oatmeal"] .text-slate-800 {
+    color: var(--hm-text-900) !important;
+}
+
+[data-theme="oatmeal"] .text-slate-700 {
+    color: var(--hm-text-700) !important;
+}
+
+[data-theme="oatmeal"] .text-slate-500,
+[data-theme="oatmeal"] .text-slate-600 {
+    color: var(--hm-text-600) !important;
+}
+
+[data-theme="oatmeal"] .text-slate-400,
+[data-theme="oatmeal"] .text-slate-300 {
+    color: var(--hm-text-500) !important;
+}
+
+[data-theme="oatmeal"] .text-blue-500,
+[data-theme="oatmeal"] .text-blue-600,
+[data-theme="oatmeal"] .text-blue-700 {
+    color: var(--hm-text-900) !important;
+}
+
+[data-theme="oatmeal"] .text-emerald-700 {
+    color: var(--hm-positive-text) !important;
+}
+
+[data-theme="oatmeal"] .text-amber-700,
+[data-theme="oatmeal"] .text-amber-800 {
+    color: var(--hm-warning-text) !important;
+}
+
+[data-theme="oatmeal"] .text-rose-300,
+[data-theme="oatmeal"] .text-rose-700 {
+    color: var(--hm-danger-text) !important;
+}
+
+[data-theme="oatmeal"] .ring-blue-50,
+[data-theme="oatmeal"] .focus\:ring-blue-100:focus {
+    --tw-ring-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+[data-theme="oatmeal"] .ring-emerald-100,
+[data-theme="oatmeal"] .ring-emerald-200 {
+    --tw-ring-color: var(--hm-positive-border) !important;
+}
+
+[data-theme="oatmeal"] .ring-amber-100 {
+    --tw-ring-color: var(--hm-warning-border) !important;
+}
+
+[data-theme="oatmeal"] .ring-slate-100,
+[data-theme="oatmeal"] .ring-slate-200 {
+    --tw-ring-color: var(--hm-border) !important;
+}
+
+[data-theme="oatmeal"] .hover\:bg-blue-600:hover {
+    background-color: var(--hm-accent-hover) !important;
+    color: var(--hm-accent-text) !important;
+}
+
+[data-theme="oatmeal"] .hover\:bg-slate-50:hover,
+[data-theme="oatmeal"] .hover\:bg-slate-200\/50:hover,
+[data-theme="oatmeal"] .hover\:bg-slate-200\/70:hover {
+    background-color: var(--hm-surface-strong) !important;
+}
+
+[data-theme="oatmeal"] .hover\:bg-slate-800:hover {
+    background-color: var(--hm-surface-deep) !important;
+}
+
+[data-theme="oatmeal"] .hover\:bg-rose-50:hover {
+    background-color: var(--hm-danger-bg) !important;
+}
+
+[data-theme="oatmeal"] .hover\:bg-emerald-50:hover {
+    background-color: var(--hm-positive-bg) !important;
+}
+
+[data-theme="oatmeal"] .hover\:bg-amber-50:hover {
+    background-color: var(--hm-warning-bg) !important;
+}
+
+[data-theme="oatmeal"] .hover\:border-slate-300:hover {
+    border-color: var(--hm-border-strong) !important;
+}
+
+[data-theme="oatmeal"] .hover\:text-blue-700:hover {
+    color: var(--hm-text-900) !important;
+}
+
+[data-theme="oatmeal"] .hover\:text-slate-900:hover {
+    color: var(--hm-text-900) !important;
 }

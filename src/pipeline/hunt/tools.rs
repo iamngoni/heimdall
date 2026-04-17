@@ -667,12 +667,32 @@ pub fn hunt_tool_definitions() -> Vec<ToolDefinition> {
                         "type": "string",
                         "description": "The vulnerable code snippet"
                     },
+                    "suggested_patch": {
+                        "type": "string",
+                        "description": "Concrete remediation guidance, diff, or replacement snippet"
+                    },
+                    "fix_summary": {
+                        "type": "string",
+                        "description": "One-line summary of how to fix the issue"
+                    },
+                    "fix_type": {
+                        "type": "string",
+                        "enum": ["code_change", "dependency_upgrade", "config_change", "manual_review"],
+                        "description": "The remediation shape for this finding"
+                    },
+                    "references": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Optional advisory or standards links supporting the finding and fix"
+                    },
                     "reasoning": {
                         "type": "string",
                         "description": "Step-by-step reasoning that led to this finding"
                     }
                 },
-                "required": ["title", "severity", "file_path", "line_start", "description"]
+                "required": ["title", "severity", "file_path", "line_start", "description", "code_snippet", "suggested_patch", "fix_summary"]
             }),
         },
     ]

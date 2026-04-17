@@ -5,6 +5,7 @@ use actix_web::{
     http::{StatusCode, header},
     test,
 };
+use heimdall::models::db_models::FindingEvidence;
 use heimdall::routes;
 use uuid::Uuid;
 
@@ -74,9 +75,13 @@ async fn test_dashboard_repos_and_finding_detail_regressions_stay_fixed() {
             "src/app.js",
             8,
             Some(9),
-            Some("element.innerHTML = userInput;"),
             &format!("ui-fingerprint-{}", Uuid::now_v7()),
-            Some("@@ -1 +1 @@\n-element.innerHTML = userInput;\n+element.textContent = userInput;"),
+            None,
+            &FindingEvidence::code_change(
+                "element.innerHTML = userInput;",
+                "@@ -1 +1 @@\n-element.innerHTML = userInput;\n+element.textContent = userInput;",
+                "Render untrusted input as text instead of raw HTML.",
+            ),
         )
         .await
         .expect("Failed to create UI test finding");

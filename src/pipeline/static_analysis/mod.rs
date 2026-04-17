@@ -957,8 +957,12 @@ impl StaticAnalysisStage {
                 HashSet::new()
             };
 
-            let semgrep_stage =
-                semgrep::SemgrepStage::new(self.scan_id, self.repo_id, Arc::clone(&self.db));
+            let semgrep_stage = semgrep::SemgrepStage::new(
+                self.scan_id,
+                self.repo_id,
+                Arc::clone(&self.db),
+                self.semgrep_config.clone(),
+            );
             match semgrep_stage.run(work_dir, &existing_fingerprints).await {
                 Ok(semgrep_count) => {
                     total_findings += semgrep_count;
@@ -1054,6 +1058,20 @@ impl StaticAnalysisStage {
                         "Potential hardcoded secret-like literal detected: `{secret_literal}`"
                     );
                     let snippet = extract_snippet(&file.content, line_idx, 2);
+                    let evidence = FindingEvidence::code_change(
+                        snippet,
+                        format!(
+                            "// 1. Remove the credential literal `{secret_literal}` from source.\n\
+                             // 2. Load it from a secret manager or environment variable at runtime.\n\
+                             // 3. Rotate the exposed credential immediately — treat it as compromised.\n\
+                             // 4. Scrub it from git history if it was committed."
+                        ),
+                        "Move the secret out of source control and rotate the exposed value.",
+                    )
+                    .with_references([
+                        "https://cwe.mitre.org/data/definitions/798.html",
+                        "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html",
+                    ]);
 
                     let _ = self
                         .db
@@ -1069,9 +1087,9 @@ impl StaticAnalysisStage {
                             file_path,
                             line_num,
                             Some(line_num),
-                            Some(&snippet),
                             &fingerprint,
-                            Some(&detail),
+                            Some(detail.as_str()),
+                            &evidence,
                         )
                         .await;
 

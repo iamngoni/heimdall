@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
-use crate::models::HeimdallResult;
+use crate::models::{FindingEvidence, HeimdallResult};
 use crate::util::sat_i32_usize;
 
 // ---- Types ----
@@ -535,7 +535,7 @@ impl TaintAnalysisStage {
 
         // Persist findings
         for flow in &all_flows {
-            let _cwe = match flow.sink_category {
+            let cwe = match flow.sink_category {
                 SinkCategory::Sql => "CWE-89",
                 SinkCategory::Command => "CWE-78",
                 SinkCategory::Xss => "CWE-79",
@@ -555,10 +555,27 @@ impl TaintAnalysisStage {
                 flow.sink_text.trim(),
                 flow.variable_chain.join(" → ")
             );
+            let snippet = format!(
+                "{:>5} | {}\n{:>5} | {}\n\nVariable chain: {}",
+                flow.source_line,
+                flow.source_text.trim(),
+                flow.sink_line,
+                flow.sink_text.trim(),
+                flow.variable_chain.join(" → ")
+            );
+            let evidence = FindingEvidence::code_change(
+                snippet,
+                taint_fix_guidance(&flow.sink_category),
+                taint_fix_summary(&flow.sink_category),
+            )
+            .with_references([
+                cwe_reference(cwe),
+                taint_reference(&flow.sink_category).to_string(),
+            ]);
 
             let _ = self
                 .db
-                .create_finding(
+                .create_finding_full(
                     self.scan_id,
                     self.repo_id,
                     "static",
@@ -566,6 +583,7 @@ impl TaintAnalysisStage {
                     "medium",
                     &title,
                     Some(&description),
+                    Some(cwe),
                     &flow.file_path,
                     sat_i32_usize(flow.source_line),
                     Some(sat_i32_usize(flow.sink_line)),
@@ -573,12 +591,77 @@ impl TaintAnalysisStage {
                         "taint-{}-{}-{}",
                         flow.file_path, flow.source_line, flow.sink_line
                     ),
+                    None,
+                    &evidence,
                 )
                 .await;
         }
 
         Ok(all_flows)
     }
+}
+
+fn taint_fix_summary(category: &SinkCategory) -> &'static str {
+    match category {
+        SinkCategory::Sql => {
+            "Break the tainted flow by switching to parameterized queries."
+        }
+        SinkCategory::Command => {
+            "Break the tainted flow by passing arguments as an argv list, not a shell string."
+        }
+        SinkCategory::Xss => {
+            "Break the tainted flow by encoding output or sanitizing HTML before rendering."
+        }
+        SinkCategory::Deserialization => {
+            "Break the tainted flow by rejecting untrusted serialized data or switching to a safe format."
+        }
+        SinkCategory::FileAccess => {
+            "Break the tainted flow by canonicalizing paths and enforcing an allow-listed root."
+        }
+    }
+}
+
+fn taint_fix_guidance(category: &SinkCategory) -> &'static str {
+    match category {
+        SinkCategory::Sql => {
+            "// Replace string-built SQL with parameter binding.\n// Example:\n//   sqlx::query(\"SELECT * FROM users WHERE id = $1\").bind(user_id)"
+        }
+        SinkCategory::Command => {
+            "// Replace shell-string execution with argv-based process spawning.\n// Example:\n//   Command::new(\"git\").arg(\"status\").arg(repo_path)"
+        }
+        SinkCategory::Xss => {
+            "// Treat the source value as untrusted output.\n// Render it as text (`textContent`) or sanitize it with a trusted HTML sanitizer before injecting it."
+        }
+        SinkCategory::Deserialization => {
+            "// Do not deserialize attacker-controlled bytes with an unsafe format.\n// Prefer JSON / schema-validated input and reject untrusted pickle / Java serialization payloads."
+        }
+        SinkCategory::FileAccess => {
+            "// Canonicalize the user-controlled path, reject `..` / absolute paths, and enforce that the resolved path stays under an allow-listed root directory."
+        }
+    }
+}
+
+fn taint_reference(category: &SinkCategory) -> &'static str {
+    match category {
+        SinkCategory::Sql => "https://owasp.org/www-community/attacks/SQL_Injection",
+        SinkCategory::Command => {
+            "https://owasp.org/www-community/attacks/Command_Injection"
+        }
+        SinkCategory::Xss => {
+            "https://owasp.org/www-community/attacks/xss/"
+        }
+        SinkCategory::Deserialization => {
+            "https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data"
+        }
+        SinkCategory::FileAccess => {
+            "https://owasp.org/www-community/attacks/Path_Traversal"
+        }
+    }
+}
+
+fn cwe_reference(cwe_id: &str) -> String {
+    let numeric = cwe_id.trim_start_matches("CWE-");
+    format!("https://cwe.mitre.org/data/definitions/{numeric}.html")
 }
 
 #[cfg(test)]

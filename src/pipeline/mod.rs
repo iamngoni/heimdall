@@ -24,6 +24,7 @@ use log::{error, info, warn};
 use tokio_util::sync::CancellationToken;
 
 use crate::ai::ModelProvider;
+use crate::config::SemgrepConfig;
 use crate::db::DatabaseOperations;
 use crate::integrations::issues;
 use crate::models::HeimdallResult;
@@ -40,6 +41,7 @@ pub struct ScanPipeline {
     pub sse: Arc<ScanBroadcaster>,
     pub encryption_key: Option<[u8; 32]>,
     pub data_dir: String,
+    pub semgrep_config: SemgrepConfig,
     pub cancel_token: CancellationToken,
 }
 
@@ -52,6 +54,7 @@ impl ScanPipeline {
         sse: Arc<ScanBroadcaster>,
         encryption_key: Option<[u8; 32]>,
         data_dir: String,
+        semgrep_config: SemgrepConfig,
         cancel_token: CancellationToken,
     ) -> Self {
         Self {
@@ -62,6 +65,7 @@ impl ScanPipeline {
             sse,
             encryption_key,
             data_dir,
+            semgrep_config,
             cancel_token,
         }
     }
@@ -125,6 +129,7 @@ impl ScanPipeline {
                         self.scan_id,
                         repo.id,
                         Arc::clone(&self.db),
+                        self.semgrep_config.clone(),
                     )
                     .with_work_dir(ingest_output.work_dir.clone());
                     stage.run(&code_index).await

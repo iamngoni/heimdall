@@ -41,7 +41,7 @@ pub async fn test_app_state_with_options(
     }
     let db_ops = DatabaseOperations::new(db_pool);
     let broadcaster = ScanBroadcaster::new();
-    let template_engine = templates::init_templates("templates");
+    let template_engine = templates::init_themes("templates");
 
     web::Data::new(AppState::init(
         config,

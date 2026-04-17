@@ -5,6 +5,7 @@ use actix_web::{
     http::{StatusCode, header},
     test,
 };
+use heimdall::models::db_models::FindingEvidence;
 use heimdall::routes;
 use serde_json::json;
 use uuid::Uuid;
@@ -62,9 +63,13 @@ async fn setup() -> Option<Setup> {
             "src/main.rs",
             12,
             Some(12),
-            Some("let secret = \"abc\";"),
             &format!("fingerprint-{}", Uuid::now_v7()),
             None,
+            &FindingEvidence::code_change(
+                "let secret = \"abc\";",
+                "@@ -1 +1 @@\n-let secret = \"abc\";\n+let secret = std::env::var(\"APP_SECRET\")?;",
+                "Load the secret from a runtime secret store instead of hardcoding it.",
+            ),
         )
         .await
         .expect("Failed to create test finding");

@@ -99,13 +99,19 @@
                             </section>
                             {% endif %}
 
-                            {% if finding.suggested_patch %}
+                            {% if finding.suggested_patch or finding.fix_summary %}
                             <section>
                                 <div class="flex items-end justify-between border-b border-ink-200 pb-4">
                                     <div>
                                         <p class="section-num">03 · Suggested Fix</p>
                                         <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">The patch</h2>
-                                        <p class="mt-2 text-sm text-ink-500">Recommended remediation diff generated during the scan.</p>
+                                        <p class="mt-2 text-sm text-ink-500">
+                                            {% if finding.suggested_patch %}
+                                            Recommended remediation generated during the scan.
+                                            {% else %}
+                                            Remediation guidance generated during the scan.
+                                            {% endif %}
+                                        </p>
                                     </div>
                                     {% if patch.id %}
                                     <span class="inline-flex items-center gap-1.5 text-xs text-ink-900">
@@ -115,7 +121,7 @@
                                     {% endif %}
                                 </div>
                                 <div class="mt-6 overflow-x-auto border border-ink-200 bg-ink-50">
-                                    <pre class="p-5 font-mono text-sm leading-6 text-ink-900"><code>{{ finding.suggested_patch }}</code></pre>
+                                    <pre class="p-5 font-mono text-sm leading-6 text-ink-900"><code>{{ finding.suggested_patch or finding.fix_summary }}</code></pre>
                                 </div>
                             </section>
                             {% endif %}
@@ -274,16 +280,20 @@
             lines.push('');
         }
 
-        if (finding.suggested_patch) {
+        if (finding.suggested_patch || finding.fix_summary) {
             lines.push('## Suggested Fix');
             lines.push('');
             if (patch && patch.id && patch.applied) {
                 lines.push('> Patch has been applied.');
                 lines.push('');
             }
-            lines.push('```diff');
-            lines.push(finding.suggested_patch.trim());
-            lines.push('```');
+            if (finding.suggested_patch) {
+                lines.push('```diff');
+                lines.push(finding.suggested_patch.trim());
+                lines.push('```');
+            } else {
+                lines.push((finding.fix_summary || '').trim());
+            }
             lines.push('');
         }
 

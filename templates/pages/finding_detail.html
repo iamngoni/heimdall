@@ -86,12 +86,18 @@
                             </section>
                             {% endif %}
 
-                            {% if finding.suggested_patch %}
+                            {% if finding.suggested_patch or finding.fix_summary %}
                             <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                                 <div class="flex items-center justify-between gap-3">
                                     <div>
-                                        <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Suggested Diff</h2>
-                                        <p class="mt-1 text-sm text-slate-500">Recommended remediation diff generated during the scan. Review and apply it manually if you choose.</p>
+                                        <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Suggested Fix</h2>
+                                        <p class="mt-1 text-sm text-slate-500">
+                                            {% if finding.suggested_patch %}
+                                            Recommended remediation generated during the scan. Review and apply it manually if you choose.
+                                            {% else %}
+                                            Remediation guidance generated during the scan.
+                                            {% endif %}
+                                        </p>
                                     </div>
                                     {% if patch.id %}
                                     <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
@@ -100,7 +106,7 @@
                                     {% endif %}
                                 </div>
                                 <div class="mt-4 overflow-x-auto rounded-2xl bg-[#172033]">
-                                    <pre class="p-5 text-sm leading-6 text-emerald-200"><code>{{ finding.suggested_patch }}</code></pre>
+                                    <pre class="p-5 text-sm leading-6 text-emerald-200"><code>{{ finding.suggested_patch or finding.fix_summary }}</code></pre>
                                 </div>
                             </section>
                             {% endif %}
@@ -252,16 +258,20 @@
             lines.push('');
         }
 
-        if (finding.suggested_patch) {
-            lines.push('## Suggested Diff');
+        if (finding.suggested_patch || finding.fix_summary) {
+            lines.push('## Suggested Fix');
             lines.push('');
             if (patch && patch.id && patch.applied) {
                 lines.push('> Heimdall shows this suggested diff as manually marked applied. It did not change the repository automatically.');
                 lines.push('');
             }
-            lines.push('```diff');
-            lines.push(finding.suggested_patch.trim());
-            lines.push('```');
+            if (finding.suggested_patch) {
+                lines.push('```diff');
+                lines.push(finding.suggested_patch.trim());
+                lines.push('```');
+            } else {
+                lines.push((finding.fix_summary || '').trim());
+            }
             lines.push('');
         }
 
