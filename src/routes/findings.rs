@@ -176,7 +176,8 @@ async fn update_finding_status(
         };
 
         let controls_html = match state
-            .templates
+            .themes
+            .get(&user.theme)
             .render("partials/finding_status_controls.html", ctx)
         {
             Ok(html) => html,
@@ -708,7 +709,8 @@ async fn render_finding_ai_review(state: &AppState, finding_id: Uuid) -> HttpRes
     };
 
     match state
-        .templates
+        .themes
+        .get(crate::templates::DEFAULT_THEME)
         .render("partials/finding_ai_review.html", ctx)
     {
         Ok(html) => {
@@ -758,7 +760,8 @@ async fn render_finding_issue_panel(
     };
 
     match state
-        .templates
+        .themes
+        .get(crate::templates::DEFAULT_THEME)
         .render("partials/finding_issue_panel.html", ctx)
     {
         Ok(html) => {
@@ -804,7 +807,8 @@ async fn render_finding_recent_activity_html(
     };
 
     match state
-        .templates
+        .themes
+        .get(crate::templates::DEFAULT_THEME)
         .render("partials/finding_recent_activity.html", ctx)
     {
         Ok(html) => Ok(html.replacen(

@@ -1,0 +1,935 @@
+{% extends "base.html" %}
+
+{% block title %}Scan {{ scan.short_id }}{% endblock %}
+
+{% block body %}
+{% set active_nav = "repos" %}
+{% set breadcrumb_parent = "Scans" %}
+{% set breadcrumb_current = scan.short_id %}
+<div id="scan-live-root"
+     data-scan-id="{{ scan.id }}"
+     data-scan-status="{{ scan.status }}"
+     data-scan-live="{{ 'true' if scan.is_live else 'false' }}"
+     data-live-url="/api/scans/{{ scan.id }}/live"
+     data-stream-url="/api/scans/{{ scan.id }}/progress/stream"
+     class="min-h-screen bg-[#f5f7fa] text-slate-900">
+    <div class="flex min-h-screen">
+        {% include "partials/app_sidebar.html" %}
+
+        <div class="flex min-h-screen min-w-0 flex-1 flex-col">
+            {% include "partials/app_topbar.html" %}
+
+            <main class="flex-1 overflow-hidden px-7 py-6">
+                <div class="space-y-6">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div class="max-w-4xl">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
+                                    {{ repo.name }}
+                                </span>
+                                <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                                    {{ scan.scan_type|replace("_", " ") }}
+                                </span>
+                            </div>
+
+                            <h1 class="mt-3 text-2xl font-bold tracking-tight text-slate-900">Scan Details</h1>
+                            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+                                <span class="font-mono text-slate-600">{{ scan.id }}</span>
+                                <span>Updated {{ scan.updated_at }}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-3">
+                            <span id="scan-status-pill"
+                                  data-status="{{ scan.status }}"
+                                  class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold
+                                      {{ 'bg-emerald-50 text-emerald-700' if scan.status == 'completed' else
+                                         'bg-amber-50 text-amber-700' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'verifying', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
+                                         'bg-rose-50 text-rose-700' if scan.status == 'failed' else
+                                         'bg-orange-50 text-orange-700' if scan.status == 'cancelled' else
+                                         'bg-slate-100 text-slate-700' }}">
+                                {{ scan.status_label }}
+                            </span>
+                            {% if scan.is_live %}
+                            <button id="cancel-scan-btn"
+                                    onclick="HeimdallScanPage.cancelScan('{{ scan.id }}', this)"
+                                    class="inline-flex items-center rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50">
+                                Cancel Scan
+                            </button>
+                            {% endif %}
+                            {% if scan.status == "failed" %}
+                            <button id="retry-scan-btn"
+                                    onclick="HeimdallScanPage.retryScan('{{ repo.id }}', this)"
+                                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+                                <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                                </svg>
+                                Retry
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <section id="scan-live-panel"
+                             class="overflow-hidden rounded-2xl border px-5 py-4
+                                {{ 'border-blue-200 bg-blue-50' if scan.is_live else
+                                   'border-emerald-200 bg-emerald-50' if scan.status == 'completed' else
+                                   'border-rose-200 bg-rose-50' if scan.status == 'failed' else
+                                   'border-slate-200 bg-slate-100' }}">
+                        <div class="flex items-start gap-3">
+                            <div id="scan-live-indicator"
+                                 class="mt-1 h-2.5 w-2.5 rounded-full
+                                    {{ 'animate-pulse bg-blue-500' if scan.is_live else
+                                       'bg-emerald-500' if scan.status == 'completed' else
+                                       'bg-rose-500' if scan.status == 'failed' else
+                                       'bg-slate-400' }}">
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                    <p id="scan-live-title"
+                                       class="text-sm font-semibold
+                                          {{ 'text-blue-900' if scan.is_live else
+                                             'text-emerald-900' if scan.status == 'completed' else
+                                             'text-rose-900' if scan.status == 'failed' else
+                                             'text-slate-900' }}">
+                                        {% if scan.is_live %}
+                                        {{ current_task.title or "Live execution" }}
+                                        {% elif scan.status == "completed" %}
+                                        Scan completed
+                                        {% elif scan.status == "failed" %}
+                                        Scan failed
+                                        {% else %}
+                                        Scan activity snapshot
+                                        {% endif %}
+                                    </p>
+                                    <p id="scan-live-meta"
+                                       class="text-xs
+                                          {{ 'text-blue-600' if scan.is_live else
+                                             'text-emerald-600' if scan.status == 'completed' else
+                                             'text-rose-600' if scan.status == 'failed' else
+                                             'text-slate-500' }}">
+                                        Last updated {{ scan.updated_at }}
+                                    </p>
+                                </div>
+                                <p id="scan-live-message"
+                                   style="word-break:break-all;overflow-wrap:anywhere"
+                                   class="mt-1 text-sm
+                                      {{ 'text-blue-700' if scan.is_live else
+                                         'text-emerald-700' if scan.status == 'completed' else
+                                         'text-rose-700' if scan.status == 'failed' else
+                                         'text-slate-600' }}">
+                                    {% if scan.is_live %}
+                                    {{ current_task.detail or "Reconciling persisted execution telemetry with the live worker stream." }}
+                                    {% elif scan.status == "completed" %}
+                                    This scan completed successfully. Review the execution log, findings, and threat model below.
+                                    {% elif scan.status == "failed" %}
+                                    {{ scan.error_message or "This scan failed. Review the latest execution event for the exact failure point." }}
+                                    {% else %}
+                                    This scan is no longer active.
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <div class="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">Critical</p>
+                            <p id="scan-count-critical" class="mt-3 text-3xl font-bold tracking-tight text-rose-700">{{ scan.critical_count }}</p>
+                        </div>
+                        <div class="rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700">High</p>
+                            <p id="scan-count-high" class="mt-3 text-3xl font-bold tracking-tight text-orange-700">{{ scan.high_count }}</p>
+                        </div>
+                        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Medium</p>
+                            <p id="scan-count-medium" class="mt-3 text-3xl font-bold tracking-tight text-amber-700">{{ scan.medium_count }}</p>
+                        </div>
+                        <div class="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Low</p>
+                            <p id="scan-count-low" class="mt-3 text-3xl font-bold tracking-tight text-blue-700">{{ scan.low_count }}</p>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_360px]">
+                        <div class="space-y-6">
+                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-center justify-between gap-4">
+                                    <div>
+                                        <h2 class="text-sm font-semibold text-slate-900">Pipeline Stages</h2>
+                                        <p class="mt-1 text-sm text-slate-500">Canonical scan stages with the latest persisted status for each stage.</p>
+                                    </div>
+                                    <p class="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">Execution graph</p>
+                                </div>
+
+                                <div id="scan-stage-list" class="mt-4 space-y-3">
+                                    {% for stage in stages %}
+                                    <div data-stage-row="{{ stage.stage }}"
+                                         data-status="{{ stage.status }}"
+                                         class="overflow-hidden rounded-xl border border-slate-200 px-4 py-4">
+                                        <div class="flex items-start justify-between gap-4">
+                                            <div class="flex min-w-0 items-start gap-3">
+                                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full
+                                                    {{ 'bg-emerald-50 text-emerald-600' if stage.status == 'completed' else
+                                                       'bg-blue-50 text-blue-600' if stage.status == 'running' else
+                                                       'bg-rose-50 text-rose-600' if stage.status == 'failed' else
+                                                       'bg-slate-100 text-slate-400' }}">
+                                                    {% if stage.status == "completed" %}
+                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5l3 3 7-7" />
+                                                    </svg>
+                                                    {% elif stage.status == "running" %}
+                                                    <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                                        <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                        <path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 018.66 5H17a1 1 0 000 2h6a1 1 0 001-1V2a1 1 0 10-2 0v2.05A12 12 0 0012 0v2z"></path>
+                                                    </svg>
+                                                    {% elif stage.status == "failed" %}
+                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" />
+                                                    </svg>
+                                                    {% else %}
+                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                                                        <circle cx="10" cy="10" r="6"></circle>
+                                                    </svg>
+                                                    {% endif %}
+                                                </span>
+
+                                                <div class="min-w-0">
+                                                    <div class="flex flex-wrap items-center gap-2">
+                                                        <p class="text-sm font-semibold text-slate-900">{{ stage.label }}</p>
+                                                        {% if stage.attempt > 1 %}
+                                                        <span class="text-xs font-medium text-slate-400">Attempt {{ stage.attempt }}</span>
+                                                        {% endif %}
+                                                    </div>
+                                                    <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{{ stage.status|replace("_", " ") }}</p>
+                                                    {% if stage.timestamp %}
+                                                    <p class="mt-2 text-sm text-slate-500">{{ stage.timestamp }}</p>
+                                                    {% endif %}
+                                                    {% if stage.error %}
+                                                    <p class="mt-2 text-sm text-rose-600" style="word-break:break-all;overflow-wrap:anywhere">{{ stage.error }}</p>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+
+                                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold
+                                                {{ 'bg-emerald-50 text-emerald-700' if stage.status == 'completed' else
+                                                   'bg-blue-50 text-blue-700' if stage.status == 'running' else
+                                                   'bg-rose-50 text-rose-700' if stage.status == 'failed' else
+                                                   'bg-slate-100 text-slate-700' }}">
+                                                {{ stage.status|replace("_", " ")|title }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </section>
+
+                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-center justify-between gap-4">
+                                    <div>
+                                        <h2 class="text-sm font-semibold text-slate-900">Execution Log</h2>
+                                        <p id="scan-activity-state" class="mt-1 text-sm text-slate-500">
+                                            {% if scan.is_live %}
+                                            Reconciling persisted execution telemetry and live worker events.
+                                            {% else %}
+                                            Recorded execution history for this run.
+                                            {% endif %}
+                                        </p>
+                                    </div>
+                                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Persisted events</span>
+                                </div>
+
+                                <ol id="scan-activity-feed" class="mt-4 space-y-3">
+                                    {% for activity in activities %}
+                                    <li data-activity-key="{{ activity.key }}"
+                                        class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                                        <div class="flex items-start gap-3">
+                                            <span class="mt-1 h-2.5 w-2.5 rounded-full
+                                                {{ 'bg-emerald-500' if activity.tone == 'success' else
+                                                   'bg-amber-500' if activity.tone == 'warning' else
+                                                   'bg-blue-500' if activity.tone == 'active' else
+                                                   'bg-slate-400' }}">
+                                            </span>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                                                    <p class="text-sm font-semibold text-slate-900">{{ activity.title }}</p>
+                                                    <p class="text-xs text-slate-400">{{ activity.timestamp }}</p>
+                                                </div>
+                                                <p class="mt-1 break-all text-sm text-slate-500">{{ activity.detail }}</p>
+                                            </div>
+                                        </div>
+                                    </li>
+                                    {% endfor %}
+                                </ol>
+                            </section>
+                        </div>
+
+                        <aside class="space-y-6">
+                            <section id="scan-current-task" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h2 class="text-sm font-semibold text-slate-900">Current Operation</h2>
+                                        <p class="mt-1 text-sm text-slate-500">The most recent running task inside the pipeline.</p>
+                                    </div>
+                                    {% if current_task.stage %}
+                                    <span id="scan-current-task-stage"
+                                          class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                        {{ current_task.stage|replace("_", " ") }}
+                                    </span>
+                                    {% else %}
+                                    <span id="scan-current-task-stage"
+                                          class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                        Idle
+                                    </span>
+                                    {% endif %}
+                                </div>
+
+                                <div class="mt-4">
+                                    <p id="scan-current-task-title" class="text-base font-semibold text-slate-900">
+                                        {{ current_task.title }}
+                                    </p>
+                                    <p id="scan-current-task-detail" class="mt-2 text-sm leading-6 text-slate-600">
+                                        {{ current_task.detail }}
+                                    </p>
+                                </div>
+
+                                <div id="scan-current-task-progress-wrap"
+                                     class="mt-4 {% if current_task.progress_pct is none %}hidden{% endif %}">
+                                    <div class="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                        <span>Progress</span>
+                                        <span id="scan-current-task-progress-label">{{ current_task.progress_pct }}%</span>
+                                    </div>
+                                    <div class="mt-2 h-2 rounded-full bg-slate-100">
+                                        <div id="scan-current-task-progress-bar"
+                                             class="h-2 rounded-full bg-blue-500 transition-all duration-300"
+                                             style="width: {{ current_task.progress_pct or 0 }}%"></div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div>
+                                    <h2 class="text-sm font-semibold text-slate-900">Agent Trace</h2>
+                                    <p class="mt-1 text-sm text-slate-500">Recent tool calls and sub-operations recorded during the run.</p>
+                                </div>
+
+                                <div id="scan-agent-calls" class="mt-4 space-y-3">
+                                    {% if agent_calls|length > 0 %}
+                                    {% for call in agent_calls %}
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p class="text-sm font-semibold text-slate-900">{{ call.label }}</p>
+                                                <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{{ call.stage|replace("_", " ") }}</p>
+                                            </div>
+                                            <span class="text-xs font-semibold text-slate-500">
+                                                {% if call.duration_ms %}{{ call.duration_ms }} ms{% else %}Pending{% endif %}
+                                            </span>
+                                        </div>
+                                        {% if call.error %}
+                                        <p class="mt-2 text-sm text-rose-600">{{ call.error }}</p>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                    {% else %}
+                                    <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
+                                        <p class="font-medium text-slate-600">No agent operations yet</p>
+                                        <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </section>
+
+                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                                <div>
+                                    <h2 class="text-sm font-semibold text-slate-900">Next Steps</h2>
+                                    <p class="mt-1 text-sm text-slate-500">Use the outputs from this run to review, remediate, and escalate issues.</p>
+                                </div>
+
+                                <div class="mt-4 space-y-3">
+                                    <a href="/scans/{{ scan.id }}/findings"
+                                       class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50">
+                                        <div>
+                                            <p class="text-sm font-semibold text-slate-900">Findings</p>
+                                            <p class="mt-1 text-sm text-slate-500">Inspect vulnerabilities, severity, and triage state.</p>
+                                        </div>
+                                        <span class="text-sm font-semibold text-blue-600">Open</span>
+                                    </a>
+                                    <a href="/scans/{{ scan.id }}/threat-model"
+                                       class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50">
+                                        <div>
+                                            <p class="text-sm font-semibold text-slate-900">Threat Model</p>
+                                            <p class="mt-1 text-sm text-slate-500">Review the synthesized architecture and attack-path context.</p>
+                                        </div>
+                                        <span class="text-sm font-semibold text-blue-600">Open</span>
+                                    </a>
+                                    <div class="rounded-xl bg-slate-50 px-4 py-4">
+                                        <p class="text-sm font-semibold text-slate-900"><span id="scan-total-findings">{{ scan.finding_count }}</span> total findings</p>
+                                        <p class="mt-1 text-sm text-slate-500">Total issues discovered in this run across all severities.</p>
+                                    </div>
+                                </div>
+                            </section>
+                        </aside>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<script>
+window.HeimdallScanPage = {
+    retryScan(repoId, btn) {
+        btn.disabled = true;
+        btn.textContent = 'Starting...';
+        const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+        fetch('/api/repos/' + repoId + '/scan', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-Token': csrfToken },
+            credentials: 'same-origin'
+        })
+            .then(resp => resp.json().then(data => ({ ok: resp.ok, data })))
+            .then(({ ok, data }) => {
+                if (ok && data.data && data.data.id) {
+                    window.location.href = '/scans/' + data.data.id;
+                } else {
+                    const msg = data.error ? (data.error.message || data.error) : 'Failed to start scan';
+                    if (window.HeimdallUI) { window.HeimdallUI.warning(msg); }
+                    btn.disabled = false;
+                    btn.textContent = 'Retry';
+                }
+            })
+            .catch(() => {
+                if (window.HeimdallUI) { window.HeimdallUI.warning('Unable to start scan right now.'); }
+                btn.disabled = false;
+                btn.textContent = 'Retry';
+            });
+    },
+
+    cancelScan(scanId, btn) {
+        if (!confirm('Are you sure you want to cancel this scan?')) return;
+        btn.disabled = true;
+        btn.textContent = 'Cancelling...';
+        const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+        fetch('/api/scans/' + scanId + '/cancel', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': csrfToken },
+            credentials: 'same-origin'
+        })
+            .then(resp => {
+                if (resp.ok) {
+                    btn.textContent = 'Cancelled';
+                    btn.classList.add('opacity-50');
+                } else {
+                    resp.json().then(data => {
+                        alert(data.error || 'Failed to cancel scan');
+                        btn.disabled = false;
+                        btn.textContent = 'Cancel Scan';
+                    });
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.textContent = 'Cancel Scan';
+            });
+    },
+
+    init() {
+        this.root = document.getElementById('scan-live-root');
+        if (!this.root) {
+            return;
+        }
+
+        this.liveUrl = this.root.dataset.liveUrl;
+        this.streamUrl = this.root.dataset.streamUrl;
+        this.statusPill = document.getElementById('scan-status-pill');
+        this.livePanel = document.getElementById('scan-live-panel');
+        this.liveIndicator = document.getElementById('scan-live-indicator');
+        this.liveTitle = document.getElementById('scan-live-title');
+        this.liveMessage = document.getElementById('scan-live-message');
+        this.liveMeta = document.getElementById('scan-live-meta');
+        this.activityState = document.getElementById('scan-activity-state');
+        this.stageList = document.getElementById('scan-stage-list');
+        this.activityFeed = document.getElementById('scan-activity-feed');
+        this.agentCalls = document.getElementById('scan-agent-calls');
+        this.currentTaskStage = document.getElementById('scan-current-task-stage');
+        this.currentTaskTitle = document.getElementById('scan-current-task-title');
+        this.currentTaskDetail = document.getElementById('scan-current-task-detail');
+        this.currentTaskProgressWrap = document.getElementById('scan-current-task-progress-wrap');
+        this.currentTaskProgressBar = document.getElementById('scan-current-task-progress-bar');
+        this.currentTaskProgressLabel = document.getElementById('scan-current-task-progress-label');
+        this.counts = {
+            total: document.getElementById('scan-total-findings'),
+            critical: document.getElementById('scan-count-critical'),
+            high: document.getElementById('scan-count-high'),
+            medium: document.getElementById('scan-count-medium'),
+            low: document.getElementById('scan-count-low')
+        };
+
+        this.refreshTimer = null;
+        this.pollTimer = null;
+        this.refreshInFlight = false;
+        this.pendingRefresh = false;
+        this.eventSource = null;
+
+        if (this.root.dataset.scanLive === 'true') {
+            this.startPolling();
+            this.connect();
+        }
+
+        this.requestRefresh(0);
+    },
+
+    connect() {
+        if (this.eventSource || this.root.dataset.scanLive !== 'true') {
+            return;
+        }
+
+        this.eventSource = new EventSource(this.streamUrl);
+        ['status_change', 'stage_update', 'finding_added', 'scan_complete', 'error'].forEach((name) => {
+            this.eventSource.addEventListener(name, () => {
+                this.requestRefresh(100);
+            });
+        });
+
+        this.eventSource.onerror = () => {
+            this.disconnectStream();
+            if (this.root.dataset.scanLive === 'true') {
+                this.activityState.textContent = 'Live stream interrupted. Continuing to reconcile with persisted execution telemetry.';
+                window.setTimeout(() => this.connect(), 3000);
+            }
+        };
+    },
+
+    disconnectStream() {
+        if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+        }
+    },
+
+    startPolling() {
+        if (this.pollTimer || this.root.dataset.scanLive !== 'true') {
+            return;
+        }
+
+        this.pollTimer = window.setInterval(() => {
+            this.requestRefresh(0);
+        }, 2500);
+    },
+
+    stopPolling() {
+        if (!this.pollTimer) {
+            return;
+        }
+
+        window.clearInterval(this.pollTimer);
+        this.pollTimer = null;
+    },
+
+    requestRefresh(delay = 150) {
+        if (this.refreshTimer) {
+            window.clearTimeout(this.refreshTimer);
+        }
+
+        this.refreshTimer = window.setTimeout(() => {
+            this.refresh();
+        }, delay);
+    },
+
+    async refresh() {
+        if (this.refreshInFlight) {
+            this.pendingRefresh = true;
+            return;
+        }
+
+        this.refreshInFlight = true;
+
+        try {
+            const response = await fetch(this.liveUrl, {
+                headers: {
+                    'Accept': 'application/json'
+                },
+                credentials: 'same-origin'
+            });
+
+            const payload = await response.json().catch(() => null);
+            if (!response.ok || !payload || !payload.data) {
+                return;
+            }
+
+            this.applySnapshot(payload.data);
+        } catch (_) {
+            if (this.root.dataset.scanLive === 'true') {
+                this.activityState.textContent = 'Unable to refresh live execution telemetry right now. Retrying automatically...';
+            }
+        } finally {
+            this.refreshInFlight = false;
+
+            if (this.pendingRefresh) {
+                this.pendingRefresh = false;
+                this.requestRefresh(0);
+            }
+        }
+    },
+
+    applySnapshot(snapshot) {
+        if (!snapshot || !snapshot.scan) {
+            return;
+        }
+
+        const scan = snapshot.scan;
+        this.root.dataset.scanStatus = scan.status;
+        this.root.dataset.scanLive = scan.is_live ? 'true' : 'false';
+
+        this.setStatus(scan.status, scan.updated_at);
+        this.setCounts(snapshot.counts || {});
+        this.setLivePanel(scan, snapshot.current_task || {});
+        this.renderCurrentTask(snapshot.current_task || {});
+        this.renderStages(snapshot.stages || []);
+        this.renderActivity(snapshot.activity || []);
+        this.renderAgentCalls(snapshot.agent_calls || []);
+
+        if (scan.is_live) {
+            this.startPolling();
+            this.connect();
+        } else {
+            this.stopPolling();
+            this.disconnectStream();
+        }
+    },
+
+    humanize(value) {
+        return String(value || '')
+            .split('_')
+            .filter(Boolean)
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+    },
+
+    escapeHtml(value) {
+        return String(value || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    },
+
+    formatTimestamp(value) {
+        if (!value) {
+            return 'Just now';
+        }
+
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return value;
+        }
+
+        return new Intl.DateTimeFormat(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        }).format(date);
+    },
+
+    statusBadgeClass(status) {
+        switch (status) {
+            case 'completed':
+                return 'bg-emerald-50 text-emerald-700';
+            case 'failed':
+                return 'bg-rose-50 text-rose-700';
+            case 'queued':
+            case 'ingesting':
+            case 'modeling':
+            case 'hunting':
+            case 'validating':
+            case 'reporting':
+            case 'static_analysis':
+                return 'bg-amber-50 text-amber-700';
+            default:
+                return 'bg-slate-100 text-slate-700';
+        }
+    },
+
+    stageBadgeClass(status) {
+        switch (status) {
+            case 'completed':
+                return 'bg-emerald-50 text-emerald-700';
+            case 'running':
+                return 'bg-blue-50 text-blue-700';
+            case 'failed':
+                return 'bg-rose-50 text-rose-700';
+            default:
+                return 'bg-slate-100 text-slate-700';
+        }
+    },
+
+    stageIconClass(status) {
+        switch (status) {
+            case 'completed':
+                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600';
+            case 'running':
+                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600';
+            case 'failed':
+                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600';
+            default:
+                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400';
+        }
+    },
+
+    stageIcon(status) {
+        if (status === 'completed') {
+            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5l3 3 7-7" /></svg>';
+        }
+        if (status === 'running') {
+            return '<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 018.66 5H17a1 1 0 000 2h6a1 1 0 001-1V2a1 1 0 10-2 0v2.05A12 12 0 0012 0v2z"></path></svg>';
+        }
+        if (status === 'failed') {
+            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" /></svg>';
+        }
+        return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="6"></circle></svg>';
+    },
+
+    activityTone(item) {
+        if (item.tone) {
+            return item.tone;
+        }
+        switch (item.status) {
+            case 'completed':
+                return 'success';
+            case 'failed':
+                return 'error';
+            case 'running':
+                return 'active';
+            default:
+                return 'neutral';
+        }
+    },
+
+    toneDotClass(tone) {
+        switch (tone) {
+            case 'success':
+                return 'bg-emerald-500';
+            case 'warning':
+                return 'bg-amber-500';
+            case 'error':
+                return 'bg-rose-500';
+            case 'active':
+                return 'bg-blue-500';
+            default:
+                return 'bg-slate-400';
+        }
+    },
+
+    setStatus(status, timestamp) {
+        this.statusPill.dataset.status = status;
+        this.statusPill.className = `inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${this.statusBadgeClass(status)}`;
+        this.statusPill.textContent = this.humanize(status);
+
+        if (timestamp) {
+            this.liveMeta.textContent = `Last updated ${this.formatTimestamp(timestamp)}`;
+        }
+    },
+
+    setCounts(counts) {
+        if (typeof counts.total !== 'undefined') {
+            this.counts.total.textContent = counts.total;
+        }
+        if (typeof counts.critical !== 'undefined') {
+            this.counts.critical.textContent = counts.critical;
+        }
+        if (typeof counts.high !== 'undefined') {
+            this.counts.high.textContent = counts.high;
+        }
+        if (typeof counts.medium !== 'undefined') {
+            this.counts.medium.textContent = counts.medium;
+        }
+        if (typeof counts.low !== 'undefined') {
+            this.counts.low.textContent = counts.low;
+        }
+    },
+
+    setLivePanel(scan, currentTask) {
+        const isLive = Boolean(scan.is_live);
+        let panelClass = 'rounded-2xl border px-5 py-4 ';
+        let indicatorClass = 'mt-1 h-2.5 w-2.5 rounded-full ';
+        let titleClass = 'text-sm font-semibold ';
+        let messageClass = 'mt-1 text-sm ';
+        let metaClass = 'text-xs ';
+
+        if (isLive) {
+            panelClass += 'border-blue-200 bg-blue-50';
+            indicatorClass += 'animate-pulse bg-blue-500';
+            titleClass += 'text-blue-900';
+            messageClass += 'text-blue-700';
+            metaClass += 'text-blue-600';
+            this.liveTitle.textContent = currentTask.title || 'Live execution';
+            this.liveMessage.textContent = currentTask.detail || 'Reconciling persisted execution telemetry with the live worker stream.';
+            this.activityState.textContent = 'Reconciling persisted execution telemetry and live worker events.';
+        } else if (scan.status === 'completed') {
+            panelClass += 'border-emerald-200 bg-emerald-50';
+            indicatorClass += 'bg-emerald-500';
+            titleClass += 'text-emerald-900';
+            messageClass += 'text-emerald-700';
+            metaClass += 'text-emerald-600';
+            this.liveTitle.textContent = 'Scan completed';
+            this.liveMessage.textContent = `This run finished with ${this.counts.total.textContent || 0} findings.`;
+            this.activityState.textContent = 'Recorded execution history for this run.';
+        } else if (scan.status === 'failed') {
+            panelClass += 'border-rose-200 bg-rose-50';
+            indicatorClass += 'bg-rose-500';
+            titleClass += 'text-rose-900';
+            messageClass += 'text-rose-700';
+            metaClass += 'text-rose-600';
+            this.liveTitle.textContent = 'Scan failed';
+            this.liveMessage.textContent = scan.error_message || currentTask.detail || 'The scan worker reported a failure.';
+            this.activityState.textContent = 'Run finished with an error. Review the execution log for the exact failure point.';
+        } else {
+            panelClass += 'border-slate-200 bg-slate-100';
+            indicatorClass += 'bg-slate-400';
+            titleClass += 'text-slate-900';
+            messageClass += 'text-slate-600';
+            metaClass += 'text-slate-500';
+            this.liveTitle.textContent = 'Scan activity snapshot';
+            this.liveMessage.textContent = currentTask.detail || 'This scan is no longer active.';
+            this.activityState.textContent = 'Recorded execution history for this run.';
+        }
+
+        this.livePanel.className = panelClass;
+        this.liveIndicator.className = indicatorClass;
+        this.liveTitle.className = titleClass;
+        this.liveMessage.className = messageClass;
+        this.liveMeta.className = metaClass;
+        this.liveMeta.textContent = `Last updated ${this.formatTimestamp(scan.updated_at)}`;
+    },
+
+    renderCurrentTask(task) {
+        const stageLabel = task.stage ? this.humanize(task.stage) : 'Idle';
+        this.currentTaskStage.textContent = stageLabel;
+        this.currentTaskStage.className = task.stage
+            ? 'inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700'
+            : 'inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600';
+        this.currentTaskTitle.textContent = task.title || 'Waiting for activity';
+        this.currentTaskDetail.textContent = task.detail || 'Pipeline stages will stream progress here as they execute.';
+
+        if (typeof task.progress_pct === 'number') {
+            this.currentTaskProgressWrap.classList.remove('hidden');
+            this.currentTaskProgressBar.style.width = `${task.progress_pct}%`;
+            this.currentTaskProgressLabel.textContent = `${task.progress_pct}%`;
+        } else {
+            this.currentTaskProgressWrap.classList.add('hidden');
+            this.currentTaskProgressBar.style.width = '0%';
+            this.currentTaskProgressLabel.textContent = '';
+        }
+    },
+
+    renderStages(stages) {
+        this.stageList.innerHTML = stages.map((stage) => {
+            const attempt = stage.attempt > 1
+                ? `<span class="text-xs font-medium text-slate-400">Attempt ${this.escapeHtml(stage.attempt)}</span>`
+                : '';
+            const timestamp = stage.timestamp
+                ? `<p class="mt-2 text-sm text-slate-500">${this.escapeHtml(this.formatTimestamp(stage.timestamp))}</p>`
+                : '';
+            const error = stage.error
+                ? `<p class="mt-2 text-sm text-rose-600" style="word-break:break-all;overflow-wrap:anywhere">${this.escapeHtml(stage.error)}</p>`
+                : '';
+            return `
+                <div data-stage-row="${this.escapeHtml(stage.stage)}" data-status="${this.escapeHtml(stage.status)}" class="overflow-hidden rounded-xl border border-slate-200 px-4 py-4">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex min-w-0 items-start gap-3">
+                            <span class="${this.stageIconClass(stage.status)}">${this.stageIcon(stage.status)}</span>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(stage.label || this.humanize(stage.stage))}</p>
+                                    ${attempt}
+                                </div>
+                                <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">${this.escapeHtml(this.humanize(stage.status))}</p>
+                                ${timestamp}
+                                ${error}
+                            </div>
+                        </div>
+                        <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${this.stageBadgeClass(stage.status)}">
+                            ${this.escapeHtml(this.humanize(stage.status))}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    renderActivity(activity) {
+        if (!activity.length) {
+            this.activityFeed.innerHTML = `
+                <li class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
+                    <p class="font-medium text-slate-600">No events yet</p>
+                    <p class="mt-1 text-slate-400">Execution timeline populates as stages complete.</p>
+                </li>
+            `;
+            return;
+        }
+
+        this.activityFeed.innerHTML = activity.map((item) => {
+            const tone = this.activityTone(item);
+            const detail = item.detail || 'Execution activity recorded.';
+            return `
+                <li data-activity-key="${this.escapeHtml(item.key || '')}" class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                    <div class="flex items-start gap-3">
+                        <span class="mt-1 h-2.5 w-2.5 rounded-full ${this.toneDotClass(tone)}"></span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                                <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(item.title || this.humanize(item.event_type || 'activity'))}</p>
+                                <p class="text-xs text-slate-400">${this.escapeHtml(this.formatTimestamp(item.timestamp))}</p>
+                            </div>
+                            <p class="mt-1 break-all text-sm text-slate-500">${this.escapeHtml(detail)}</p>
+                        </div>
+                    </div>
+                </li>
+            `;
+        }).join('');
+    },
+
+    renderAgentCalls(calls) {
+        if (!calls.length) {
+            this.agentCalls.innerHTML = `
+                <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
+                    <p class="font-medium text-slate-600">No agent operations yet</p>
+                    <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
+                </div>
+            `;
+            return;
+        }
+
+        this.agentCalls.innerHTML = calls.map((call) => {
+            const duration = typeof call.duration_ms === 'number'
+                ? `${call.duration_ms} ms`
+                : 'Pending';
+            const error = call.error
+                ? `<p class="mt-2 text-sm text-rose-600">${this.escapeHtml(call.error)}</p>`
+                : '';
+            return `
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
+                            <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
+                        </div>
+                        <span class="text-xs font-semibold text-slate-500">${this.escapeHtml(duration)}</span>
+                    </div>
+                    ${error}
+                </div>
+            `;
+        }).join('');
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    window.HeimdallScanPage.init();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Repositories{% endblock %}
+
+{% block body %}
+{% set active_nav = "repos" %}
+{% set breadcrumb_parent = "Repositories" %}
+{% set breadcrumb_current = none %}
+<div class="min-h-screen bg-slate-100 text-slate-900">
+    <div class="flex min-h-screen">
+        {% include "partials/app_sidebar.html" %}
+
+        <div class="flex min-h-screen flex-1 flex-col">
+            {% include "partials/app_topbar.html" %}
+
+            <main class="flex-1 px-7 py-6">
+                <div class="space-y-6">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center">
+                        <div>
+                            <h1 class="text-2xl font-bold tracking-tight text-slate-900">Repositories</h1>
+                            <p class="mt-1 text-sm text-slate-500">Connected codebases ready for scanning and review.</p>
+                        </div>
+
+                        <div class="flex flex-1 flex-col gap-3 sm:flex-row lg:justify-end">
+                            <div class="relative w-full sm:max-w-xs">
+                                <input id="repo-search"
+                                       type="search"
+                                       placeholder="Search repositories..."
+                                       class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                            </div>
+                            <a href="/repos/new"
+                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600">
+                                Add Repository
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3">
+                        <div class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
+                            <span class="h-2 w-2 rounded-full {{ 'bg-emerald-500' if integrations.github.connected else 'bg-slate-300' }}"></span>
+                            GitHub {{ 'connected' if integrations.github.connected else 'not connected' }}
+                        </div>
+                        <div class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
+                            <span class="h-2 w-2 rounded-full {{ 'bg-emerald-500' if integrations.gitlab.connected else 'bg-slate-300' }}"></span>
+                            GitLab {{ 'connected' if integrations.gitlab.connected else 'not connected' }}
+                        </div>
+                    </div>
+
+                    {% if repos|length > 0 %}
+                    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div class="grid grid-cols-[minmax(0,2.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            <div>Repository</div>
+                            <div>Source</div>
+                            <div>Branch</div>
+                            <div>Last Scan</div>
+                            <div>Findings</div>
+                            <div>Added</div>
+                        </div>
+
+                        <div class="divide-y divide-slate-200">
+                            {% for repo in repos %}
+                            <a href="/repos/{{ repo.id }}"
+                               class="repo-row grid grid-cols-[minmax(0,2.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)] gap-4 px-5 py-4 transition hover:bg-slate-50"
+                               data-search="{{ repo.name }} {{ repo.host }} {{ repo.source_label }}">
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-semibold text-slate-900">{{ repo.name }}</p>
+                                    <p class="mt-1 truncate text-sm text-slate-500">{{ repo.host }}</p>
+                                </div>
+                                <div class="text-sm text-slate-600">{{ repo.source_label }}</div>
+                                <div class="text-sm text-slate-600">{{ repo.default_branch or "main" }}</div>
+                                <div>
+                                    {% if repo.last_scan_status %}
+                                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold
+                                        {{ 'bg-emerald-50 text-emerald-700' if repo.last_scan_status == 'completed' else
+                                           'bg-amber-50 text-amber-700' if repo.last_scan_status in ['queued', 'ingesting', 'modeling', 'hunting', 'validating', 'reporting', 'static_analysis'] else
+                                           'bg-rose-50 text-rose-700' if repo.last_scan_status == 'failed' else
+                                           'bg-slate-100 text-slate-700' }}">
+                                        {{ repo.last_scan_status|replace("_", " ")|title }}
+                                    </span>
+                                    <p class="mt-1 text-xs text-slate-400">{{ repo.last_scan_at }}</p>
+                                    {% else %}
+                                    <span class="text-sm text-slate-400">Never scanned</span>
+                                    {% endif %}
+                                </div>
+                                <div class="text-sm font-semibold text-slate-700">{{ repo.finding_count }}</div>
+                                <div class="text-sm text-slate-500">{{ repo.created_at }}</div>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-20 text-center shadow-sm">
+                        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50">
+                            <svg class="h-7 w-7 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+                            </svg>
+                        </div>
+                        <h2 class="mt-5 text-lg font-semibold text-slate-900">Connect your first repository</h2>
+                        <p class="mx-auto mt-2 max-w-md text-sm text-slate-500">
+                            Link a codebase from GitHub, GitLab, Bitbucket, a public Git URL, or a ZIP upload. Heimdall will build a code index and run security scans automatically.
+                        </p>
+                        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+                            <a href="/repos/new"
+                               class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                Connect Repository
+                            </a>
+                            <a href="/repos/new?source=zip"
+                               class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                                Upload ZIP
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if total_pages > 1 %}
+                    <nav class="flex items-center justify-between">
+                        <p class="text-sm text-slate-500">Page {{ page }} of {{ total_pages }} ({{ total }} total)</p>
+                        <div class="flex items-center gap-2">
+                            {% if page > 1 %}
+                            <a href="?page={{ page - 1 }}&per_page={{ per_page }}"
+                               class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
+                                Previous
+                            </a>
+                            {% endif %}
+                            {% if page < total_pages %}
+                            <a href="?page={{ page + 1 }}&per_page={{ per_page }}"
+                               class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900">
+                                Next
+                            </a>
+                            {% endif %}
+                        </div>
+                    </nav>
+                    {% endif %}
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const search = document.getElementById('repo-search');
+    if (!search) return;
+
+    search.addEventListener('input', () => {
+        const needle = search.value.trim().toLowerCase();
+        document.querySelectorAll('.repo-row').forEach((row) => {
+            const haystack = (row.dataset.search || '').toLowerCase();
+            row.classList.toggle('hidden', needle.length > 0 && !haystack.includes(needle));
+        });
+    });
+});
+</script>
+{% endblock %}

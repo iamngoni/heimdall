@@ -939,6 +939,13 @@ fn extract_user_id(req: &HttpRequest) -> Uuid {
         .unwrap_or_else(Uuid::nil)
 }
 
+fn extract_user_theme(req: &HttpRequest) -> String {
+    req.extensions()
+        .get::<crate::middleware::auth::AuthenticatedUser>()
+        .map(|u| u.theme.clone())
+        .unwrap_or_else(|| crate::templates::DEFAULT_THEME.to_string())
+}
+
 async fn list_github_repos(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -970,6 +977,7 @@ async fn list_remote_repos(
     provider: &str,
 ) -> HttpResponse {
     let user_id = extract_user_id(&req);
+    let theme = extract_user_theme(&req);
     let connected_urls: HashSet<String> = state
         .db
         .list_repos_by_user(user_id)
@@ -985,6 +993,7 @@ async fn list_remote_repos(
         Ok(None) => {
             return render_remote_repo_list(
                 &state,
+                &theme,
                 provider,
                 &[],
                 Some(&connected_urls),
@@ -997,6 +1006,7 @@ async fn list_remote_repos(
         Err(e) => {
             return render_remote_repo_list(
                 &state,
+                &theme,
                 provider,
                 &[],
                 Some(&connected_urls),
@@ -1010,6 +1020,7 @@ async fn list_remote_repos(
         Err(message) => {
             return render_remote_repo_list(
                 &state,
+                &theme,
                 provider,
                 &[],
                 Some(&connected_urls),
@@ -1034,6 +1045,7 @@ async fn list_remote_repos(
         if conn.provider_user_id == "pat" || !conn.provider_user_id.contains('@') {
             return render_remote_repo_list(
                 &state,
+                &theme,
                 provider,
                 &[],
                 Some(&connected_urls),
@@ -1084,6 +1096,7 @@ async fn list_remote_repos(
                 error!("[{provider}] auth failed ({status}): {body}");
                 return render_remote_repo_list(
                     &state,
+                    &theme,
                     provider,
                     &[],
                     Some(&connected_urls),
@@ -1097,6 +1110,7 @@ async fn list_remote_repos(
                 let body = resp.text().await.unwrap_or_default();
                 return render_remote_repo_list(
                     &state,
+                    &theme,
                     provider,
                     &[],
                     Some(&connected_urls),
@@ -1124,6 +1138,7 @@ async fn list_remote_repos(
                     Err(e) => {
                         return render_remote_repo_list(
                             &state,
+                            &theme,
                             provider,
                             &[],
                             Some(&connected_urls),
@@ -1148,6 +1163,7 @@ async fn list_remote_repos(
                     Err(e) => {
                         return render_remote_repo_list(
                             &state,
+                            &theme,
                             provider,
                             &[],
                             Some(&connected_urls),
@@ -1183,6 +1199,7 @@ async fn list_remote_repos(
                     Err(e) => {
                         return render_remote_repo_list(
                             &state,
+                            &theme,
                             provider,
                             &[],
                             Some(&connected_urls),
@@ -1194,12 +1211,13 @@ async fn list_remote_repos(
             };
 
             let filtered = filter_remote_repos(repos, query.q.as_deref());
-            render_remote_repo_list(&state, provider, &filtered, Some(&connected_urls), None)
+            render_remote_repo_list(&state, &theme, provider, &filtered, Some(&connected_urls), None)
         }
         Err(e) => {
             error!("[{provider}] network error: {e}");
             render_remote_repo_list(
                 &state,
+                &theme,
                 provider,
                 &[],
                 Some(&connected_urls),
@@ -1282,6 +1300,7 @@ fn normalize_remote_url(url: &str) -> String {
 
 fn render_remote_repo_list(
     state: &AppState,
+    theme: &str,
     provider: &str,
     repos: &[RemoteRepo],
     connected_urls: Option<&HashSet<String>>,
@@ -1312,7 +1331,8 @@ fn render_remote_repo_list(
     };
 
     match state
-        .templates
+        .themes
+        .get(theme)
         .render("partials/repo_import_list.html", ctx)
     {
         Ok(html) => HttpResponse::Ok()

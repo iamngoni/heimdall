@@ -33,6 +33,7 @@ pub struct AuthenticatedUser {
     pub email: String,
     pub display_name: Option<String>,
     pub role: String,
+    pub theme: String,
 }
 
 /// Middleware that enforces session-based authentication.
@@ -209,6 +210,7 @@ where
                 email: user.email,
                 display_name: user.display_name,
                 role: user.role,
+                theme: user.theme,
             };
             req.extensions_mut().insert(authenticated);
 

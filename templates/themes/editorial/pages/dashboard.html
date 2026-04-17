@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Security Overview{% endblock %}
+
+{% block body %}
+{% set active_nav = "overview" %}
+{% set breadcrumb_parent = "Security Overview" %}
+{% set breadcrumb_current = none %}
+<div class="min-h-screen bg-white text-ink-900">
+    <div class="flex min-h-screen">
+        {% include "partials/app_sidebar.html" %}
+
+        <div class="flex min-h-screen flex-1 flex-col">
+            {% include "partials/app_topbar.html" %}
+
+            <main class="flex-1 px-10 py-16">
+                <div class="mx-auto max-w-6xl space-y-20">
+
+                    {# ── Header ── #}
+                    <header class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                        <div class="max-w-2xl">
+                            <p class="section-num">01 · Overview</p>
+                            <h1 class="mt-4 font-serif text-5xl font-normal leading-[1.05] tracking-tightest text-ink-900">
+                                Security Overview
+                            </h1>
+                            <p class="mt-5 max-w-measure text-base leading-7 text-ink-600">
+                                Track repository intake, scan activity, and exposure from the same control surface used across the rest of Heimdall.
+                            </p>
+                        </div>
+
+                        <a href="/repos/new"
+                           class="inline-flex items-center self-start border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400 hover:text-ink-600 lg:self-end">
+                            Add Repository →
+                        </a>
+                    </header>
+
+                    {# ── Stat row (typographic, no boxes) ── #}
+                    <section class="grid gap-10 border-t border-ink-200 pt-10 sm:grid-cols-2 xl:grid-cols-4 xl:divide-x xl:divide-ink-200">
+                        <div class="xl:pr-10">
+                            <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">Connected Repos</p>
+                            <p class="mt-4 font-serif text-5xl font-normal tracking-tightest text-ink-900">{{ stats.total_repos }}</p>
+                            <p class="mt-3 text-sm text-ink-500">Repositories available for scans and review.</p>
+                        </div>
+                        <div class="xl:px-10">
+                            <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">Recent Scans</p>
+                            <p class="mt-4 font-serif text-5xl font-normal tracking-tightest text-ink-900">{{ stats.recent_scans }}</p>
+                            <p class="mt-3 text-sm text-ink-500">Latest pipeline runs across your connected codebases.</p>
+                        </div>
+                        <div class="xl:px-10">
+                            <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">Open Findings</p>
+                            <p class="mt-4 font-serif text-5xl font-normal tracking-tightest text-ink-900">{{ stats.open_findings }}</p>
+                            <p class="mt-3 text-sm text-ink-500">Findings still waiting on triage or remediation.</p>
+                        </div>
+                        <div class="xl:pl-10">
+                            <p class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">Critical Issues</p>
+                            <p class="mt-4 font-serif text-5xl font-normal tracking-tightest text-red-700">{{ stats.critical_findings }}</p>
+                            <p class="mt-3 text-sm text-ink-500">Highest-severity risks requiring immediate attention.</p>
+                        </div>
+                    </section>
+
+                    {# ── Recent scans (long list) + side rail ── #}
+                    <div class="grid gap-20 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)]">
+
+                        <section>
+                            <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+                                <div>
+                                    <p class="section-num">02 · Recent Scans</p>
+                                    <h2 class="mt-2 text-lg font-semibold tracking-tight text-ink-900">Latest activity</h2>
+                                </div>
+                                <a href="/repos" class="link-editorial text-sm text-ink-900">View repositories →</a>
+                            </div>
+
+                            {% if recent_scans|length > 0 %}
+                            <ul class="divide-y divide-ink-200">
+                                {% for scan in recent_scans %}
+                                <li>
+                                    <a href="/scans/{{ scan.id }}"
+                                       class="grid grid-cols-[minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,0.6fr)_minmax(0,0.9fr)] items-baseline gap-6 py-5 transition hover:bg-ink-50">
+                                        <div class="min-w-0">
+                                            <p class="truncate text-sm text-ink-900">{{ scan.repo_name }}</p>
+                                            <p class="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-400">{{ scan.scan_type }}</p>
+                                        </div>
+                                        <div>
+                                            {% with status=scan.status %}
+                                                {% include "partials/scan_status.html" %}
+                                            {% endwith %}
+                                        </div>
+                                        <div class="text-sm text-ink-900">{{ scan.finding_count }}</div>
+                                        <div class="text-right font-mono text-xs text-ink-500">{{ scan.created_at }}</div>
+                                    </a>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <div class="border-b border-ink-200 py-20 text-center">
+                                <p class="font-serif text-2xl tracking-tight text-ink-900">Your scan results will appear here.</p>
+                                <p class="mx-auto mt-3 max-w-sm text-sm text-ink-500">Once you connect a repository and trigger a scan, this feed will show statuses, findings, and run history.</p>
+                                <a href="/repos/new" class="mt-6 inline-block border-b border-ink-900 pb-1 text-sm text-ink-900 transition hover:border-ink-400">Connect a Repository →</a>
+                            </div>
+                            {% endif %}
+                        </section>
+
+                        <aside class="space-y-16">
+
+                            <section>
+                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+                                    <div>
+                                        <p class="section-num">03 · Repos</p>
+                                        <h2 class="mt-2 text-lg font-semibold tracking-tight text-ink-900">Connected</h2>
+                                    </div>
+                                    <a href="/repos/new" class="link-editorial text-sm text-ink-900">Add →</a>
+                                </div>
+
+                                {% if repo_summaries|length > 0 %}
+                                <ul class="divide-y divide-ink-200">
+                                    {% for repo in repo_summaries %}
+                                    <li>
+                                        <a href="/repos/{{ repo.id }}"
+                                           class="flex items-start justify-between gap-4 py-4 transition hover:bg-ink-50">
+                                            <div class="min-w-0">
+                                                <p class="truncate text-sm text-ink-900">{{ repo.name }}</p>
+                                                <p class="mt-1 truncate font-mono text-[11px] text-ink-500">{{ repo.host }}</p>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">{{ repo.source_label }}</p>
+                                                {% if repo.last_scan_status %}
+                                                <p class="mt-1 text-xs text-ink-500">{{ repo.last_scan_status|replace("_", " ")|title }}</p>
+                                                {% else %}
+                                                <p class="mt-1 text-xs text-ink-300">No scans yet</p>
+                                                {% endif %}
+                                            </div>
+                                        </a>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% else %}
+                                <div class="border-b border-ink-200 py-10 text-center">
+                                    <p class="text-sm text-ink-900">No repositories connected yet</p>
+                                    <p class="mt-2 text-sm text-ink-500">Link a codebase from GitHub, GitLab, or Bitbucket to get started.</p>
+                                    <a href="/repos/new" class="mt-4 inline-block border-b border-ink-900 pb-1 text-sm text-ink-900 transition hover:border-ink-400">Add repository →</a>
+                                </div>
+                                {% endif %}
+                            </section>
+
+                            <section>
+                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+                                    <div>
+                                        <p class="section-num">04 · Source Control</p>
+                                        <h2 class="mt-2 text-lg font-semibold tracking-tight text-ink-900">Providers</h2>
+                                    </div>
+                                    <a href="/settings" class="link-editorial text-sm text-ink-900">Manage →</a>
+                                </div>
+
+                                <ul class="divide-y divide-ink-200">
+                                    <li class="flex items-center justify-between py-4">
+                                        <div>
+                                            <p class="text-sm text-ink-900">GitHub</p>
+                                            <p class="mt-1 text-xs text-ink-500">{{ 'Connected' if integrations.github.connected else 'Not connected' }}</p>
+                                        </div>
+                                        <span class="inline-flex h-1.5 w-1.5 rounded-full {{ 'bg-ink-900' if integrations.github.connected else 'bg-ink-300' }}"></span>
+                                    </li>
+                                    <li class="flex items-center justify-between py-4">
+                                        <div>
+                                            <p class="text-sm text-ink-900">GitLab</p>
+                                            <p class="mt-1 text-xs text-ink-500">{{ 'Connected' if integrations.gitlab.connected else 'Not connected' }}</p>
+                                        </div>
+                                        <span class="inline-flex h-1.5 w-1.5 rounded-full {{ 'bg-ink-900' if integrations.gitlab.connected else 'bg-ink-300' }}"></span>
+                                    </li>
+                                    <li class="flex items-center justify-between py-4">
+                                        <div>
+                                            <p class="text-sm text-ink-900">Bitbucket</p>
+                                            <p class="mt-1 text-xs text-ink-500">{{ 'Connected' if integrations.bitbucket.connected else 'Not connected' }}</p>
+                                        </div>
+                                        <span class="inline-flex h-1.5 w-1.5 rounded-full {{ 'bg-ink-900' if integrations.bitbucket.connected else 'bg-ink-300' }}"></span>
+                                    </li>
+                                </ul>
+                            </section>
+
+                        </aside>
+
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+{% endblock %}

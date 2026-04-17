@@ -1,0 +1,67 @@
+<div class="group cursor-pointer grid gap-4 border-b border-ink-200 px-2 py-5 transition hover:bg-ink-50 lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:items-center"
+     onclick="if(!event.target.closest('.finding-checkbox')){window.location='/findings/{{ finding.id }}'}"
+     data-finding-id="{{ finding.id }}"
+     data-finding-title="{{ finding.title }}"
+     data-finding-severity="{{ finding.severity }}"
+     data-finding-confidence="{{ finding.confidence }}"
+     data-finding-source="{{ finding.source }}"
+     data-finding-status="{{ finding.status }}"
+     data-finding-file="{{ finding.file_path }}"
+     data-finding-line-start="{{ finding.line_start }}"
+     data-finding-line-end="{{ finding.line_end }}"
+     data-finding-cwe="{{ finding.cwe_id }}"
+     data-finding-cve="{{ finding.cve_id }}"
+     data-finding-description="{{ finding.description }}"
+     data-finding-snippet="{{ finding.code_snippet }}"
+     data-finding-patch="{{ finding.suggested_patch }}"
+     data-finding-reasoning="{{ finding.agent_reasoning }}">
+    <div class="flex items-center" onclick="event.stopPropagation()">
+        <input type="checkbox"
+               class="finding-checkbox h-4 w-4 border-ink-300 text-ink-900 focus:ring-ink-200"
+               value="{{ finding.id }}"
+               aria-label="Select finding">
+    </div>
+
+    <div class="flex items-center">
+        {% with severity=finding.severity %}
+            {% include "partials/severity_badge.html" %}
+        {% endwith %}
+    </div>
+
+    <div class="min-w-0">
+        <p class="truncate text-sm text-ink-900">{{ finding.title }}</p>
+        <p class="mt-1 truncate font-mono text-xs text-ink-500">{{ finding.file_path }}:{{ finding.line_start }}</p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500">
+        <span class="capitalize">{{ finding.source|replace("_", " ") }}</span>
+        <span class="text-ink-300">·</span>
+        <span class="capitalize">{{ finding.confidence }}</span>
+    </div>
+
+    <div class="font-mono text-xs text-ink-500">
+        {% if finding.cwe_id %}<div>{{ finding.cwe_id }}</div>{% endif %}
+        {% if finding.cve_id %}<div class="text-red-700">{{ finding.cve_id }}</div>{% endif %}
+        {% if not finding.cwe_id and not finding.cve_id %}<div class="text-ink-300">—</div>{% endif %}
+    </div>
+
+    <div class="flex items-center justify-between gap-3 lg:justify-end">
+        <span class="inline-flex items-center gap-1.5 text-xs capitalize
+            {{ 'text-ink-900' if finding.status == 'confirmed' else
+               'text-red-700' if finding.status == 'open' else
+               'text-amber-700' if finding.status == 'false_positive' else
+               'text-ink-400' if finding.status == 'dismissed' else
+               'text-ink-900' if finding.status == 'fixed' else
+               'text-ink-500' }}">
+            <span class="h-1.5 w-1.5 rounded-full
+                {{ 'bg-ink-900' if finding.status == 'confirmed' else
+                   'bg-red-700' if finding.status == 'open' else
+                   'bg-amber-700' if finding.status == 'false_positive' else
+                   'bg-ink-300' if finding.status == 'dismissed' else
+                   'bg-ink-900' if finding.status == 'fixed' else
+                   'bg-ink-400' }}"></span>
+            {{ finding.status|replace("_", " ") }}
+        </span>
+        <span class="font-mono text-[11px] text-ink-400">{{ finding.updated_at }}</span>
+    </div>
+</div>

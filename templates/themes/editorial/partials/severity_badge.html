@@ -1,0 +1,21 @@
+{% if severity == "critical" %}
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-red-700">
+    <span class="h-1.5 w-1.5 rounded-full bg-red-700"></span>Critical
+</span>
+{% elif severity == "high" %}
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700">
+    <span class="h-1.5 w-1.5 rounded-full bg-amber-700"></span>High
+</span>
+{% elif severity == "medium" %}
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-ink-900">
+    <span class="h-1.5 w-1.5 rounded-full bg-ink-900"></span>Medium
+</span>
+{% elif severity == "low" %}
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-ink-500">
+    <span class="h-1.5 w-1.5 rounded-full bg-ink-500"></span>Low
+</span>
+{% else %}
+<span class="inline-flex items-center gap-1.5 text-xs font-medium text-ink-400">
+    <span class="h-1.5 w-1.5 rounded-full bg-ink-400"></span>{{ severity }}
+</span>
+{% endif %}

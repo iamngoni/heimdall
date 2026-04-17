@@ -26,6 +26,7 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("display_name");
             t.text("avatar_url");
             t.text("role").not_null().default_str("'user'");
+            t.text("theme").not_null().default_str("'sentinel'");
             t.timestamps();
             t.soft_delete();
         })

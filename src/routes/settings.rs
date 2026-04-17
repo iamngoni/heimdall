@@ -31,6 +31,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/integrations/{provider}/pat", web::post().to(save_pat))
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
+            .route("/theme", web::patch().to(update_theme))
             .route("/test-connection", web::post().to(test_connection))
             .route("/ai-status", web::get().to(ai_status)),
     );
@@ -62,6 +63,11 @@ struct TestConnectionRequest {
 #[derive(Deserialize)]
 struct UpdateProfileRequest {
     display_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UpdateThemeRequest {
+    theme: String,
 }
 
 #[derive(Deserialize)]
@@ -156,6 +162,7 @@ fn is_hx_request(req: &HttpRequest) -> bool {
 
 fn render_api_key_row(
     state: &AppState,
+    theme: &str,
     id: Uuid,
     provider: &str,
     label: Option<&str>,
@@ -170,7 +177,7 @@ fn render_api_key_row(
         })),
     };
 
-    match state.templates.render("partials/api_key_row.html", ctx) {
+    match state.themes.get(theme).render("partials/api_key_row.html", ctx) {
         Ok(html) => HttpResponse::Created()
             .content_type("text/html; charset=utf-8")
             .body(html),
@@ -294,6 +301,7 @@ async fn create_api_key(
             if is_hx_request(&req) {
                 return render_api_key_row(
                     &state,
+                    &user.theme,
                     api_key.id,
                     api_key.provider.as_deref().unwrap_or(&provider),
                     api_key.label.as_deref(),
@@ -733,6 +741,53 @@ async fn save_pat(
             }
             HttpResponse::InternalServerError()
                 .json(ApiResponse::<()>::error(500, "Failed to save token."))
+        }
+    }
+}
+
+/// PATCH /settings/theme — update the authenticated user's theme preference.
+async fn update_theme(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Json<UpdateThemeRequest>,
+) -> HttpResponse {
+    let user = match req.extensions().get::<AuthenticatedUser>().cloned() {
+        Some(u) => u,
+        None => {
+            return HttpResponse::Unauthorized()
+                .json(ApiResponse::<()>::error(401, "Unauthorized"));
+        }
+    };
+
+    let theme = body.theme.trim().to_string();
+    if !crate::templates::KNOWN_THEMES.contains(&theme.as_str()) {
+        let msg = format!(
+            "Unknown theme '{}'. Available: {}",
+            theme,
+            crate::templates::KNOWN_THEMES.join(", ")
+        );
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, &msg);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
+    }
+
+    match state.db.update_user_theme(user.id, &theme).await {
+        Ok(_) => {
+            if is_hx_request(&req) {
+                return HttpResponse::Ok()
+                    .insert_header(("HX-Redirect", "/settings"))
+                    .finish();
+            }
+            HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({ "theme": theme })))
+        }
+        Err(e) => {
+            log::error!("Failed to update theme for user {}: {e:#}", user.id);
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "Failed to save theme.");
+            }
+            HttpResponse::InternalServerError()
+                .json(ApiResponse::<()>::error(500, "Failed to save theme."))
         }
     }
 }

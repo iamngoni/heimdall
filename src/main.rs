@@ -75,7 +75,7 @@ async fn main() -> std::io::Result<()> {
         );
     }
 
-    let template_engine = templates::init_templates("templates");
+    let theme_registry = templates::init_themes("templates");
 
     let db_ops = db::DatabaseOperations::new(db_pool);
     let broadcaster = sse::ScanBroadcaster::new();
@@ -88,7 +88,7 @@ async fn main() -> std::io::Result<()> {
         db_ops,
         ai_provider,
         broadcaster,
-        template_engine,
+        theme_registry,
         worker_enabled,
     ));
 

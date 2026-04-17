@@ -240,6 +240,18 @@ impl DatabaseOperations {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn update_user_theme(&self, user_id: Uuid, theme: &str) -> HeimdallResult<bool> {
+        let result = sqlx::query(
+            "UPDATE users SET theme = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL",
+        )
+        .bind(theme)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to update user theme")?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn update_user_password(
         &self,
         user_id: Uuid,

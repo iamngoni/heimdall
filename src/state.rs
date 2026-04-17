@@ -18,7 +18,7 @@ use crate::crypto;
 use crate::db::DatabaseOperations;
 use crate::models::ApiKey;
 use crate::sse::ScanBroadcaster;
-use crate::templates::TemplateEngine;
+use crate::templates::ThemeRegistry;
 
 #[derive(Clone)]
 pub struct ResolvedAiRuntime {
@@ -56,7 +56,7 @@ pub struct AppState {
     pub db: Arc<DatabaseOperations>,
     pub ai: Option<Arc<dyn ModelProvider>>,
     pub sse: Arc<ScanBroadcaster>,
-    pub templates: Arc<TemplateEngine>,
+    pub themes: Arc<ThemeRegistry>,
     pub encryption_key: Option<[u8; 32]>,
     pub worker_enabled: bool,
 }
@@ -67,7 +67,7 @@ impl AppState {
         db: DatabaseOperations,
         ai: Option<Box<dyn ModelProvider>>,
         sse: ScanBroadcaster,
-        templates: Arc<TemplateEngine>,
+        themes: Arc<ThemeRegistry>,
         worker_enabled: bool,
     ) -> Self {
         let encryption_key =
@@ -89,7 +89,7 @@ impl AppState {
             db: Arc::new(db),
             ai: ai.map(Arc::from),
             sse: Arc::new(sse),
-            templates,
+            themes,
             encryption_key,
             worker_enabled,
         }

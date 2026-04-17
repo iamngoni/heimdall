@@ -143,6 +143,7 @@ pub struct User {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
     pub role: String,
+    pub theme: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

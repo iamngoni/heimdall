@@ -38,27 +38,35 @@ pub fn init_protected(cfg: &mut web::ServiceConfig) {
         .route("/settings", web::get().to(settings_page));
 }
 
-/// Helper: render a template and return an HTML response.
-fn render_html(state: &AppState, template: &str, ctx: minijinja::Value) -> HttpResponse {
-    match state.templates.render(template, ctx) {
+/// Helper: render a template using the specified theme and return an HTML response.
+///
+/// Automatically injects `current_theme` into the template context so every
+/// page can render the `data-theme` attribute on `<body>`.
+fn render_html(state: &AppState, template: &str, theme: &str, ctx: minijinja::Value) -> HttpResponse {
+    let ctx = minijinja::context! {
+        current_theme => theme,
+        ..ctx
+    };
+    match state.themes.get(theme).render(template, ctx) {
         Ok(html) => HttpResponse::Ok()
             .content_type("text/html; charset=utf-8")
             .body(html),
         Err(e) => {
-            error!("Template render error for '{}': {e:#}", template);
-            server_error_html(state)
+            error!("Template render error for '{}' (theme '{}'): {e:#}", template, theme);
+            server_error_html(state, theme)
         }
     }
 }
 
 /// Render a styled 404 Not Found page.
 pub fn not_found_html(state: &AppState) -> HttpResponse {
+    let theme = crate::templates::DEFAULT_THEME;
     let ctx = minijinja::context! {
         error_code => 404,
         error_title => "Not Found",
         error_message => "The page you're looking for doesn't exist.",
     };
-    match state.templates.render("pages/error.html", ctx) {
+    match state.themes.get(theme).render("pages/error.html", ctx) {
         Ok(html) => HttpResponse::NotFound()
             .content_type("text/html; charset=utf-8")
             .body(html),
@@ -67,13 +75,13 @@ pub fn not_found_html(state: &AppState) -> HttpResponse {
 }
 
 /// Render a styled 500 Server Error page.
-fn server_error_html(state: &AppState) -> HttpResponse {
+fn server_error_html(state: &AppState, theme: &str) -> HttpResponse {
     let ctx = minijinja::context! {
         error_code => 500,
         error_title => "Server Error",
         error_message => "Something went wrong. Please try again later.",
     };
-    match state.templates.render("pages/error.html", ctx) {
+    match state.themes.get(theme).render("pages/error.html", ctx) {
         Ok(html) => HttpResponse::InternalServerError()
             .content_type("text/html; charset=utf-8")
             .body(html),
@@ -84,6 +92,13 @@ fn server_error_html(state: &AppState) -> HttpResponse {
 /// Extract authenticated user from request extensions (set by auth middleware).
 fn get_user(req: &HttpRequest) -> Option<AuthenticatedUser> {
     req.extensions().get::<AuthenticatedUser>().cloned()
+}
+
+/// Get the user's theme, falling back to the default.
+fn user_theme(req: &HttpRequest) -> String {
+    get_user(req)
+        .map(|u| u.theme)
+        .unwrap_or_else(|| crate::templates::DEFAULT_THEME.to_string())
 }
 
 /// Build the user context for templates (nav, etc.).
@@ -282,17 +297,54 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
         integrations => oauth_connections_ctx(&state, user.id).await,
     };
 
-    render_html(&state, "pages/dashboard.html", ctx)
+    render_html(&state, "pages/dashboard.html", &user_theme(&req), ctx)
 }
 
-async fn login_page(state: web::Data<AppState>, _req: HttpRequest) -> HttpResponse {
-    let ctx = minijinja::context! {};
-    render_html(&state, "pages/login.html", ctx)
+#[derive(Debug, serde::Deserialize)]
+struct ThemeQuery {
+    theme: Option<String>,
 }
 
-async fn register_page(state: web::Data<AppState>, _req: HttpRequest) -> HttpResponse {
-    let ctx = minijinja::context! {};
-    render_html(&state, "pages/register.html", ctx)
+/// Resolve theme for pre-auth pages: query param > cookie > default.
+fn resolve_public_theme(req: &HttpRequest, query_theme: Option<&str>) -> String {
+    if let Some(t) = query_theme {
+        if crate::templates::KNOWN_THEMES.contains(&t) {
+            return t.to_string();
+        }
+    }
+    if let Some(cookie) = req.cookie("heimdall_theme") {
+        let v = cookie.value().to_string();
+        if crate::templates::KNOWN_THEMES.contains(&v.as_str()) {
+            return v;
+        }
+    }
+    crate::templates::DEFAULT_THEME.to_string()
+}
+
+async fn login_page(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<ThemeQuery>,
+) -> HttpResponse {
+    let theme = resolve_public_theme(&req, query.theme.as_deref());
+    let ctx = minijinja::context! {
+        current_theme => &theme,
+        available_themes => crate::templates::KNOWN_THEMES,
+    };
+    render_html(&state, "pages/login.html", &theme, ctx)
+}
+
+async fn register_page(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    query: web::Query<ThemeQuery>,
+) -> HttpResponse {
+    let theme = resolve_public_theme(&req, query.theme.as_deref());
+    let ctx = minijinja::context! {
+        current_theme => &theme,
+        available_themes => crate::templates::KNOWN_THEMES,
+    };
+    render_html(&state, "pages/register.html", &theme, ctx)
 }
 
 async fn repos_page(
@@ -361,7 +413,7 @@ async fn repos_page(
         integrations => oauth_connections_ctx(&state, user.id).await,
     };
 
-    render_html(&state, "pages/repos.html", ctx)
+    render_html(&state, "pages/repos.html", &user_theme(&req), ctx)
 }
 
 async fn repo_new_page(
@@ -385,7 +437,7 @@ async fn repo_new_page(
         integrations => integrations,
     };
 
-    render_html(&state, "pages/repo_new.html", ctx)
+    render_html(&state, "pages/repo_new.html", &user_theme(&req), ctx)
 }
 
 async fn repo_detail_page(
@@ -405,7 +457,7 @@ async fn repo_detail_page(
         }
         Err(e) => {
             error!("Failed to fetch repo {repo_id}: {e}");
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
 
@@ -542,7 +594,7 @@ async fn repo_detail_page(
         total_pages => total_pages,
     };
 
-    render_html(&state, "pages/repo_detail.html", ctx)
+    render_html(&state, "pages/repo_detail.html", &user_theme(&req), ctx)
 }
 
 async fn scan_detail_page(
@@ -560,7 +612,7 @@ async fn scan_detail_page(
         }
         Err(e) => {
             error!("Failed to fetch scan {scan_id}: {e}");
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
     let repo = match state
@@ -575,7 +627,7 @@ async fn scan_detail_page(
                 "Failed to fetch repo {} for scan {scan_id}: {e}",
                 scan.repo_id
             );
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
     let live_snapshot = match build_scan_live_snapshot(state.db.as_ref(), scan_id).await {
@@ -583,7 +635,7 @@ async fn scan_detail_page(
         Ok(None) => return not_found_html(&state),
         Err(e) => {
             error!("Failed to build scan live snapshot for {scan_id}: {e:#}");
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
     let stage_values = live_snapshot
@@ -643,7 +695,7 @@ async fn scan_detail_page(
         agent_calls => minijinja::Value::from_serialize(&agent_calls),
     };
 
-    render_html(&state, "pages/scan.html", ctx)
+    render_html(&state, "pages/scan.html", &user_theme(&req), ctx)
 }
 
 async fn scan_findings_page(
@@ -659,7 +711,7 @@ async fn scan_findings_page(
         Ok(None) => return not_found_html(&state),
         Err(e) => {
             error!("Failed to fetch scan {scan_id} for findings page: {e}");
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
     let repo = match state
@@ -674,7 +726,7 @@ async fn scan_findings_page(
                 "Failed to fetch repo {} for findings page: {e}",
                 scan.repo_id
             );
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
 
@@ -757,7 +809,7 @@ async fn scan_findings_page(
         issue_provider => issue_provider,
     };
 
-    render_html(&state, "pages/findings.html", ctx)
+    render_html(&state, "pages/findings.html", &user_theme(&req), ctx)
 }
 
 async fn finding_detail_page(
@@ -779,7 +831,7 @@ async fn finding_detail_page(
         }
         Err(e) => {
             error!("Failed to fetch finding {finding_id}: {e}");
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
     let repo = match state
@@ -794,7 +846,7 @@ async fn finding_detail_page(
                 "Failed to fetch repo {} for finding {finding_id}: {e}",
                 finding.repo_id
             );
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
     let patch = state
@@ -875,7 +927,7 @@ async fn finding_detail_page(
         })),
     };
 
-    render_html(&state, "pages/finding_detail.html", ctx)
+    render_html(&state, "pages/finding_detail.html", &user_theme(&req), ctx)
 }
 
 async fn threat_model_page(
@@ -890,7 +942,7 @@ async fn threat_model_page(
         Ok(None) => return not_found_html(&state),
         Err(e) => {
             error!("Failed to fetch scan {scan_id} for threat model page: {e}");
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
     let repo = match state
@@ -905,7 +957,7 @@ async fn threat_model_page(
                 "Failed to fetch repo {} for threat model page: {e}",
                 scan.repo_id
             );
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
 
@@ -920,7 +972,7 @@ async fn threat_model_page(
         }
         Err(e) => {
             error!("Failed to fetch threat model for scan {scan_id}: {e}");
-            return server_error_html(&state);
+            return server_error_html(&state, &user_theme(&req));
         }
     };
 
@@ -963,7 +1015,7 @@ async fn threat_model_page(
         data_flows => minijinja::Value::from_serialize(&data_flows),
     };
 
-    render_html(&state, "pages/threat_model.html", ctx)
+    render_html(&state, "pages/threat_model.html", &user_theme(&req), ctx)
 }
 
 async fn settings_page(
@@ -1012,9 +1064,11 @@ async fn settings_page(
         })),
         api_keys => key_values,
         integration_error => query.integration_error.clone(),
+        current_theme => user.theme.clone(),
+        available_themes => crate::templates::KNOWN_THEMES,
     };
 
-    render_html(&state, "pages/settings.html", ctx)
+    render_html(&state, "pages/settings.html", &user_theme(&req), ctx)
 }
 
 /// Default 404 handler for unmatched routes.

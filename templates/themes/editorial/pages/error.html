@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ error_title }}{% endblock %}
+{% block content %}
+<div class="flex flex-col items-center justify-center py-32 text-center">
+    <p class="font-serif text-[10rem] font-normal leading-none tracking-tightest text-ink-900">{{ error_code }}</p>
+    <h1 class="mt-6 font-serif text-3xl font-normal tracking-tight text-ink-900">{{ error_title }}</h1>
+    <p class="mt-4 max-w-md text-sm leading-6 text-ink-500">{{ error_message }}</p>
+    <a href="/" class="mt-10 inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+        Back to Dashboard →
+    </a>
+</div>
+{% endblock %}

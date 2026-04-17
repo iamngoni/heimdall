@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
         db,
         ai_provider,
         ScanBroadcaster::new(),
-        templates::init_templates("templates"),
+        templates::init_themes("templates"),
         worker_enabled,
     ));
 

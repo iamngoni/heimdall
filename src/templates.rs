@@ -8,9 +8,16 @@
 //
 
 use minijinja::{Environment, path_loader};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Holds the minijinja template environment.
+/// The default theme used when no user preference is set.
+pub const DEFAULT_THEME: &str = "sentinel";
+
+/// Known theme identifiers.
+pub const KNOWN_THEMES: &[&str] = &["sentinel", "editorial"];
+
+/// Holds the minijinja template environment for a single theme.
 pub struct TemplateEngine {
     env: Environment<'static>,
 }
@@ -34,7 +41,84 @@ impl TemplateEngine {
     }
 }
 
-/// Create a shared template engine instance.
-pub fn init_templates(template_dir: &str) -> Arc<TemplateEngine> {
-    Arc::new(TemplateEngine::new(template_dir))
+/// Registry of all available themes, each backed by its own TemplateEngine.
+///
+/// Ghost-style: every theme is a self-contained directory of templates.
+/// The registry discovers themes from `{base_dir}/themes/` at startup.
+pub struct ThemeRegistry {
+    themes: HashMap<String, Arc<TemplateEngine>>,
+    default_theme: String,
+}
+
+impl ThemeRegistry {
+    /// Scan `{base_dir}/themes/` for subdirectories. Each subdirectory name
+    /// becomes a theme identifier with its own TemplateEngine.
+    pub fn new(base_dir: &str) -> Self {
+        let themes_dir = format!("{base_dir}/themes");
+        let mut themes = HashMap::new();
+
+        let entries = std::fs::read_dir(&themes_dir).unwrap_or_else(|e| {
+            panic!("Failed to read themes directory '{themes_dir}': {e}");
+        });
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
+            let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+            if !is_dir {
+                continue;
+            }
+
+            let name = entry.file_name().to_string_lossy().to_string();
+            let path = entry.path().to_string_lossy().to_string();
+
+            log::info!("Loading theme '{name}' from {path}");
+            themes.insert(name, Arc::new(TemplateEngine::new(&path)));
+        }
+
+        if !themes.contains_key(DEFAULT_THEME) {
+            panic!(
+                "Default theme '{DEFAULT_THEME}' not found in '{themes_dir}'. \
+                 Available: {:?}",
+                themes.keys().collect::<Vec<_>>()
+            );
+        }
+
+        log::info!(
+            "Theme registry initialized with {} theme(s): {:?}",
+            themes.len(),
+            themes.keys().collect::<Vec<_>>()
+        );
+
+        Self {
+            themes,
+            default_theme: DEFAULT_THEME.to_string(),
+        }
+    }
+
+    /// Get the TemplateEngine for a theme, falling back to the default.
+    pub fn get(&self, theme: &str) -> &TemplateEngine {
+        self.themes
+            .get(theme)
+            .or_else(|| self.themes.get(&self.default_theme))
+            .expect("default theme must exist")
+    }
+
+    /// List all available theme names.
+    pub fn available_themes(&self) -> Vec<&str> {
+        self.themes.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Check if a theme name is valid.
+    pub fn is_valid_theme(&self, theme: &str) -> bool {
+        self.themes.contains_key(theme)
+    }
+}
+
+/// Create a shared theme registry from the templates base directory.
+pub fn init_themes(base_dir: &str) -> Arc<ThemeRegistry> {
+    Arc::new(ThemeRegistry::new(base_dir))
 }

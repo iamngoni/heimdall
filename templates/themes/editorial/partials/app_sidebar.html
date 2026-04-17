@@ -1,0 +1,30 @@
+<aside class="flex w-56 shrink-0 flex-col border-r border-ink-200 bg-white px-6 py-8">
+    <a href="/" class="flex items-center gap-2" aria-label="Heimdall home">
+        <span class="flex h-6 w-6 items-center justify-center border border-ink-900 text-[11px] font-semibold tracking-tight text-ink-900">H</span>
+        <span class="text-sm font-semibold tracking-tight text-ink-900">Heimdall</span>
+    </a>
+
+    <nav class="mt-12 flex flex-1 flex-col gap-px">
+        <a href="/"
+           class="group flex items-center gap-4 py-2 text-sm transition {{ 'text-ink-900' if active_nav == 'overview' else 'text-ink-500 hover:text-ink-900' }}">
+            <span class="font-mono text-[10px] tracking-[0.18em] {{ 'text-ink-900' if active_nav == 'overview' else 'text-ink-400' }}">01</span>
+            <span class="{{ 'border-b border-ink-900 pb-0.5' if active_nav == 'overview' else '' }}">Overview</span>
+        </a>
+
+        <a href="/repos"
+           class="group flex items-center gap-4 py-2 text-sm transition {{ 'text-ink-900' if active_nav == 'repos' else 'text-ink-500 hover:text-ink-900' }}">
+            <span class="font-mono text-[10px] tracking-[0.18em] {{ 'text-ink-900' if active_nav == 'repos' else 'text-ink-400' }}">02</span>
+            <span class="{{ 'border-b border-ink-900 pb-0.5' if active_nav == 'repos' else '' }}">Repos</span>
+        </a>
+
+        <a href="/settings"
+           class="group flex items-center gap-4 py-2 text-sm transition {{ 'text-ink-900' if active_nav == 'settings' else 'text-ink-500 hover:text-ink-900' }}">
+            <span class="font-mono text-[10px] tracking-[0.18em] {{ 'text-ink-900' if active_nav == 'settings' else 'text-ink-400' }}">03</span>
+            <span class="{{ 'border-b border-ink-900 pb-0.5' if active_nav == 'settings' else '' }}">Settings</span>
+        </a>
+    </nav>
+
+    <p class="mt-auto font-mono text-[10px] tracking-[0.18em] text-ink-400">
+        All-Seeing Guardian
+    </p>
+</aside>

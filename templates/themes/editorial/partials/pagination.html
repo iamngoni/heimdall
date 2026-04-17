@@ -1,0 +1,25 @@
+{% if total_pages > 1 %}
+<nav class="mt-10 flex items-center justify-between border-t border-ink-200 pt-6">
+    <div class="text-xs tracking-wide text-ink-500">
+        Page {{ page }} of {{ total_pages }} · {{ total }} total
+    </div>
+    <div class="flex items-center gap-6 text-sm">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}&per_page={{ per_page }}"
+           class="border-b border-transparent text-ink-900 transition hover:border-ink-900">
+            ← Previous
+        </a>
+        {% else %}
+        <span class="text-ink-300">← Previous</span>
+        {% endif %}
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&per_page={{ per_page }}"
+           class="border-b border-transparent text-ink-900 transition hover:border-ink-900">
+            Next →
+        </a>
+        {% else %}
+        <span class="text-ink-300">Next →</span>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}

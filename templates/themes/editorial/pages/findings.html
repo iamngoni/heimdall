@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Findings{% endblock %}
+
+{% block body %}
+{% set active_nav = "repos" %}
+{% set breadcrumb_parent = "Findings" %}
+{% set breadcrumb_current = repo.name %}
+<div class="min-h-screen bg-white text-ink-900">
+    <div class="flex min-h-screen">
+        {% include "partials/app_sidebar.html" %}
+
+        <div class="flex min-h-screen flex-1 flex-col">
+            {% include "partials/app_topbar.html" %}
+
+            <main class="flex-1 px-10 py-16">
+                <div class="mx-auto max-w-6xl space-y-16">
+
+                    {# ── Header ── #}
+                    <header class="flex flex-col gap-8 xl:flex-row xl:items-end xl:justify-between">
+                        <div class="max-w-3xl">
+                            <p class="section-num">Findings · {{ total }} visible</p>
+                            <h1 class="mt-4 font-serif text-5xl font-normal leading-[1.05] tracking-tightest text-ink-900">
+                                Review findings for <span class="italic">{{ repo.name }}</span>
+                            </h1>
+                            <p class="mt-5 max-w-measure text-base leading-7 text-ink-600">
+                                Scan <span class="font-mono text-sm text-ink-700">{{ scan.id }}</span>{% if scan.status %} is currently <span class="capitalize text-ink-900">{{ scan.status|replace("_", " ") }}</span>.{% endif %}
+                            </p>
+                        </div>
+
+                        <div class="flex flex-wrap items-end gap-x-6 gap-y-3 text-sm">
+                            {% if issue_supported and total > 0 %}
+                            <button id="bulk-issue-btn"
+                                    type="button"
+                                    onclick="createAllIssues(this)"
+                                    class="inline-flex items-center gap-2 border-b border-transparent pb-1 text-ink-900 transition hover:border-ink-900 disabled:cursor-not-allowed disabled:opacity-50">
+                                <span class="flex h-4 w-4 items-center justify-center {% if issue_provider == "github" %}text-ink-900{% elif issue_provider == "gitlab" %}text-amber-700{% elif issue_provider == "bitbucket" %}text-ink-700{% else %}text-ink-500{% endif %}">
+                                    <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                        {% if issue_provider == "github" %}
+                                        <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
+                                        {% elif issue_provider == "gitlab" %}
+                                        <path d="M15.97 9.058l-.895-2.756L13.3.842a.37.37 0 0 0-.702 0L10.82 6.302H5.18L3.402.842a.37.37 0 0 0-.702 0L.924 6.302.03 9.058a.74.74 0 0 0 .269.826L8 15.323l7.7-5.44a.74.74 0 0 0 .27-.825"/>
+                                        {% elif issue_provider == "bitbucket" %}
+                                        <path d="M.778 1.213a.768.768 0 0 0-.768.892l2.17 13.095a1.045 1.045 0 0 0 1.024.87h9.78a.768.768 0 0 0 .768-.646L15.99 2.105a.768.768 0 0 0-.768-.892H.778zm9.098 9.457H6.125l-.8-4.186h5.36l-.81 4.186z"/>
+                                        {% else %}
+                                        <path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm9-3a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM8 6.75a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4A.75.75 0 0 1 8 6.75Z" clip-rule="evenodd"/>
+                                        {% endif %}
+                                    </svg>
+                                </span>
+                                <span id="bulk-issue-label">Create Issues</span>
+                                <svg id="bulk-issue-spinner" class="hidden h-3.5 w-3.5 animate-spin text-ink-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                            </button>
+                            {% endif %}
+                            <a href="/scans/{{ scan.id }}"
+                               class="border-b border-transparent pb-1 text-ink-600 transition hover:border-ink-600 hover:text-ink-900">
+                                ← Back to Scan
+                            </a>
+                            <a href="/scans/{{ scan.id }}/threat-model"
+                               class="border-b border-ink-900 pb-1 font-medium text-ink-900 transition hover:border-ink-400">
+                                View Threat Model →
+                            </a>
+                        </div>
+                    </header>
+
+                    {# ── Filters (inline, editorial) ── #}
+                    <form method="get" class="border-t border-ink-200 pt-8">
+                        <div class="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                            <div class="grid gap-6 sm:grid-cols-2 xl:w-[420px]">
+                                <label class="block">
+                                    <span class="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Severity</span>
+                                    <select name="severity"
+                                            onchange="this.form.requestSubmit()"
+                                            class="w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
+                                        <option value="">All severities</option>
+                                        <option value="critical" {% if severity_filter == "critical" %}selected{% endif %}>Critical</option>
+                                        <option value="high" {% if severity_filter == "high" %}selected{% endif %}>High</option>
+                                        <option value="medium" {% if severity_filter == "medium" %}selected{% endif %}>Medium</option>
+                                        <option value="low" {% if severity_filter == "low" %}selected{% endif %}>Low</option>
+                                    </select>
+                                </label>
+
+                                <label class="block">
+                                    <span class="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Status</span>
+                                    <select name="status"
+                                            onchange="this.form.requestSubmit()"
+                                            class="w-full border-0 border-b border-ink-300 bg-transparent px-0 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
+                                        <option value="">All statuses</option>
+                                        <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open</option>
+                                        <option value="confirmed" {% if status_filter == "confirmed" %}selected{% endif %}>Confirmed</option>
+                                        <option value="dismissed" {% if status_filter == "dismissed" %}selected{% endif %}>Dismissed</option>
+                                        <option value="false_positive" {% if status_filter == "false_positive" %}selected{% endif %}>False Positive</option>
+                                        <option value="fixed" {% if status_filter == "fixed" %}selected{% endif %}>Fixed</option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                                {% if severity_filter or status_filter %}
+                                <a href="/scans/{{ scan.id }}/findings"
+                                   class="border-b border-transparent pb-0.5 text-ink-900 transition hover:border-ink-900">
+                                    Clear filters
+                                </a>
+                                <span class="text-ink-300">·</span>
+                                {% endif %}
+                                <span class="text-ink-500">{{ scan.finding_count }} total findings in this scan</span>
+                            </div>
+                        </div>
+                    </form>
+
+                    {# ── Findings list ── #}
+                    <section>
+                        <div id="bulk-actions-bar"
+                             class="hidden items-center gap-4 border-y border-ink-900 bg-ink-900 px-6 py-3 text-sm text-white">
+                            <span id="selected-count" class="font-medium">0 selected</span>
+                            <button type="button"
+                                    onclick="copySelectedFindings()"
+                                    id="copy-selected-btn"
+                                    class="inline-flex items-center gap-1.5 border-b border-transparent pb-0.5 text-white/80 transition hover:border-white hover:text-white">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                <span id="copy-selected-label">Copy as Markdown</span>
+                            </button>
+                            <button type="button"
+                                    onclick="clearSelection()"
+                                    class="ml-auto inline-flex items-center gap-1 text-xs text-white/60 transition hover:text-white">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                Clear
+                            </button>
+                        </div>
+
+                        <div class="hidden border-b border-ink-900 px-2 pb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400 lg:grid lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:gap-4">
+                            <span>
+                                <input type="checkbox" id="select-all-checkbox"
+                                       class="h-4 w-4 border-ink-300 text-ink-900 focus:ring-ink-200"
+                                       aria-label="Select all findings">
+                            </span>
+                            <span>Severity</span>
+                            <span>Issue</span>
+                            <span>Source</span>
+                            <span>Identifiers</span>
+                            <span class="text-right">Status</span>
+                        </div>
+
+                        {% if findings|length > 0 %}
+                        <ul>
+                            {% for finding in findings %}
+                                {% with finding=finding %}
+                                    {% include "partials/finding_card.html" %}
+                                {% endwith %}
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <div class="border-y border-ink-200 py-24 text-center">
+                            {% if severity_filter or status_filter %}
+                            <p class="section-num">No matches</p>
+                            <h2 class="mt-4 font-serif text-3xl font-normal tracking-tight text-ink-900">No findings match these filters</h2>
+                            <p class="mx-auto mt-3 max-w-sm text-sm text-ink-500">Try broadening your search by removing a severity or status filter.</p>
+                            <a href="/scans/{{ scan.id }}/findings" class="mt-6 inline-block border-b border-ink-900 pb-1 text-sm text-ink-900 transition hover:border-ink-400">Clear all filters →</a>
+                            {% else %}
+                            <p class="section-num">Clean</p>
+                            <h2 class="mt-4 font-serif text-3xl font-normal tracking-tight text-ink-900">No findings in this scan</h2>
+                            <p class="mx-auto mt-3 max-w-sm text-sm text-ink-500">This scan completed without detecting any security findings. Review the threat model for a broader architectural perspective.</p>
+                            <a href="/scans/{{ scan.id }}/threat-model" class="mt-6 inline-block border-b border-ink-900 pb-1 text-sm text-ink-900 transition hover:border-ink-400">View Threat Model →</a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if total_pages > 1 %}
+                        <nav class="mt-10 flex items-center justify-between border-t border-ink-200 pt-6">
+                            <p class="font-mono text-xs tracking-wide text-ink-500">Page {{ page }} of {{ total_pages }}</p>
+                            <div class="flex items-center gap-6 text-sm">
+                                {% if page > 1 %}
+                                <a href="?page={{ page - 1 }}&per_page={{ per_page }}{% if severity_filter %}&severity={{ severity_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+                                   class="border-b border-transparent pb-1 text-ink-900 transition hover:border-ink-900">
+                                    ← Previous
+                                </a>
+                                {% else %}
+                                <span class="text-ink-300">← Previous</span>
+                                {% endif %}
+                                {% if page < total_pages %}
+                                <a href="?page={{ page + 1 }}&per_page={{ per_page }}{% if severity_filter %}&severity={{ severity_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+                                   class="border-b border-transparent pb-1 text-ink-900 transition hover:border-ink-900">
+                                    Next →
+                                </a>
+                                {% else %}
+                                <span class="text-ink-300">Next →</span>
+                                {% endif %}
+                            </div>
+                        </nav>
+                        {% endif %}
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- Bulk selection and copy ---
+const selectAllCheckbox = document.getElementById('select-all-checkbox');
+const bulkBar = document.getElementById('bulk-actions-bar');
+const selectedCountEl = document.getElementById('selected-count');
+
+function getCheckboxes() {
+    return document.querySelectorAll('.finding-checkbox');
+}
+
+function getChecked() {
+    return document.querySelectorAll('.finding-checkbox:checked');
+}
+
+function updateBulkBar() {
+    const count = getChecked().length;
+    if (count > 0) {
+        bulkBar.classList.remove('hidden');
+        bulkBar.classList.add('flex');
+        selectedCountEl.textContent = count + ' selected';
+    } else {
+        bulkBar.classList.add('hidden');
+        bulkBar.classList.remove('flex');
+    }
+    const all = getCheckboxes();
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = all.length > 0 && count === all.length;
+        selectAllCheckbox.indeterminate = count > 0 && count < all.length;
+    }
+}
+
+if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', function () {
+        getCheckboxes().forEach(function (cb) { cb.checked = selectAllCheckbox.checked; });
+        updateBulkBar();
+    });
+}
+
+document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('finding-checkbox')) updateBulkBar();
+});
+
+function clearSelection() {
+    getCheckboxes().forEach(function (cb) { cb.checked = false; });
+    updateBulkBar();
+}
+
+function buildFindingMarkdown(el) {
+    const d = el.dataset;
+    const lines = [];
+    lines.push('### ' + (d.findingTitle || 'Untitled'));
+    lines.push('');
+    const badges = ['**Severity:** ' + (d.findingSeverity || '').toUpperCase()];
+    badges.push('**Confidence:** ' + (d.findingConfidence || ''));
+    badges.push('**Source:** ' + (d.findingSource || '').replace(/_/g, ' '));
+    badges.push('**Status:** ' + (d.findingStatus || '').replace(/_/g, ' '));
+    lines.push(badges.join(' | '));
+    lines.push('');
+    const loc = d.findingLineEnd && d.findingLineEnd !== 'None'
+        ? d.findingFile + ':' + d.findingLineStart + '-' + d.findingLineEnd
+        : d.findingFile + ':' + d.findingLineStart;
+    lines.push('**Location:** `' + loc + '`');
+    if (d.findingCwe && d.findingCwe !== 'None') lines.push('**CWE:** ' + d.findingCwe);
+    if (d.findingCve && d.findingCve !== 'None') lines.push('**CVE:** ' + d.findingCve);
+    lines.push('');
+    if (d.findingDescription && d.findingDescription !== 'None') {
+        lines.push(d.findingDescription.trim());
+        lines.push('');
+    }
+    if (d.findingSnippet && d.findingSnippet !== 'None') {
+        lines.push('```');
+        lines.push(d.findingSnippet.trim());
+        lines.push('```');
+        lines.push('');
+    }
+    if (d.findingPatch && d.findingPatch !== 'None') {
+        lines.push('**Suggested Fix:**');
+        lines.push('```diff');
+        lines.push(d.findingPatch.trim());
+        lines.push('```');
+        lines.push('');
+    }
+    return lines.join('\n');
+}
+
+async function copySelectedFindings() {
+    const checked = getChecked();
+    if (checked.length === 0) return;
+    const label = document.getElementById('copy-selected-label');
+    const btn = document.getElementById('copy-selected-btn');
+
+    const sections = [];
+    sections.push('# Heimdall Findings Report');
+    sections.push('');
+    sections.push('**Repository:** {{ repo.name }}');
+    sections.push('**Scan:** `{{ scan.id }}`');
+    sections.push('**Findings:** ' + checked.length);
+    sections.push('');
+    sections.push('---');
+    sections.push('');
+
+    checked.forEach(function (cb) {
+        const card = cb.closest('[data-finding-id]');
+        if (card) sections.push(buildFindingMarkdown(card));
+        sections.push('---');
+        sections.push('');
+    });
+
+    sections.push('*Exported from [Heimdall](/scans/{{ scan.id }}/findings)*');
+
+    try {
+        await navigator.clipboard.writeText(sections.join('\n'));
+        label.textContent = 'Copied!';
+        setTimeout(function () {
+            label.textContent = 'Copy as Markdown';
+        }, 2000);
+    } catch (_) {
+        label.textContent = 'Failed';
+        setTimeout(function () { label.textContent = 'Copy as Markdown'; }, 2000);
+    }
+}
+
+// --- Existing bulk issue creation ---
+async function createAllIssues(btn) {
+    const label = document.getElementById('bulk-issue-label');
+    const spinner = document.getElementById('bulk-issue-spinner');
+    const originalText = label.textContent;
+
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    label.textContent = 'Creating...';
+    spinner.classList.remove('hidden');
+
+    try {
+        const resp = await window.HeimdallUI.fetch('/api/scans/{{ scan.id }}/findings/create-all-issues', {
+            method: 'POST',
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.data) {
+            const d = data.data;
+            const summary = d.summary || (
+                d.created + ' created' +
+                (d.linked > 0 ? ', ' + d.linked + ' already linked' : '') +
+                (d.failed > 0 ? ', ' + d.failed + ' failed' : '')
+            );
+            label.textContent = d.created > 0 ? 'Issues created' : 'No new issues';
+            window.HeimdallUI.success(summary, 3600);
+            setTimeout(function() { window.location.reload(); }, 1200);
+        } else {
+            const msg = data.error || data.message || 'Failed to create issues';
+            window.HeimdallUI.error(msg, 4800);
+            label.textContent = originalText;
+            btn.disabled = false;
+        }
+    } catch (err) {
+        window.HeimdallUI.error('Network error while creating issues. Try again.', 4800);
+        label.textContent = originalText;
+        btn.disabled = false;
+    } finally {
+        btn.removeAttribute('aria-busy');
+        spinner.classList.add('hidden');
+    }
+}
+</script>
+{% endblock %}
