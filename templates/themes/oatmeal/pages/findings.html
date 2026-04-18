@@ -6,30 +6,27 @@
 {% set active_nav = "repos" %}
 {% set breadcrumb_parent = "Findings" %}
 {% set breadcrumb_current = repo.name %}
-<div class="min-h-screen bg-[#f5f7fa] text-slate-900">
+<div class="min-h-screen" style="color:var(--hm-text-900)">
     <div class="flex min-h-screen">
         {% include "partials/app_sidebar.html" %}
 
         <div class="flex min-h-screen flex-1 flex-col">
             {% include "partials/app_topbar.html" %}
 
-            <main class="flex-1 px-7 py-6">
-                <div class="space-y-6">
+            <main class="flex-1 px-8 py-8">
+                <div class="space-y-8">
                     <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                         <div class="max-w-3xl">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="inline-flex items-center rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">
-                                    Scan Findings
-                                </span>
-                                <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                                    {{ total }} visible
-                                </span>
-                            </div>
-                            <h1 class="mt-3 text-2xl font-bold tracking-tight text-slate-900">Review findings for {{ repo.name }}</h1>
-                            <p class="mt-2 text-sm text-slate-500">
-                                Scan <span class="font-mono text-slate-700">{{ scan.id }}</span>
-                                {% if scan.status %} is currently <span class="font-medium capitalize text-slate-700">{{ scan.status|replace("_", " ") }}</span>.{% endif %}
+                            <p class="hm-oatmeal-kicker">Findings / {{ repo.name }}</p>
+                            <h1 class="mt-2 text-2xl font-semibold tracking-tight" style="color:var(--hm-text-900)">Review findings for {{ repo.name }}</h1>
+                            <p class="mt-2 text-sm" style="color:var(--hm-text-500)">
+                                Scan <span class="font-mono" style="color:var(--hm-text-700)">{{ scan.id }}</span>
+                                {% if scan.status %} currently <span class="font-medium capitalize" style="color:var(--hm-text-700)">{{ scan.status|replace("_", " ") }}</span>.{% endif %}
                             </p>
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                <span class="hm-oatmeal-chip">{{ total }} visible</span>
+                                <span class="hm-oatmeal-chip">{{ scan.finding_count }} in scan</span>
+                            </div>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-2">
@@ -37,8 +34,8 @@
                             <button id="bulk-issue-btn"
                                     type="button"
                                     onclick="createAllIssues(this)"
-                                    class="inline-flex items-center justify-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-50">
-                                <span class="flex h-5 w-5 items-center justify-center {% if issue_provider == "github" %}text-slate-900{% elif issue_provider == "gitlab" %}text-orange-500{% elif issue_provider == "bitbucket" %}text-sky-600{% else %}text-slate-500{% endif %}">
+                                    class="hm-oatmeal-ghost inline-flex items-center justify-center gap-2.5 px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50">
+                                <span class="flex h-4 w-4 items-center justify-center" style="color:var(--hm-text-600)">
                                     <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                         {% if issue_provider == "github" %}
                                         <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
@@ -52,32 +49,32 @@
                                     </svg>
                                 </span>
                                 <span id="bulk-issue-label">Create Issues</span>
-                                <svg id="bulk-issue-spinner" class="hidden h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <svg id="bulk-issue-spinner" class="hidden h-4 w-4 animate-spin" style="color:var(--hm-text-500)" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                                 </svg>
                             </button>
                             {% endif %}
                             <a href="/scans/{{ scan.id }}"
-                               class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                               class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                 Back to Scan
                             </a>
                             <a href="/scans/{{ scan.id }}/threat-model"
-                               class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+                               class="hm-oatmeal-action inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                 View Threat Model
                             </a>
                         </div>
                     </div>
 
-                    <form method="get"
-                          class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <form method="get" class="border-t border-b hm-oatmeal-rule py-5">
                         <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                             <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-[200px_220px]">
                                 <label class="block">
-                                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Severity</span>
+                                    <span class="hm-oatmeal-kicker mb-2 block">Severity</span>
                                     <select name="severity"
                                             onchange="this.form.requestSubmit()"
-                                            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                                            class="w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition"
+                                            style="background:var(--hm-surface-muted); color:var(--hm-text-900); border-color:var(--hm-border)">
                                         <option value="">All severities</option>
                                         <option value="critical" {% if severity_filter == "critical" %}selected{% endif %}>Critical</option>
                                         <option value="high" {% if severity_filter == "high" %}selected{% endif %}>High</option>
@@ -87,10 +84,11 @@
                                 </label>
 
                                 <label class="block">
-                                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Status</span>
+                                    <span class="hm-oatmeal-kicker mb-2 block">Status</span>
                                     <select name="status"
                                             onchange="this.form.requestSubmit()"
-                                            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                                            class="w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition"
+                                            style="background:var(--hm-surface-muted); color:var(--hm-text-900); border-color:var(--hm-border)">
                                         <option value="">All statuses</option>
                                         <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open</option>
                                         <option value="confirmed" {% if status_filter == "confirmed" %}selected{% endif %}>Confirmed</option>
@@ -104,51 +102,51 @@
                             <div class="flex items-center gap-2">
                                 {% if severity_filter or status_filter %}
                                 <a href="/scans/{{ scan.id }}/findings"
-                                   class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                                   class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                     Clear Filters
                                 </a>
                                 {% endif %}
-                                <div class="rounded-xl bg-slate-50 px-4 py-2.5 text-sm text-slate-500">
-                                    {{ scan.finding_count }} total findings in this scan
-                                </div>
                             </div>
                         </div>
                     </form>
 
-                    <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <section>
                         <div id="bulk-actions-bar"
-                             class="hidden items-center gap-3 border-b border-slate-200 bg-slate-900 px-6 py-2.5 text-sm text-white transition-all">
+                             class="hidden items-center gap-3 border-b hm-oatmeal-rule px-3 py-3 text-sm transition-all"
+                             style="background:rgba(255,255,255,0.03); color:var(--hm-text-900)">
                             <span id="selected-count" class="font-semibold">0 selected</span>
                             <button type="button"
                                     onclick="copySelectedFindings()"
                                     id="copy-selected-btn"
-                                    class="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20">
+                                    class="hm-oatmeal-action-soft inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition">
                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                 <span id="copy-selected-label">Copy as Markdown</span>
                             </button>
                             <button type="button"
                                     onclick="clearSelection()"
-                                    class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-300 transition hover:text-white">
+                                    class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition hover:opacity-80"
+                                    style="color:var(--hm-text-500)">
                                 <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                 Clear
                             </button>
                         </div>
 
-                        <div class="hidden border-b border-slate-200 bg-slate-50 px-6 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 lg:grid lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:gap-4">
+                        <div class="hidden border-b hm-oatmeal-rule pt-5 pb-3 px-6 lg:grid lg:grid-cols-[32px_120px_minmax(0,1.4fr)_160px_150px_170px] lg:gap-4">
                             <span>
                                 <input type="checkbox" id="select-all-checkbox"
-                                       class="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-200"
+                                       class="h-4 w-4 rounded"
+                                       style="border-color:var(--hm-border-strong); background:var(--hm-surface-muted); accent-color:var(--hm-text-700)"
                                        aria-label="Select all findings">
                             </span>
-                            <span>Severity</span>
-                            <span>Issue</span>
-                            <span>Source</span>
-                            <span>Identifiers</span>
-                            <span class="text-right">Status</span>
+                            <span class="hm-oatmeal-kicker">Severity</span>
+                            <span class="hm-oatmeal-kicker">Issue</span>
+                            <span class="hm-oatmeal-kicker">Source</span>
+                            <span class="hm-oatmeal-kicker">Identifiers</span>
+                            <span class="hm-oatmeal-kicker text-right">Status</span>
                         </div>
 
                         {% if findings|length > 0 %}
-                        <div class="divide-y divide-slate-200">
+                        <div>
                             {% for finding in findings %}
                                 {% with finding=finding %}
                                     {% include "partials/finding_card.html" %}
@@ -157,36 +155,36 @@
                         </div>
                         {% else %}
                         <div class="px-8 py-16 text-center">
-                            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
-                                <svg class="h-6 w-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl hm-oatmeal-monogram">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                                 </svg>
                             </div>
                             {% if severity_filter or status_filter %}
-                            <h2 class="mt-4 text-sm font-semibold text-slate-900">No findings match these filters</h2>
-                            <p class="mx-auto mt-2 max-w-sm text-sm text-slate-500">Try broadening your search by removing a severity or status filter.</p>
-                            <a href="/scans/{{ scan.id }}/findings" class="mt-4 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">Clear All Filters</a>
+                            <h2 class="mt-4 text-sm font-semibold" style="color:var(--hm-text-900)">No findings match these filters</h2>
+                            <p class="mx-auto mt-2 max-w-sm text-sm" style="color:var(--hm-text-500)">Try broadening your search by removing a severity or status filter.</p>
+                            <a href="/scans/{{ scan.id }}/findings" class="hm-oatmeal-ghost mt-4 inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">Clear All Filters</a>
                             {% else %}
-                            <h2 class="mt-4 text-sm font-semibold text-slate-900">No findings in this scan</h2>
-                            <p class="mx-auto mt-2 max-w-sm text-sm text-slate-500">This scan completed without detecting any security findings. Review the threat model for a broader architectural perspective.</p>
-                            <a href="/scans/{{ scan.id }}/threat-model" class="mt-4 inline-flex text-sm font-semibold text-blue-600 transition hover:text-blue-700">View Threat Model</a>
+                            <h2 class="mt-4 text-sm font-semibold" style="color:var(--hm-text-900)">No findings in this scan</h2>
+                            <p class="mx-auto mt-2 max-w-sm text-sm" style="color:var(--hm-text-500)">This scan completed without detecting any security findings. Review the threat model for a broader architectural perspective.</p>
+                            <a href="/scans/{{ scan.id }}/threat-model" class="hm-oatmeal-link mt-4 inline-flex text-sm font-medium">View Threat Model</a>
                             {% endif %}
                         </div>
                         {% endif %}
 
                         {% if total_pages > 1 %}
-                        <nav class="flex flex-col gap-3 border-t border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-                            <p class="text-sm text-slate-500">Page {{ page }} of {{ total_pages }}</p>
+                        <nav class="flex flex-col gap-3 border-t hm-oatmeal-rule px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                            <p class="text-sm" style="color:var(--hm-text-500)">Page {{ page }} of {{ total_pages }}</p>
                             <div class="flex items-center gap-2">
                                 {% if page > 1 %}
                                 <a href="?page={{ page - 1 }}&per_page={{ per_page }}{% if severity_filter %}&severity={{ severity_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}"
-                                   class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                                   class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition">
                                     Previous
                                 </a>
                                 {% endif %}
                                 {% if page < total_pages %}
                                 <a href="?page={{ page + 1 }}&per_page={{ per_page }}{% if severity_filter %}&severity={{ severity_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}"
-                                   class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                                   class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2 text-sm font-medium transition">
                                     Next
                                 </a>
                                 {% endif %}
@@ -313,10 +311,8 @@ async function copySelectedFindings() {
     try {
         await navigator.clipboard.writeText(sections.join('\n'));
         label.textContent = 'Copied!';
-        btn.classList.add('bg-emerald-500/20');
         setTimeout(function () {
             label.textContent = 'Copy as Markdown';
-            btn.classList.remove('bg-emerald-500/20');
         }, 2000);
     } catch (_) {
         label.textContent = 'Failed';

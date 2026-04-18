@@ -1,4 +1,5 @@
-<header class="flex h-14 items-center border-b hm-oatmeal-rule bg-[rgba(15,19,24,0.84)] px-6">
+<header class="flex h-14 items-center border-b hm-oatmeal-rule px-6"
+        style="background:transparent">
     <div class="flex items-center gap-3 text-sm">
         <span class="font-semibold text-[color:var(--hm-text-900)]">Heimdall</span>
         <span class="text-[color:var(--hm-text-400)]">/</span>
@@ -11,37 +12,31 @@
 
     <div class="relative ml-auto">
         <details>
-            <summary class="app-menu-summary flex list-none cursor-pointer items-center gap-2 rounded-full border border-transparent px-2 py-1 transition hover:border-[color:var(--hm-border)] hover:bg-[rgba(198,210,219,0.06)] focus:outline-none">
-                <div class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm" style="background-color: var(--mist-100); color: var(--mist-950);">
+            <summary class="app-menu-summary flex list-none cursor-pointer items-center rounded-full p-0 transition hover:opacity-90 focus:outline-none">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold" style="background-color: rgba(255,255,255,0.06); color: var(--hm-text-900);">
                     {{ user_initial }}
                 </div>
-                <svg class="h-4 w-4 text-[color:var(--hm-text-500)]" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                </svg>
             </summary>
 
-            <div style="width: 18rem;" class="hm-oatmeal-panel absolute right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl p-2">
-                <div class="border-b hm-oatmeal-rule px-4 py-4">
-                    <p class="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--hm-text-500)]">Account</p>
-                    <p class="mt-1 text-sm font-medium text-[color:var(--hm-text-900)]">Workspace controls</p>
+            <div class="absolute right-0 top-full z-30 mt-3 min-w-[14rem] overflow-hidden rounded-2xl border p-2"
+                 style="border-color:var(--hm-border);background:var(--hm-shell-alt)">
+                <div class="px-3 py-3">
+                    <p class="text-[10px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Account</p>
+                    <p class="mt-1 text-sm font-medium" style="color:var(--hm-text-900)">{{ user.display_name | default(user.email) | default('Signed in') }}</p>
                 </div>
 
-                <div class="mt-2 space-y-1">
+                <div class="space-y-0.5 border-t pt-2" style="border-color:var(--hm-border)">
                     <a href="/settings"
-                       class="flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium text-[color:var(--hm-text-700)] transition hover:bg-[rgba(198,210,219,0.06)] hover:text-[color:var(--hm-text-900)]">
+                       class="flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition hover:bg-[rgba(255,255,255,0.04)]"
+                       style="color:var(--hm-text-700)">
                         <span>Settings</span>
-                        <svg class="h-4 w-4 text-[color:var(--hm-text-400)]" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                            <path d="M8 6l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                        </svg>
                     </a>
 
                     <button hx-post="/api/auth/logout"
                             hx-disabled-elt="this"
-                            class="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-medium text-rose-700 transition hover:bg-[rgba(134,78,86,0.18)] disabled:cursor-not-allowed disabled:opacity-70">
+                            class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-[rgba(134,78,86,0.14)] disabled:cursor-not-allowed disabled:opacity-70"
+                            style="color:var(--hm-danger-text)">
                         <span>Sign Out</span>
-                        <svg class="h-4 w-4 text-rose-300" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                            <path d="M12 6l-4 4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
-                        </svg>
                     </button>
                 </div>
             </div>

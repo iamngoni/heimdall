@@ -12,56 +12,52 @@
      data-scan-live="{{ 'true' if scan.is_live else 'false' }}"
      data-live-url="/api/scans/{{ scan.id }}/live"
      data-stream-url="/api/scans/{{ scan.id }}/progress/stream"
-     class="min-h-screen bg-[#f5f7fa] text-slate-900">
+     class="min-h-screen"
+     style="color:var(--hm-text-900)">
     <div class="flex min-h-screen">
         {% include "partials/app_sidebar.html" %}
 
         <div class="flex min-h-screen min-w-0 flex-1 flex-col">
             {% include "partials/app_topbar.html" %}
 
-            <main class="flex-1 overflow-hidden px-7 py-6">
-                <div class="space-y-6">
+            <main class="flex-1 overflow-hidden px-8 py-8">
+                <div class="space-y-8">
                     <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div class="max-w-4xl">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">
-                                    {{ repo.name }}
-                                </span>
-                                <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                                    {{ scan.scan_type|replace("_", " ") }}
-                                </span>
-                            </div>
-
-                            <h1 class="mt-3 text-2xl font-bold tracking-tight text-slate-900">Scan Details</h1>
-                            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
-                                <span class="font-mono text-slate-600">{{ scan.id }}</span>
+                            <p class="hm-oatmeal-kicker">Scan / {{ repo.name }}</p>
+                            <h1 class="mt-2 text-2xl font-semibold tracking-tight" style="color:var(--hm-text-900)">Scan Details</h1>
+                            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" style="color:var(--hm-text-500)">
+                                <span class="font-mono" style="color:var(--hm-text-700)">{{ scan.id }}</span>
                                 <span>Updated {{ scan.updated_at }}</span>
+                            </div>
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                <span class="hm-oatmeal-chip capitalize">{{ scan.scan_type|replace("_", " ") }}</span>
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2">
                             <span id="scan-status-pill"
                                   data-status="{{ scan.status }}"
-                                  class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold
-                                      {{ 'bg-emerald-50 text-emerald-700' if scan.status == 'completed' else
-                                         'bg-amber-50 text-amber-700' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'verifying', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
-                                         'bg-rose-50 text-rose-700' if scan.status == 'failed' else
-                                         'bg-orange-50 text-orange-700' if scan.status == 'cancelled' else
-                                         'bg-slate-100 text-slate-700' }}">
+                                  class="hm-oatmeal-status
+                                      {{ 'hm-oatmeal-status-positive' if scan.status == 'completed' else
+                                         'hm-oatmeal-status-warning' if scan.status in ['queued', 'ingesting', 'modeling', 'hunting', 'verifying', 'validating', 'reporting', 'static_analysis', 'taint_analyzing', 'config_scanning'] else
+                                         'hm-oatmeal-status-danger' if scan.status == 'failed' else
+                                         'hm-oatmeal-status-neutral' }}">
                                 {{ scan.status_label }}
                             </span>
                             {% if scan.is_live %}
                             <button id="cancel-scan-btn"
                                     onclick="HeimdallScanPage.cancelScan('{{ scan.id }}', this)"
-                                    class="inline-flex items-center rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50">
+                                    class="hm-oatmeal-ghost inline-flex items-center px-3 py-1.5 text-xs font-semibold transition"
+                                    style="color:var(--hm-danger-text); border-color:var(--hm-danger-border)">
                                 Cancel Scan
                             </button>
                             {% endif %}
                             {% if scan.status == "failed" %}
                             <button id="retry-scan-btn"
                                     onclick="HeimdallScanPage.retryScan('{{ repo.id }}', this)"
-                                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
-                                <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    class="hm-oatmeal-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition">
+                                <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
                                 </svg>
                                 Retry
@@ -71,27 +67,19 @@
                     </div>
 
                     <section id="scan-live-panel"
-                             class="overflow-hidden rounded-2xl border px-5 py-4
-                                {{ 'border-blue-200 bg-blue-50' if scan.is_live else
-                                   'border-emerald-200 bg-emerald-50' if scan.status == 'completed' else
-                                   'border-rose-200 bg-rose-50' if scan.status == 'failed' else
-                                   'border-slate-200 bg-slate-100' }}">
+                             class="border-t border-b hm-oatmeal-rule py-5">
                         <div class="flex items-start gap-3">
                             <div id="scan-live-indicator"
-                                 class="mt-1 h-2.5 w-2.5 rounded-full
-                                    {{ 'animate-pulse bg-blue-500' if scan.is_live else
-                                       'bg-emerald-500' if scan.status == 'completed' else
-                                       'bg-rose-500' if scan.status == 'failed' else
-                                       'bg-slate-400' }}">
+                                 class="mt-1 h-2 w-2 rounded-full
+                                    {{ 'animate-heimdall-pulse' if scan.is_live else '' }}"
+                                 style="background:{{ 'var(--hm-warning-text)' if scan.is_live else
+                                                     'var(--hm-positive-text)' if scan.status == 'completed' else
+                                                     'var(--hm-danger-text)' if scan.status == 'failed' else
+                                                     'var(--hm-text-500)' }}">
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                    <p id="scan-live-title"
-                                       class="text-sm font-semibold
-                                          {{ 'text-blue-900' if scan.is_live else
-                                             'text-emerald-900' if scan.status == 'completed' else
-                                             'text-rose-900' if scan.status == 'failed' else
-                                             'text-slate-900' }}">
+                                    <p id="scan-live-title" class="text-sm font-semibold" style="color:var(--hm-text-900)">
                                         {% if scan.is_live %}
                                         {{ current_task.title or "Live execution" }}
                                         {% elif scan.status == "completed" %}
@@ -102,22 +90,13 @@
                                         Scan activity snapshot
                                         {% endif %}
                                     </p>
-                                    <p id="scan-live-meta"
-                                       class="text-xs
-                                          {{ 'text-blue-600' if scan.is_live else
-                                             'text-emerald-600' if scan.status == 'completed' else
-                                             'text-rose-600' if scan.status == 'failed' else
-                                             'text-slate-500' }}">
+                                    <p id="scan-live-meta" class="text-xs" style="color:var(--hm-text-500)">
                                         Last updated {{ scan.updated_at }}
                                     </p>
                                 </div>
                                 <p id="scan-live-message"
-                                   style="word-break:break-all;overflow-wrap:anywhere"
-                                   class="mt-1 text-sm
-                                      {{ 'text-blue-700' if scan.is_live else
-                                         'text-emerald-700' if scan.status == 'completed' else
-                                         'text-rose-700' if scan.status == 'failed' else
-                                         'text-slate-600' }}">
+                                   style="word-break:break-all;overflow-wrap:anywhere;color:var(--hm-text-600)"
+                                   class="mt-1 text-sm">
                                     {% if scan.is_live %}
                                     {{ current_task.detail or "Reconciling persisted execution telemetry with the live worker stream." }}
                                     {% elif scan.status == "completed" %}
@@ -132,50 +111,82 @@
                         </div>
                     </section>
 
-                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        <div class="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-rose-700">Critical</p>
-                            <p id="scan-count-critical" class="mt-3 text-3xl font-bold tracking-tight text-rose-700">{{ scan.critical_count }}</p>
-                        </div>
-                        <div class="rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700">High</p>
-                            <p id="scan-count-high" class="mt-3 text-3xl font-bold tracking-tight text-orange-700">{{ scan.high_count }}</p>
-                        </div>
-                        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Medium</p>
-                            <p id="scan-count-medium" class="mt-3 text-3xl font-bold tracking-tight text-amber-700">{{ scan.medium_count }}</p>
-                        </div>
-                        <div class="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
-                            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Low</p>
-                            <p id="scan-count-low" class="mt-3 text-3xl font-bold tracking-tight text-blue-700">{{ scan.low_count }}</p>
-                        </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <a href="/scans/{{ scan.id }}/findings"
+                           class="hm-oatmeal-ghost inline-flex min-w-0 flex-1 items-center justify-between gap-2 px-4 py-2.5 text-sm font-semibold transition">
+                            <span>Findings</span>
+                            <span id="scan-total-findings-inline" class="hm-oatmeal-number">{{ scan.finding_count }}</span>
+                        </a>
+                        <a href="/scans/{{ scan.id }}/threat-model"
+                           class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
+                            Threat Model
+                        </a>
                     </div>
 
-                    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_360px]">
-                        <div class="space-y-6">
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div class="flex items-center justify-between gap-4">
+                    <section>
+                        <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
+                            <p class="hm-oatmeal-kicker">01 / Severity</p>
+                            <span class="hm-oatmeal-number">04 tiers</span>
+                        </div>
+
+                        <div class="grid gap-px mt-px sm:grid-cols-2 xl:grid-cols-4" style="background:var(--hm-border)">
+                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker" style="color:var(--hm-danger-text)">Critical</p>
+                                    <span class="hm-oatmeal-number">01</span>
+                                </div>
+                                <p id="scan-count-critical" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-danger-text)">{{ scan.critical_count }}</p>
+                            </div>
+                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker" style="color:var(--hm-danger-text)">High</p>
+                                    <span class="hm-oatmeal-number">02</span>
+                                </div>
+                                <p id="scan-count-high" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-danger-text)">{{ scan.high_count }}</p>
+                            </div>
+                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker" style="color:var(--hm-warning-text)">Medium</p>
+                                    <span class="hm-oatmeal-number">03</span>
+                                </div>
+                                <p id="scan-count-medium" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-warning-text)">{{ scan.medium_count }}</p>
+                            </div>
+                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker">Low</p>
+                                    <span class="hm-oatmeal-number">04</span>
+                                </div>
+                                <p id="scan-count-low" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-text-700)">{{ scan.low_count }}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="grid gap-8 xl:grid-cols-[minmax(0,1.45fr)_360px]">
+                        <div class="space-y-8">
+                            <section>
+                                <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
-                                        <h2 class="text-sm font-semibold text-slate-900">Pipeline Stages</h2>
-                                        <p class="mt-1 text-sm text-slate-500">Canonical scan stages with the latest persisted status for each stage.</p>
+                                        <p class="hm-oatmeal-kicker">02 / Pipeline Stages</p>
+                                        <h2 class="mt-2 text-sm font-semibold" style="color:var(--hm-text-900)">Execution Graph</h2>
                                     </div>
-                                    <p class="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">Execution graph</p>
+                                    <span class="hm-oatmeal-number">{{ stages|length if stages else '00' }} stages</span>
                                 </div>
 
-                                <div id="scan-stage-list" class="mt-4 space-y-3">
+                                <div id="scan-stage-list" class="mt-1">
                                     {% for stage in stages %}
                                     <div data-stage-row="{{ stage.stage }}"
                                          data-status="{{ stage.status }}"
-                                         class="overflow-hidden rounded-xl border border-slate-200 px-4 py-4">
+                                         class="border-b hm-oatmeal-rule px-3 py-4">
                                         <div class="flex items-start justify-between gap-4">
                                             <div class="flex min-w-0 items-start gap-3">
-                                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full
-                                                    {{ 'bg-emerald-50 text-emerald-600' if stage.status == 'completed' else
-                                                       'bg-blue-50 text-blue-600' if stage.status == 'running' else
-                                                       'bg-rose-50 text-rose-600' if stage.status == 'failed' else
-                                                       'bg-slate-100 text-slate-400' }}">
+                                                <span class="hm-oatmeal-number shrink-0 pt-0.5">{{ "%02d" | format(loop.index) }}</span>
+                                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full hm-oatmeal-monogram"
+                                                      style="color:{{ 'var(--hm-positive-text)' if stage.status == 'completed' else
+                                                                     'var(--hm-warning-text)' if stage.status == 'running' else
+                                                                     'var(--hm-danger-text)' if stage.status == 'failed' else
+                                                                     'var(--hm-text-500)' }}">
                                                     {% if stage.status == "completed" %}
-                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
                                                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5l3 3 7-7" />
                                                     </svg>
                                                     {% elif stage.status == "running" %}
@@ -184,11 +195,11 @@
                                                         <path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 018.66 5H17a1 1 0 000 2h6a1 1 0 001-1V2a1 1 0 10-2 0v2.05A12 12 0 0012 0v2z"></path>
                                                     </svg>
                                                     {% elif stage.status == "failed" %}
-                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
                                                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" />
                                                     </svg>
                                                     {% else %}
-                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                                                    <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
                                                         <circle cx="10" cy="10" r="6"></circle>
                                                     </svg>
                                                     {% endif %}
@@ -196,26 +207,26 @@
 
                                                 <div class="min-w-0">
                                                     <div class="flex flex-wrap items-center gap-2">
-                                                        <p class="text-sm font-semibold text-slate-900">{{ stage.label }}</p>
+                                                        <p class="text-sm font-semibold" style="color:var(--hm-text-900)">{{ stage.label }}</p>
                                                         {% if stage.attempt > 1 %}
-                                                        <span class="text-xs font-medium text-slate-400">Attempt {{ stage.attempt }}</span>
+                                                        <span class="text-xs font-medium" style="color:var(--hm-text-500)">Attempt {{ stage.attempt }}</span>
                                                         {% endif %}
                                                     </div>
-                                                    <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{{ stage.status|replace("_", " ") }}</p>
+                                                    <p class="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">{{ stage.status|replace("_", " ") }}</p>
                                                     {% if stage.timestamp %}
-                                                    <p class="mt-2 text-sm text-slate-500">{{ stage.timestamp }}</p>
+                                                    <p class="mt-2 text-sm" style="color:var(--hm-text-500)">{{ stage.timestamp }}</p>
                                                     {% endif %}
                                                     {% if stage.error %}
-                                                    <p class="mt-2 text-sm text-rose-600" style="word-break:break-all;overflow-wrap:anywhere">{{ stage.error }}</p>
+                                                    <p class="mt-2 text-sm" style="word-break:break-all;overflow-wrap:anywhere;color:var(--hm-danger-text)">{{ stage.error }}</p>
                                                     {% endif %}
                                                 </div>
                                             </div>
 
-                                            <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold
-                                                {{ 'bg-emerald-50 text-emerald-700' if stage.status == 'completed' else
-                                                   'bg-blue-50 text-blue-700' if stage.status == 'running' else
-                                                   'bg-rose-50 text-rose-700' if stage.status == 'failed' else
-                                                   'bg-slate-100 text-slate-700' }}">
+                                            <span class="hm-oatmeal-status
+                                                {{ 'hm-oatmeal-status-positive' if stage.status == 'completed' else
+                                                   'hm-oatmeal-status-warning' if stage.status == 'running' else
+                                                   'hm-oatmeal-status-danger' if stage.status == 'failed' else
+                                                   'hm-oatmeal-status-neutral' }}">
                                                 {{ stage.status|replace("_", " ")|title }}
                                             </span>
                                         </div>
@@ -224,12 +235,11 @@
                                 </div>
                             </section>
 
-                            <section class="rounded-2xl border p-5 shadow-sm"
-                                     style="border-color:var(--hm-border);background:var(--hm-surface)">
-                                <div class="flex items-center justify-between gap-4">
+                            <section>
+                                <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
-                                        <h2 class="text-sm font-semibold" style="color:var(--hm-text-900)">Execution Log</h2>
-                                        <p id="scan-activity-state" class="mt-1 text-sm" style="color:var(--hm-text-600)">
+                                        <p class="hm-oatmeal-kicker">03 / Execution Log</p>
+                                        <p id="scan-activity-state" class="mt-2 text-sm" style="color:var(--hm-text-600)">
                                             {% if scan.is_live %}
                                             Reconciling persisted execution telemetry and live worker events.
                                             {% else %}
@@ -237,21 +247,19 @@
                                             {% endif %}
                                         </p>
                                     </div>
-                                    <span class="rounded-full px-2.5 py-1 text-xs font-semibold"
-                                          style="border:1px solid var(--hm-border);background:var(--hm-surface-deep);color:var(--hm-text-600)">Persisted events</span>
+                                    <span class="hm-oatmeal-chip">Persisted events</span>
                                 </div>
 
-                                <ol id="scan-activity-feed" class="mt-4 space-y-3">
+                                <ol id="scan-activity-feed" class="mt-1">
                                     {% for activity in activities %}
                                     <li data-activity-key="{{ activity.key }}"
-                                        class="rounded-xl border px-4 py-3"
-                                        style="border-color:var(--hm-border);background:var(--hm-surface-muted)">
+                                        class="border-b hm-oatmeal-rule px-3 py-3.5">
                                         <div class="flex items-start gap-3">
-                                            <span class="mt-1 h-2.5 w-2.5 rounded-full
-                                                {{ 'bg-emerald-500' if activity.tone == 'success' else
-                                                   'bg-amber-500' if activity.tone == 'warning' else
-                                                   'bg-blue-500' if activity.tone == 'active' else
-                                                   'bg-slate-400' }}">
+                                            <span class="hm-oatmeal-dot mt-1.5
+                                                {{ 'hm-oatmeal-dot-positive' if activity.tone == 'success' else
+                                                   'hm-oatmeal-dot-warning' if activity.tone == 'warning' else
+                                                   'hm-oatmeal-dot-danger' if activity.tone == 'error' else
+                                                   'hm-oatmeal-dot-neutral' }}">
                                             </span>
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
@@ -267,108 +275,121 @@
                             </section>
                         </div>
 
-                        <aside class="space-y-6">
-                            <section id="scan-current-task" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div class="flex items-start justify-between gap-3">
+                        <aside class="space-y-8">
+                            <section id="scan-current-task">
+                                <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
-                                        <h2 class="text-sm font-semibold text-slate-900">Current Operation</h2>
-                                        <p class="mt-1 text-sm text-slate-500">The most recent running task inside the pipeline.</p>
+                                        <p class="hm-oatmeal-kicker">Current Operation</p>
+                                        <h2 class="mt-2 text-sm font-semibold" style="color:var(--hm-text-900)">Running Task</h2>
                                     </div>
                                     {% if current_task.stage %}
-                                    <span id="scan-current-task-stage"
-                                          class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                    <span id="scan-current-task-stage" class="hm-oatmeal-chip capitalize">
                                         {{ current_task.stage|replace("_", " ") }}
                                     </span>
                                     {% else %}
-                                    <span id="scan-current-task-stage"
-                                          class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                    <span id="scan-current-task-stage" class="hm-oatmeal-chip">
                                         Idle
                                     </span>
                                     {% endif %}
                                 </div>
 
                                 <div class="mt-4">
-                                    <p id="scan-current-task-title" class="text-base font-semibold text-slate-900">
+                                    <p id="scan-current-task-title" class="text-base font-semibold" style="color:var(--hm-text-900)">
                                         {{ current_task.title }}
                                     </p>
-                                    <p id="scan-current-task-detail" class="mt-2 text-sm leading-6 text-slate-600">
+                                    <p id="scan-current-task-detail" class="mt-2 text-sm leading-6" style="color:var(--hm-text-600)">
                                         {{ current_task.detail }}
                                     </p>
                                 </div>
 
                                 <div id="scan-current-task-progress-wrap"
                                      class="mt-4 {% if current_task.progress_pct is none %}hidden{% endif %}">
-                                    <div class="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                        <span>Progress</span>
-                                        <span id="scan-current-task-progress-label">{{ current_task.progress_pct }}%</span>
+                                    <div class="flex items-center justify-between">
+                                        <span class="hm-oatmeal-kicker">Progress</span>
+                                        <span id="scan-current-task-progress-label" class="hm-oatmeal-number">{{ current_task.progress_pct }}%</span>
                                     </div>
-                                    <div class="mt-2 h-2 rounded-full bg-slate-100">
+                                    <div class="mt-2 h-1 rounded-full" style="background:var(--hm-surface-deep)">
                                         <div id="scan-current-task-progress-bar"
-                                             class="h-2 rounded-full bg-blue-500 transition-all duration-300"
-                                             style="width: {{ current_task.progress_pct or 0 }}%"></div>
+                                             class="h-1 rounded-full transition-all duration-300"
+                                             style="width: {{ current_task.progress_pct or 0 }}%; background:var(--hm-text-700)"></div>
                                     </div>
                                 </div>
                             </section>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div>
-                                    <h2 class="text-sm font-semibold text-slate-900">Agent Trace</h2>
-                                    <p class="mt-1 text-sm text-slate-500">Recent tool calls and sub-operations recorded during the run.</p>
+                            <section>
+                                <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
+                                    <div>
+                                        <p class="hm-oatmeal-kicker">Agent Trace</p>
+                                        <h2 class="mt-2 text-sm font-semibold" style="color:var(--hm-text-900)">Tool Calls</h2>
+                                    </div>
                                 </div>
 
-                                <div id="scan-agent-calls" class="mt-4 space-y-3">
+                                <div id="scan-agent-calls" class="mt-1">
                                     {% if agent_calls|length > 0 %}
                                     {% for call in agent_calls %}
-                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                    <div class="border-b hm-oatmeal-rule px-3 py-3">
                                         <div class="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p class="text-sm font-semibold text-slate-900">{{ call.label }}</p>
-                                                <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{{ call.stage|replace("_", " ") }}</p>
+                                            <div class="min-w-0">
+                                                <p class="truncate text-sm font-semibold" style="color:var(--hm-text-900)">{{ call.label }}</p>
+                                                <p class="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">{{ call.stage|replace("_", " ") }}</p>
                                             </div>
-                                            <span class="text-xs font-semibold text-slate-500">
+                                            <span class="hm-oatmeal-number shrink-0">
                                                 {% if call.duration_ms %}{{ call.duration_ms }} ms{% else %}Pending{% endif %}
                                             </span>
                                         </div>
                                         {% if call.error %}
-                                        <p class="mt-2 text-sm text-rose-600">{{ call.error }}</p>
+                                        <p class="mt-2 text-sm" style="color:var(--hm-danger-text)">{{ call.error }}</p>
                                         {% endif %}
                                     </div>
                                     {% endfor %}
                                     {% else %}
-                                    <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
-                                        <p class="font-medium text-slate-600">No agent operations yet</p>
-                                        <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
+                                    <div class="px-3 py-8 text-center text-sm">
+                                        <p class="font-medium" style="color:var(--hm-text-600)">No agent operations yet</p>
+                                        <p class="mt-1" style="color:var(--hm-text-500)">AI calls will appear here as each pipeline stage runs.</p>
                                     </div>
                                     {% endif %}
                                 </div>
                             </section>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div>
-                                    <h2 class="text-sm font-semibold text-slate-900">Next Steps</h2>
-                                    <p class="mt-1 text-sm text-slate-500">Use the outputs from this run to review, remediate, and escalate issues.</p>
+                            <section>
+                                <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
+                                    <div>
+                                        <p class="hm-oatmeal-kicker">Next Steps</p>
+                                        <h2 class="mt-2 text-sm font-semibold" style="color:var(--hm-text-900)">Continue Review</h2>
+                                    </div>
                                 </div>
 
-                                <div class="mt-4 space-y-3">
+                                <div class="mt-1">
                                     <a href="/scans/{{ scan.id }}/findings"
-                                       class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50">
-                                        <div>
-                                            <p class="text-sm font-semibold text-slate-900">Findings</p>
-                                            <p class="mt-1 text-sm text-slate-500">Inspect vulnerabilities, severity, and triage state.</p>
+                                       class="hm-oatmeal-row flex items-center justify-between gap-3 border-b hm-oatmeal-rule px-3 py-3.5">
+                                        <div class="flex min-w-0 items-center gap-3">
+                                            <span class="hm-oatmeal-number shrink-0">01</span>
+                                            <div class="min-w-0">
+                                                <p class="truncate text-sm font-semibold" style="color:var(--hm-text-900)">Findings</p>
+                                                <p class="mt-0.5 truncate text-xs" style="color:var(--hm-text-500)">Inspect vulnerabilities, severity, and triage state.</p>
+                                            </div>
                                         </div>
-                                        <span class="text-sm font-semibold text-blue-600">Open</span>
+                                        <span class="hm-oatmeal-link text-sm font-medium">Open</span>
                                     </a>
                                     <a href="/scans/{{ scan.id }}/threat-model"
-                                       class="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50">
-                                        <div>
-                                            <p class="text-sm font-semibold text-slate-900">Threat Model</p>
-                                            <p class="mt-1 text-sm text-slate-500">Review the synthesized architecture and attack-path context.</p>
+                                       class="hm-oatmeal-row flex items-center justify-between gap-3 border-b hm-oatmeal-rule px-3 py-3.5">
+                                        <div class="flex min-w-0 items-center gap-3">
+                                            <span class="hm-oatmeal-number shrink-0">02</span>
+                                            <div class="min-w-0">
+                                                <p class="truncate text-sm font-semibold" style="color:var(--hm-text-900)">Threat Model</p>
+                                                <p class="mt-0.5 truncate text-xs" style="color:var(--hm-text-500)">Review the synthesized architecture and attack paths.</p>
+                                            </div>
                                         </div>
-                                        <span class="text-sm font-semibold text-blue-600">Open</span>
+                                        <span class="hm-oatmeal-link text-sm font-medium">Open</span>
                                     </a>
-                                    <div class="rounded-xl bg-slate-50 px-4 py-4">
-                                        <p class="text-sm font-semibold text-slate-900"><span id="scan-total-findings">{{ scan.finding_count }}</span> total findings</p>
-                                        <p class="mt-1 text-sm text-slate-500">Total issues discovered in this run across all severities.</p>
+                                    <div class="flex items-center justify-between border-b hm-oatmeal-rule px-3 py-3.5">
+                                        <div class="flex min-w-0 items-center gap-3">
+                                            <span class="hm-oatmeal-number shrink-0">03</span>
+                                            <div class="min-w-0">
+                                                <p class="truncate text-sm font-semibold" style="color:var(--hm-text-900)"><span id="scan-total-findings">{{ scan.finding_count }}</span> total findings</p>
+                                                <p class="mt-0.5 truncate text-xs" style="color:var(--hm-text-500)">Across all severities in this run.</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </section>
@@ -621,6 +642,11 @@ window.HeimdallScanPage = {
             .replaceAll("'", '&#39;');
     },
 
+    padIndex(index) {
+        const value = Number(index) || 0;
+        return value < 10 ? '0' + value : String(value);
+    },
+
     formatTimestamp(value) {
         if (!value) {
             return 'Just now';
@@ -643,9 +669,9 @@ window.HeimdallScanPage = {
     statusBadgeClass(status) {
         switch (status) {
             case 'completed':
-                return 'bg-emerald-50 text-emerald-700';
+                return 'hm-oatmeal-status hm-oatmeal-status-positive';
             case 'failed':
-                return 'bg-rose-50 text-rose-700';
+                return 'hm-oatmeal-status hm-oatmeal-status-danger';
             case 'queued':
             case 'ingesting':
             case 'modeling':
@@ -653,49 +679,52 @@ window.HeimdallScanPage = {
             case 'validating':
             case 'reporting':
             case 'static_analysis':
-                return 'bg-amber-50 text-amber-700';
+            case 'taint_analyzing':
+            case 'config_scanning':
+            case 'verifying':
+                return 'hm-oatmeal-status hm-oatmeal-status-warning';
             default:
-                return 'bg-slate-100 text-slate-700';
+                return 'hm-oatmeal-status hm-oatmeal-status-neutral';
         }
     },
 
     stageBadgeClass(status) {
         switch (status) {
             case 'completed':
-                return 'bg-emerald-50 text-emerald-700';
+                return 'hm-oatmeal-status hm-oatmeal-status-positive';
             case 'running':
-                return 'bg-blue-50 text-blue-700';
+                return 'hm-oatmeal-status hm-oatmeal-status-warning';
             case 'failed':
-                return 'bg-rose-50 text-rose-700';
+                return 'hm-oatmeal-status hm-oatmeal-status-danger';
             default:
-                return 'bg-slate-100 text-slate-700';
+                return 'hm-oatmeal-status hm-oatmeal-status-neutral';
         }
     },
 
-    stageIconClass(status) {
+    stageIconColor(status) {
         switch (status) {
             case 'completed':
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600';
+                return 'var(--hm-positive-text)';
             case 'running':
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600';
+                return 'var(--hm-warning-text)';
             case 'failed':
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600';
+                return 'var(--hm-danger-text)';
             default:
-                return 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400';
+                return 'var(--hm-text-500)';
         }
     },
 
     stageIcon(status) {
         if (status === 'completed') {
-            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5l3 3 7-7" /></svg>';
+            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10.5l3 3 7-7" /></svg>';
         }
         if (status === 'running') {
             return '<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-90" fill="currentColor" d="M12 2a10 10 0 018.66 5H17a1 1 0 000 2h6a1 1 0 001-1V2a1 1 0 10-2 0v2.05A12 12 0 0012 0v2z"></path></svg>';
         }
         if (status === 'failed') {
-            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" /></svg>';
+            return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l8 8m0-8l-8 8" /></svg>';
         }
-        return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="6"></circle></svg>';
+        return '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="6"></circle></svg>';
     },
 
     activityTone(item) {
@@ -717,21 +746,20 @@ window.HeimdallScanPage = {
     toneDotClass(tone) {
         switch (tone) {
             case 'success':
-                return 'bg-emerald-500';
+                return 'hm-oatmeal-dot hm-oatmeal-dot-positive';
             case 'warning':
-                return 'bg-amber-500';
-            case 'error':
-                return 'bg-rose-500';
             case 'active':
-                return 'bg-blue-500';
+                return 'hm-oatmeal-dot hm-oatmeal-dot-warning';
+            case 'error':
+                return 'hm-oatmeal-dot hm-oatmeal-dot-danger';
             default:
-                return 'bg-slate-400';
+                return 'hm-oatmeal-dot hm-oatmeal-dot-neutral';
         }
     },
 
     setStatus(status, timestamp) {
         this.statusPill.dataset.status = status;
-        this.statusPill.className = `inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${this.statusBadgeClass(status)}`;
+        this.statusPill.className = this.statusBadgeClass(status);
         this.statusPill.textContent = this.humanize(status);
 
         if (timestamp) {
@@ -759,64 +787,40 @@ window.HeimdallScanPage = {
 
     setLivePanel(scan, currentTask) {
         const isLive = Boolean(scan.is_live);
-        let panelClass = 'rounded-2xl border px-5 py-4 ';
-        let indicatorClass = 'mt-1 h-2.5 w-2.5 rounded-full ';
-        let titleClass = 'text-sm font-semibold ';
-        let messageClass = 'mt-1 text-sm ';
-        let metaClass = 'text-xs ';
+        let indicatorColor = 'var(--hm-text-500)';
+        let indicatorPulse = '';
 
         if (isLive) {
-            panelClass += 'border-blue-200 bg-blue-50';
-            indicatorClass += 'animate-pulse bg-blue-500';
-            titleClass += 'text-blue-900';
-            messageClass += 'text-blue-700';
-            metaClass += 'text-blue-600';
+            indicatorColor = 'var(--hm-warning-text)';
+            indicatorPulse = 'animate-heimdall-pulse';
             this.liveTitle.textContent = currentTask.title || 'Live execution';
             this.liveMessage.textContent = currentTask.detail || 'Reconciling persisted execution telemetry with the live worker stream.';
             this.activityState.textContent = 'Reconciling persisted execution telemetry and live worker events.';
         } else if (scan.status === 'completed') {
-            panelClass += 'border-emerald-200 bg-emerald-50';
-            indicatorClass += 'bg-emerald-500';
-            titleClass += 'text-emerald-900';
-            messageClass += 'text-emerald-700';
-            metaClass += 'text-emerald-600';
+            indicatorColor = 'var(--hm-positive-text)';
             this.liveTitle.textContent = 'Scan completed';
             this.liveMessage.textContent = `This run finished with ${this.counts.total.textContent || 0} findings.`;
             this.activityState.textContent = 'Recorded execution history for this run.';
         } else if (scan.status === 'failed') {
-            panelClass += 'border-rose-200 bg-rose-50';
-            indicatorClass += 'bg-rose-500';
-            titleClass += 'text-rose-900';
-            messageClass += 'text-rose-700';
-            metaClass += 'text-rose-600';
+            indicatorColor = 'var(--hm-danger-text)';
             this.liveTitle.textContent = 'Scan failed';
             this.liveMessage.textContent = scan.error_message || currentTask.detail || 'The scan worker reported a failure.';
             this.activityState.textContent = 'Run finished with an error. Review the execution log for the exact failure point.';
         } else {
-            panelClass += 'border-slate-200 bg-slate-100';
-            indicatorClass += 'bg-slate-400';
-            titleClass += 'text-slate-900';
-            messageClass += 'text-slate-600';
-            metaClass += 'text-slate-500';
             this.liveTitle.textContent = 'Scan activity snapshot';
             this.liveMessage.textContent = currentTask.detail || 'This scan is no longer active.';
             this.activityState.textContent = 'Recorded execution history for this run.';
         }
 
-        this.livePanel.className = panelClass;
-        this.liveIndicator.className = indicatorClass;
-        this.liveTitle.className = titleClass;
-        this.liveMessage.className = messageClass;
-        this.liveMeta.className = metaClass;
+        this.liveIndicator.className = `mt-1 h-2 w-2 rounded-full ${indicatorPulse}`;
+        this.liveIndicator.style.background = indicatorColor;
         this.liveMeta.textContent = `Last updated ${this.formatTimestamp(scan.updated_at)}`;
     },
 
     renderCurrentTask(task) {
         const stageLabel = task.stage ? this.humanize(task.stage) : 'Idle';
         this.currentTaskStage.textContent = stageLabel;
-        this.currentTaskStage.className = task.stage
-            ? 'inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700'
-            : 'inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600';
+        this.currentTaskStage.className = 'hm-oatmeal-chip capitalize';
         this.currentTaskTitle.textContent = task.title || 'Waiting for activity';
         this.currentTaskDetail.textContent = task.detail || 'Pipeline stages will stream progress here as they execute.';
 
@@ -832,32 +836,34 @@ window.HeimdallScanPage = {
     },
 
     renderStages(stages) {
-        this.stageList.innerHTML = stages.map((stage) => {
+        this.stageList.innerHTML = stages.map((stage, index) => {
             const attempt = stage.attempt > 1
-                ? `<span class="text-xs font-medium text-slate-400">Attempt ${this.escapeHtml(stage.attempt)}</span>`
+                ? `<span class="text-xs font-medium" style="color:var(--hm-text-500)">Attempt ${this.escapeHtml(stage.attempt)}</span>`
                 : '';
             const timestamp = stage.timestamp
-                ? `<p class="mt-2 text-sm text-slate-500">${this.escapeHtml(this.formatTimestamp(stage.timestamp))}</p>`
+                ? `<p class="mt-2 text-sm" style="color:var(--hm-text-500)">${this.escapeHtml(this.formatTimestamp(stage.timestamp))}</p>`
                 : '';
             const error = stage.error
-                ? `<p class="mt-2 text-sm text-rose-600" style="word-break:break-all;overflow-wrap:anywhere">${this.escapeHtml(stage.error)}</p>`
+                ? `<p class="mt-2 text-sm" style="word-break:break-all;overflow-wrap:anywhere;color:var(--hm-danger-text)">${this.escapeHtml(stage.error)}</p>`
                 : '';
+            const iconColor = this.stageIconColor(stage.status);
             return `
-                <div data-stage-row="${this.escapeHtml(stage.stage)}" data-status="${this.escapeHtml(stage.status)}" class="overflow-hidden rounded-xl border border-slate-200 px-4 py-4">
+                <div data-stage-row="${this.escapeHtml(stage.stage)}" data-status="${this.escapeHtml(stage.status)}" class="border-b hm-oatmeal-rule px-3 py-4">
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex min-w-0 items-start gap-3">
-                            <span class="${this.stageIconClass(stage.status)}">${this.stageIcon(stage.status)}</span>
+                            <span class="hm-oatmeal-number shrink-0 pt-0.5">${this.padIndex(index + 1)}</span>
+                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full hm-oatmeal-monogram" style="color:${iconColor}">${this.stageIcon(stage.status)}</span>
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(stage.label || this.humanize(stage.stage))}</p>
+                                    <p class="text-sm font-semibold" style="color:var(--hm-text-900)">${this.escapeHtml(stage.label || this.humanize(stage.stage))}</p>
                                     ${attempt}
                                 </div>
-                                <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">${this.escapeHtml(this.humanize(stage.status))}</p>
+                                <p class="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">${this.escapeHtml(this.humanize(stage.status))}</p>
                                 ${timestamp}
                                 ${error}
                             </div>
                         </div>
-                        <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${this.stageBadgeClass(stage.status)}">
+                        <span class="${this.stageBadgeClass(stage.status)}">
                             ${this.escapeHtml(this.humanize(stage.status))}
                         </span>
                     </div>
@@ -869,8 +875,7 @@ window.HeimdallScanPage = {
     renderActivity(activity) {
         if (!activity.length) {
             this.activityFeed.innerHTML = `
-                <li class="rounded-xl border border-dashed px-4 py-6 text-center text-sm"
-                    style="border-color:var(--hm-border);background:var(--hm-surface-muted)">
+                <li class="px-3 py-8 text-center text-sm">
                     <p class="font-medium" style="color:var(--hm-text-600)">No events yet</p>
                     <p class="mt-1" style="color:var(--hm-text-500)">Execution timeline populates as stages complete.</p>
                 </li>
@@ -882,10 +887,9 @@ window.HeimdallScanPage = {
             const tone = this.activityTone(item);
             const detail = item.detail || 'Execution activity recorded.';
             return `
-                <li data-activity-key="${this.escapeHtml(item.key || '')}" class="rounded-xl border px-4 py-3"
-                    style="border-color:var(--hm-border);background:var(--hm-surface-muted)">
+                <li data-activity-key="${this.escapeHtml(item.key || '')}" class="border-b hm-oatmeal-rule px-3 py-3.5">
                     <div class="flex items-start gap-3">
-                        <span class="mt-1 h-2.5 w-2.5 rounded-full ${this.toneDotClass(tone)}"></span>
+                        <span class="${this.toneDotClass(tone)} mt-1.5"></span>
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                                 <p class="text-sm font-semibold" style="color:var(--hm-text-900)">${this.escapeHtml(item.title || this.humanize(item.event_type || 'activity'))}</p>
@@ -902,9 +906,9 @@ window.HeimdallScanPage = {
     renderAgentCalls(calls) {
         if (!calls.length) {
             this.agentCalls.innerHTML = `
-                <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
-                    <p class="font-medium text-slate-600">No agent operations yet</p>
-                    <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
+                <div class="px-3 py-8 text-center text-sm">
+                    <p class="font-medium" style="color:var(--hm-text-600)">No agent operations yet</p>
+                    <p class="mt-1" style="color:var(--hm-text-500)">AI calls will appear here as each pipeline stage runs.</p>
                 </div>
             `;
             return;
@@ -915,16 +919,16 @@ window.HeimdallScanPage = {
                 ? `${call.duration_ms} ms`
                 : 'Pending';
             const error = call.error
-                ? `<p class="mt-2 text-sm text-rose-600">${this.escapeHtml(call.error)}</p>`
+                ? `<p class="mt-2 text-sm" style="color:var(--hm-danger-text)">${this.escapeHtml(call.error)}</p>`
                 : '';
             return `
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div class="border-b hm-oatmeal-rule px-3 py-3">
                     <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
-                            <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-semibold" style="color:var(--hm-text-900)">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
+                            <p class="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
                         </div>
-                        <span class="text-xs font-semibold text-slate-500">${this.escapeHtml(duration)}</span>
+                        <span class="hm-oatmeal-number shrink-0">${this.escapeHtml(duration)}</span>
                     </div>
                     ${error}
                 </div>

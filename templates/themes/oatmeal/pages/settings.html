@@ -27,13 +27,10 @@
                     <span style="color:var(--hm-text-400)">Settings</span>
                 </nav>
                 <button type="button"
-                        class="flex items-center gap-2 rounded-full px-2 py-1.5 transition"
-                        style="background:var(--hm-surface-muted);color:var(--hm-text-900)">
+                        class="flex items-center rounded-full p-0 transition hover:opacity-90"
+                        style="color:var(--hm-text-900)">
                     <span class="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold"
-                          style="background:var(--mist-100);color:var(--mist-950)">{{ user_initial | default('?') }}</span>
-                    <svg class="h-3.5 w-3.5" style="color:var(--hm-text-500)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6" />
-                    </svg>
+                          style="background:rgba(255,255,255,0.06);color:var(--hm-text-900)">{{ user_initial | default('?') }}</span>
                 </button>
             </div>
 

@@ -233,46 +233,46 @@ tbody tr {
 
     /* Shell & surfaces — all dark, elevation via mist-900/800 */
     --hm-shell-bg: #090b0c;
-    --hm-shell-alt: #0f1214;
-    --hm-surface: #161b1d;          /* primary card surface */
-    --hm-surface-strong: #1b2123;   /* slightly raised */
-    --hm-surface-muted: #0f1214;    /* slightly sunk */
-    --hm-surface-deep: #22292b;     /* deepest chip/pill background */
-    --hm-border: rgba(255, 255, 255, 0.06);
-    --hm-border-strong: rgba(255, 255, 255, 0.12);
+    --hm-shell-alt: #11171a;
+    --hm-surface: #191f22;          /* primary card surface */
+    --hm-surface-strong: #20272a;   /* slightly raised */
+    --hm-surface-muted: #11171a;    /* slightly sunk */
+    --hm-surface-deep: #283034;     /* deepest chip/pill background */
+    --hm-border: rgba(255, 255, 255, 0.05);
+    --hm-border-strong: rgba(255, 255, 255, 0.1);
 
     /* Sidebar — identical to shell, active via raised dark pill */
     --hm-sidebar-bg: #090b0c;
-    --hm-sidebar-active: rgba(255, 255, 255, 0.08);
-    --hm-sidebar-hover: rgba(255, 255, 255, 0.04);
+    --hm-sidebar-active: rgba(255, 255, 255, 0.06);
+    --hm-sidebar-hover: rgba(255, 255, 255, 0.03);
 
     /* Accent inverted — primary pill is LIGHT on dark */
-    --hm-accent: #f1f3f3;
-    --hm-accent-hover: #ffffff;
-    --hm-accent-strong: #f9fbfb;
-    --hm-accent-text: #090b0c;       /* text on accent pill */
-    --hm-accent-soft: rgba(255, 255, 255, 0.08);
+    --hm-accent: #d5dbde;
+    --hm-accent-hover: #e2e7ea;
+    --hm-accent-strong: #edf1f3;
+    --hm-accent-text: #0b1012;       /* text on accent pill */
+    --hm-accent-soft: rgba(255, 255, 255, 0.06);
     --hm-accent-shadow: rgba(0, 0, 0, 0.5);
 
     /* Text — light on dark */
-    --hm-text-900: #f9fbfb;
-    --hm-text-700: #e3e7e8;
-    --hm-text-600: #c2cbcd;
-    --hm-text-500: #9ca8ab;
-    --hm-text-400: #67787c;
+    --hm-text-900: #dde3e6;
+    --hm-text-700: #c3cfd3;
+    --hm-text-600: #a2afb4;
+    --hm-text-500: #7d8f95;
+    --hm-text-400: #5f7177;
 
     --hm-content-bg: #090b0c;
 
     /* Status colours — muted dark variants */
-    --hm-positive-bg: rgba(155, 195, 160, 0.10);
-    --hm-positive-border: rgba(155, 195, 160, 0.28);
-    --hm-positive-text: #b6d7b9;
-    --hm-warning-bg: rgba(221, 193, 125, 0.10);
-    --hm-warning-border: rgba(221, 193, 125, 0.28);
-    --hm-warning-text: #e6cc8e;
-    --hm-danger-bg: rgba(220, 143, 132, 0.10);
-    --hm-danger-border: rgba(220, 143, 132, 0.28);
-    --hm-danger-text: #e6a59a;
+    --hm-positive-bg: rgba(140, 173, 145, 0.12);
+    --hm-positive-border: rgba(140, 173, 145, 0.3);
+    --hm-positive-text: #afc8af;
+    --hm-warning-bg: rgba(193, 165, 110, 0.12);
+    --hm-warning-border: rgba(193, 165, 110, 0.3);
+    --hm-warning-text: #cab78f;
+    --hm-danger-bg: rgba(183, 125, 117, 0.12);
+    --hm-danger-border: rgba(183, 125, 117, 0.3);
+    --hm-danger-text: #dfb0a6;
 }
 
 [data-theme="oatmeal"] {
@@ -308,17 +308,17 @@ tbody tr {
 [data-theme="oatmeal"] select:focus,
 [data-theme="oatmeal"] textarea:focus {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.35);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.28);
 }
 
 [data-theme="oatmeal"] *:focus-visible {
-    outline: 2px solid rgba(255, 255, 255, 0.3);
+    outline: 2px solid rgba(255, 255, 255, 0.24);
     outline-offset: 2px;
 }
 
 [data-theme="oatmeal"] ::selection {
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.1);
     color: var(--hm-text-900);
 }
 
@@ -336,7 +336,7 @@ tbody tr {
 }
 
 [data-theme="oatmeal"] .hm-nav-active {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
     color: var(--mist-50);
 }
 
@@ -356,19 +356,19 @@ tbody tr {
 [data-theme="oatmeal"] .hm-oatmeal-identity {
     background: var(--hm-surface);
     color: var(--hm-text-900);
-    border-radius: 1.25rem;
+    border-radius: 0.875rem;
     border: 1px solid var(--hm-border);
 }
 
 /* Nav row on the dark rail */
 [data-theme="oatmeal"] .hm-oatmeal-nav-item {
     color: var(--hm-text-500);
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     transition: background-color 150ms ease, color 150ms ease;
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-nav-item:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.03);
     color: var(--hm-text-900);
 }
 
@@ -377,46 +377,46 @@ tbody tr {
     color: var(--hm-text-900);
 }
 
-/* Content panel — dark surface, subtly raised from shell */
+/* Content shell — let the page breathe directly on the dark rail */
 [data-theme="oatmeal"] .hm-oatmeal-paper {
-    background: var(--hm-surface);
+    background: transparent;
     color: var(--hm-text-900);
-    border-radius: 1.75rem;
-    border: 1px solid var(--hm-border);
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
 }
 
-/* Inner card inside content — slightly raised */
+/* Inner layout groups should not read as boxed cards */
 [data-theme="oatmeal"] .hm-oatmeal-panel {
-    background: var(--hm-surface-strong);
-    border: 1px solid var(--hm-border);
-    border-radius: 1.25rem;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     color: var(--hm-text-900);
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-panel-soft {
-    background: var(--hm-surface-muted);
-    border: 1px solid var(--hm-border);
-    border-radius: 1.25rem;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
     color: var(--hm-text-900);
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-wash {
-    background-image: linear-gradient(180deg, var(--hm-surface), var(--hm-surface-muted));
+    background-image: none;
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-pill {
-    border: 1px solid var(--hm-border-strong);
-    background: var(--hm-surface-deep);
-    color: var(--hm-text-700);
-    border-radius: 999px;
+    border: 0;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--hm-text-600);
+    border-radius: 0.75rem;
 }
 
 /* Primary pill — INVERTED: light pill on dark bg */
 [data-theme="oatmeal"] .hm-oatmeal-action {
     background: var(--hm-accent);
     color: var(--hm-accent-text);
-    border-radius: 999px;
+    border-radius: 0.75rem;
     font-weight: 500;
     transition: background-color 150ms ease;
 }
@@ -427,14 +427,14 @@ tbody tr {
 
 /* Soft pill — subtle white overlay on dark */
 [data-theme="oatmeal"] .hm-oatmeal-action-soft {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
     color: var(--hm-text-900);
-    border-radius: 999px;
+    border-radius: 0.75rem;
     font-weight: 500;
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-action-soft:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.09);
 }
 
 /* Tabs list — active = raised dark chip; idle = transparent */
@@ -462,10 +462,166 @@ tbody tr {
 
 [data-theme="oatmeal"] .hm-oatmeal-kicker {
     color: var(--hm-text-500);
-    font-size: 0.72rem;
+    font-size: 0.625rem;
     font-weight: 600;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
+}
+
+/* ── Sidebar-standard vocabulary ─────────────────────────────── */
+
+/* Editorial numbered marker (01/02/03) as used in the sidebar nav */
+[data-theme="oatmeal"] .hm-oatmeal-number {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--hm-text-400);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Monogram / identity chip — 8×8 rounded-full on a subtle white wash */
+[data-theme="oatmeal"] .hm-oatmeal-monogram {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--hm-text-900);
+    border-radius: 9999px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+/* Card — flat, hairline-ruled surface. No shadows. */
+[data-theme="oatmeal"] .hm-oatmeal-card {
+    background: var(--hm-surface);
+    border: 1px solid var(--hm-border);
+    border-radius: 0.875rem;
+    color: var(--hm-text-900);
+}
+
+/* Transparent card (sits directly on the shell) */
+[data-theme="oatmeal"] .hm-oatmeal-card-ghost {
+    background: transparent;
+    border: 1px solid var(--hm-border);
+    border-radius: 0.875rem;
+    color: var(--hm-text-900);
+}
+
+/* Row — padded, rounded, hovers to the sidebar's subtle white wash */
+[data-theme="oatmeal"] .hm-oatmeal-row {
+    transition: background-color 150ms ease, color 150ms ease;
+    border-radius: 0.75rem;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--hm-text-900);
+}
+
+/* Subtle link — no blue. Underline appears on hover, matches sidebar. */
+[data-theme="oatmeal"] .hm-oatmeal-link {
+    color: var(--hm-text-600);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 150ms ease, border-color 150ms ease;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-link:hover {
+    color: var(--hm-text-900);
+    border-bottom-color: var(--hm-border-strong);
+}
+
+/* Status pills — muted, hairline-ringed, matching the sidebar's tone */
+[data-theme="oatmeal"] .hm-oatmeal-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-status-positive {
+    background: var(--hm-positive-bg);
+    color: var(--hm-positive-text);
+    border-color: var(--hm-positive-border);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-status-warning {
+    background: var(--hm-warning-bg);
+    color: var(--hm-warning-text);
+    border-color: var(--hm-warning-border);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-status-danger {
+    background: var(--hm-danger-bg);
+    color: var(--hm-danger-text);
+    border-color: var(--hm-danger-border);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-status-neutral {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--hm-text-600);
+    border-color: var(--hm-border);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-status-critical {
+    background: rgba(183, 125, 117, 0.2);
+    color: #ebc1b5;
+    border-color: rgba(183, 125, 117, 0.45);
+}
+
+/* Status dots — matching the pill palette */
+[data-theme="oatmeal"] .hm-oatmeal-dot {
+    display: inline-block;
+    height: 0.375rem;
+    width: 0.375rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-dot-positive { background: var(--hm-positive-text); }
+[data-theme="oatmeal"] .hm-oatmeal-dot-warning  { background: var(--hm-warning-text); }
+[data-theme="oatmeal"] .hm-oatmeal-dot-danger   { background: var(--hm-danger-text); }
+[data-theme="oatmeal"] .hm-oatmeal-dot-neutral  { background: var(--hm-text-500); }
+
+/* Chip — data-chip with hairline ring, like the sidebar's meta labels */
+[data-theme="oatmeal"] .hm-oatmeal-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.625rem;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--hm-text-600);
+    border: 1px solid var(--hm-border);
+    font-size: 0.6875rem;
+    font-weight: 500;
+}
+
+/* Ghost button — outline pill used for secondary CTAs (Back to Scan, etc.) */
+[data-theme="oatmeal"] .hm-oatmeal-ghost {
+    background: transparent;
+    color: var(--hm-text-700);
+    border: 1px solid var(--hm-border-strong);
+    border-radius: 0.75rem;
+    font-weight: 500;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-ghost:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--hm-text-900);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Hairline inset ring (matches sidebar nav active state) */
+[data-theme="oatmeal"] .hm-oatmeal-ring {
+    box-shadow: inset 0 0 0 1px var(--hm-border);
+}
+
+/* Accent stripe — the warm-rose hairline used on the sidebar's left edge */
+[data-theme="oatmeal"] .hm-oatmeal-stripe {
+    background: rgba(230, 165, 154, 0.24);
 }
 
 /* Shell / page wrapper colour mapping (all-dark) */
@@ -495,6 +651,48 @@ tbody tr {
 [data-theme="oatmeal"] .bg-white\/80 {
     background-color: var(--hm-surface) !important;
     color: var(--hm-text-900);
+}
+
+[data-theme="oatmeal"] .shadow-sm {
+    box-shadow: none !important;
+}
+
+/* Radius discipline — oatmeal should stay taut, not soft. */
+[data-theme="oatmeal"] .rounded-3xl {
+    border-radius: 1rem !important;
+}
+
+[data-theme="oatmeal"] .rounded-2xl {
+    border-radius: 0.875rem !important;
+}
+
+[data-theme="oatmeal"] .rounded-xl {
+    border-radius: 0.75rem !important;
+}
+
+[data-theme="oatmeal"] .rounded-lg {
+    border-radius: 0.625rem !important;
+}
+
+[data-theme="oatmeal"] .rounded-\[36px\] {
+    border-radius: 1rem !important;
+}
+
+[data-theme="oatmeal"] .rounded-\[28px\],
+[data-theme="oatmeal"] .rounded-\[26px\] {
+    border-radius: 0.875rem !important;
+}
+
+[data-theme="oatmeal"] :is(section, article, div).rounded-2xl.border.bg-white,
+[data-theme="oatmeal"] :is(section, article, div).rounded-2xl.border.border-slate-200.bg-white,
+[data-theme="oatmeal"] :is(section, article, div).overflow-hidden.rounded-2xl.border.bg-white,
+[data-theme="oatmeal"] :is(section, article, div).overflow-hidden.rounded-2xl.border.border-slate-200.bg-white,
+[data-theme="oatmeal"] :is(section, article, div).rounded-2xl.border.border-dashed.border-slate-300.bg-white,
+[data-theme="oatmeal"] :is(div, article).rounded-2xl.border.border-slate-200.bg-slate-50\/80,
+[data-theme="oatmeal"] :is(div, article, li).rounded-xl.border.border-slate-200.bg-slate-50,
+[data-theme="oatmeal"] :is(div, article, li).rounded-xl.border.border-slate-200.bg-slate-50\/80 {
+    background-color: transparent !important;
+    border-color: transparent !important;
 }
 
 [data-theme="oatmeal"] .bg-slate-50,
@@ -594,7 +792,7 @@ tbody tr {
 [data-theme="oatmeal"] .text-blue-500,
 [data-theme="oatmeal"] .text-blue-600,
 [data-theme="oatmeal"] .text-blue-700 {
-    color: var(--hm-text-900) !important;
+    color: var(--hm-text-700) !important;
 }
 
 [data-theme="oatmeal"] .text-emerald-700 {
@@ -662,7 +860,7 @@ tbody tr {
 }
 
 [data-theme="oatmeal"] .hover\:text-blue-700:hover {
-    color: var(--hm-text-900) !important;
+    color: var(--hm-text-700) !important;
 }
 
 [data-theme="oatmeal"] .hover\:text-slate-900:hover {
