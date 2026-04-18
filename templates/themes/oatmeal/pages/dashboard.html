@@ -86,7 +86,7 @@
                             <div class="mt-1">
                                 {% for scan in recent_scans %}
                                 <a href="/scans/{{ scan.id }}"
-                                   class="hm-oatmeal-row group grid grid-cols-[minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.5fr)_minmax(0,0.9fr)] items-center gap-4 border-b hm-oatmeal-rule px-3 py-4">
+                                   class="hm-oatmeal-row hm-oatmeal-scan-grid group gap-4 border-b hm-oatmeal-rule px-3 py-4">
                                     <div class="min-w-0 flex items-center gap-3">
                                         <span class="hm-oatmeal-number shrink-0">{{ "%02d" | format(loop.index) }}</span>
                                         <div class="min-w-0">

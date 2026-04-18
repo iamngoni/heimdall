@@ -55,7 +55,7 @@
                             <span class="hm-oatmeal-number">{{ total }} total</span>
                         </div>
 
-                        <div class="hidden lg:grid grid-cols-[minmax(0,2.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.6fr)_minmax(0,0.9fr)] gap-4 border-b hm-oatmeal-rule px-3 pt-5 pb-3">
+                        <div class="hm-oatmeal-repo-head gap-4 border-b hm-oatmeal-rule px-3 pt-5 pb-3">
                             <span class="hm-oatmeal-kicker">Repository</span>
                             <span class="hm-oatmeal-kicker">Source</span>
                             <span class="hm-oatmeal-kicker">Branch</span>
@@ -67,7 +67,7 @@
                         <div>
                             {% for repo in repos %}
                             <a href="/repos/{{ repo.id }}"
-                               class="repo-row hm-oatmeal-row grid grid-cols-1 gap-4 border-b hm-oatmeal-rule px-3 py-4 lg:grid-cols-[minmax(0,2.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.6fr)_minmax(0,0.9fr)] lg:items-center"
+                               class="repo-row hm-oatmeal-row hm-oatmeal-repo-row gap-4 border-b hm-oatmeal-rule px-3 py-4"
                                data-search="{{ repo.name }} {{ repo.host }} {{ repo.source_label }}">
                                 <div class="flex min-w-0 items-center gap-3">
                                     <span class="hm-oatmeal-number shrink-0">{{ "%02d" | format(loop.index) }}</span>

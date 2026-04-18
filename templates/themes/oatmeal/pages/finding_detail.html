@@ -6,7 +6,7 @@
 {% set active_nav = "repos" %}
 {% set breadcrumb_parent = "Findings" %}
 {% set breadcrumb_current = finding.title %}
-<div class="min-h-screen bg-[#f5f7fa] text-slate-900">
+<div class="min-h-screen" style="background:var(--hm-shell-bg);color:var(--hm-text-900)">
     <div class="flex min-h-screen">
         {% include "partials/app_sidebar.html" %}
 
@@ -21,27 +21,27 @@
                                 {% with severity=finding.severity %}
                                     {% include "partials/severity_badge.html" %}
                                 {% endwith %}
-                                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold capitalize text-slate-600">
+                                <span class="hm-oatmeal-chip inline-flex items-center px-3 py-1 text-xs font-semibold capitalize">
                                     {{ finding.confidence }} confidence
                                 </span>
-                                <span class="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold capitalize text-slate-600 ring-1 ring-slate-200">
+                                <span class="hm-oatmeal-chip inline-flex items-center px-3 py-1 text-xs font-semibold capitalize">
                                     {{ finding.source|replace("_", " ") }}
                                 </span>
                             </div>
 
-                            <h1 class="mt-3 text-2xl font-bold tracking-tight text-slate-900">{{ finding.title }}</h1>
-                            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+                            <h1 class="mt-3 text-2xl font-semibold tracking-tight" style="color:var(--hm-text-900)">{{ finding.title }}</h1>
+                            <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" style="color:var(--hm-text-500)">
                                 <span>{{ repo.name }}</span>
-                                <span class="font-mono text-slate-600">{{ finding.file_path }}:{{ finding.line_start }}{% if finding.line_end %}-{{ finding.line_end }}{% endif %}</span>
+                                <span class="font-mono" style="color:var(--hm-text-600)">{{ finding.file_path }}:{{ finding.line_start }}{% if finding.line_end %}-{{ finding.line_end }}{% endif %}</span>
                                 {% if finding.cwe_id %}<span>{{ finding.cwe_id }}</span>{% endif %}
-                                {% if finding.cve_id %}<span class="text-rose-600">{{ finding.cve_id }}</span>{% endif %}
+                                {% if finding.cve_id %}<span style="color:var(--hm-danger-text)">{{ finding.cve_id }}</span>{% endif %}
                             </div>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-2">
                             <button id="copy-finding-btn"
                                     type="button"
-                                    class="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                                    class="hm-oatmeal-ghost inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold transition">
                                 <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                     <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>
                                     <path d="M10.5 5.5V3a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h2.5"/>
@@ -49,11 +49,11 @@
                                 <span id="copy-finding-label">Copy Finding</span>
                             </button>
                             <a href="/scans/{{ finding.scan_id }}/findings"
-                               class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900">
+                               class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                 Back to Findings
                             </a>
                             <a href="/scans/{{ finding.scan_id }}"
-                               class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+                               class="hm-oatmeal-action inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                 Open Scan
                             </a>
                         </div>
@@ -66,18 +66,18 @@
                             {% include "partials/finding_ai_review.html" %}
 
                             {% if finding.description %}
-                            <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                                <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Explanation</h2>
-                                <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">{{ finding.description }}</p>
+                            <section class="hm-oatmeal-panel p-6">
+                                <h2 class="hm-oatmeal-kicker">Explanation</h2>
+                                <p class="mt-4 whitespace-pre-wrap text-sm leading-7" style="color:var(--hm-text-600)">{{ finding.description }}</p>
                             </section>
                             {% endif %}
 
                             {% if finding.code_snippet %}
-                            <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between gap-3">
                                     <div>
-                                        <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Vulnerable Code</h2>
-                                        <p class="mt-1 text-sm text-slate-500">{{ finding.file_path }}</p>
+                                        <h2 class="hm-oatmeal-kicker">Vulnerable Code</h2>
+                                        <p class="mt-1 text-sm" style="color:var(--hm-text-500)">{{ finding.file_path }}</p>
                                     </div>
                                 </div>
                                 <div class="mt-4 overflow-x-auto rounded-2xl bg-[#172033]">
@@ -87,14 +87,14 @@
                             {% endif %}
 
                             {% if finding.suggested_patch %}
-                            <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between gap-3">
                                     <div>
-                                        <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Suggested Diff</h2>
-                                        <p class="mt-1 text-sm text-slate-500">Recommended remediation diff generated during the scan. Review and apply it manually if you choose.</p>
+                                        <h2 class="hm-oatmeal-kicker">Suggested Diff</h2>
+                                        <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Recommended remediation diff generated during the scan. Review and apply it manually if you choose.</p>
                                     </div>
                                     {% if patch.id %}
-                                    <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                    <span class="hm-oatmeal-badge hm-oatmeal-badge-info">
                                         {% if patch.applied %}Marked Applied{% else %}Review Ready{% endif %}
                                     </span>
                                     {% endif %}
@@ -106,17 +106,17 @@
                             {% endif %}
 
                             {% if finding.agent_reasoning %}
-                            <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                                <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Analyst Notes</h2>
-                                <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-600">{{ finding.agent_reasoning }}</p>
+                            <section class="hm-oatmeal-panel p-6">
+                                <h2 class="hm-oatmeal-kicker">Analyst Notes</h2>
+                                <p class="mt-4 whitespace-pre-wrap text-sm leading-7" style="color:var(--hm-text-600)">{{ finding.agent_reasoning }}</p>
                             </section>
                             {% endif %}
 
                             {% if finding.poc_exploit_json %}
-                            <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center gap-3">
-                                    <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Validation Evidence</h2>
-                                    <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{ 'bg-rose-50 text-rose-700' if finding.poc_validated else 'bg-slate-100 text-slate-600' }}">
+                                    <h2 class="hm-oatmeal-kicker">Validation Evidence</h2>
+                                    <span class="hm-oatmeal-badge {{ 'hm-oatmeal-badge-danger' if finding.poc_validated else 'hm-oatmeal-badge-neutral' }}">
                                         {% if finding.poc_validated %}Exploitable{% else %}Not Validated{% endif %}
                                     </span>
                                 </div>
@@ -130,27 +130,27 @@
                         <aside class="space-y-6">
                             {% include "partials/finding_issue_panel.html" %}
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <h2 class="text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">Metadata</h2>
+                            <section class="hm-oatmeal-panel p-5">
+                                <h2 class="hm-oatmeal-kicker">Metadata</h2>
                                 <dl class="mt-4 space-y-4">
                                     <div>
-                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Repository</dt>
-                                        <dd class="mt-1 text-sm font-medium text-slate-900">{{ repo.name }}</dd>
+                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em]" style="color:var(--hm-text-400)">Repository</dt>
+                                        <dd class="mt-1 text-sm font-medium" style="color:var(--hm-text-900)">{{ repo.name }}</dd>
                                     </div>
                                     <div>
-                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Location</dt>
-                                        <dd class="mt-1 text-sm text-slate-600">{{ finding.file_path }}:{{ finding.line_start }}{% if finding.line_end %}-{{ finding.line_end }}{% endif %}</dd>
+                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em]" style="color:var(--hm-text-400)">Location</dt>
+                                        <dd class="mt-1 text-sm" style="color:var(--hm-text-600)">{{ finding.file_path }}:{{ finding.line_start }}{% if finding.line_end %}-{{ finding.line_end }}{% endif %}</dd>
                                     </div>
                                     <div>
-                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Identifiers</dt>
-                                        <dd class="mt-1 space-y-1 text-sm text-slate-600">
+                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em]" style="color:var(--hm-text-400)">Identifiers</dt>
+                                        <dd class="mt-1 space-y-1 text-sm" style="color:var(--hm-text-600)">
                                             <div>{{ finding.cwe_id or "No CWE mapped" }}</div>
                                             <div>{{ finding.cve_id or "No CVE mapped" }}</div>
                                         </dd>
                                     </div>
                                     <div>
-                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Patch</dt>
-                                        <dd class="mt-1 text-sm text-slate-600">
+                                        <dt class="text-xs font-semibold uppercase tracking-[0.14em]" style="color:var(--hm-text-400)">Patch</dt>
+                                        <dd class="mt-1 text-sm" style="color:var(--hm-text-600)">
                                             {% if patch.id %}
                                                 {% if patch.applied %}
                                                 Marked applied in Heimdall{% if patch.created_at %} · generated {{ patch.created_at }}{% endif %} · no repository write-back recorded
@@ -306,12 +306,12 @@
         try {
             await navigator.clipboard.writeText(buildMarkdown());
             label.textContent = 'Copied!';
-            btn.classList.add('border-emerald-300', 'text-emerald-700');
-            btn.classList.remove('border-slate-200', 'text-slate-700');
+            btn.style.borderColor = 'var(--hm-positive-border)';
+            btn.style.color = 'var(--hm-positive-text)';
             setTimeout(function () {
                 label.textContent = 'Copy Finding';
-                btn.classList.remove('border-emerald-300', 'text-emerald-700');
-                btn.classList.add('border-slate-200', 'text-slate-700');
+                btn.style.borderColor = '';
+                btn.style.color = '';
             }, 2000);
         } catch (_) {
             label.textContent = 'Failed';

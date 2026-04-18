@@ -1,19 +1,19 @@
-<div id="finding-status" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+<div id="finding-status" class="hm-oatmeal-panel p-5"
      hx-on::after-swap="if(window.HeimdallUI){window.HeimdallUI.success('Finding status updated to ' + '{{ finding.status }}'.replace('_',' '), 3000)}">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Finding Status</p>
+            <p class="hm-oatmeal-kicker">Finding Status</p>
             <div class="mt-2 flex items-center gap-3">
-                <span class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold capitalize
-                    {{ 'bg-emerald-50 text-emerald-700' if finding.status == 'confirmed' else
-                       'bg-rose-50 text-rose-700' if finding.status == 'open' else
-                       'bg-amber-50 text-amber-700' if finding.status == 'false_positive' else
-                       'bg-slate-100 text-slate-600' if finding.status == 'dismissed' else
-                       'bg-blue-50 text-blue-700' if finding.status == 'fixed' else
-                       'bg-slate-100 text-slate-600' }}">
+                <span class="hm-oatmeal-badge text-sm capitalize
+                    {{ 'hm-oatmeal-badge-positive' if finding.status == 'confirmed' else
+                       'hm-oatmeal-badge-danger' if finding.status == 'open' else
+                       'hm-oatmeal-badge-warning' if finding.status == 'false_positive' else
+                       'hm-oatmeal-badge-neutral' if finding.status == 'dismissed' else
+                       'hm-oatmeal-badge-info' if finding.status == 'fixed' else
+                       'hm-oatmeal-badge-neutral' }}">
                     {{ finding.status|replace("_", " ") }}
                 </span>
-                <p class="text-sm text-slate-500">Mark the triage decision directly from this review screen.</p>
+                <p class="text-sm" style="color:var(--hm-text-500)">Mark the triage decision directly from this review screen.</p>
             </div>
         </div>
 
@@ -23,7 +23,8 @@
                     hx-swap="outerHTML"
                     hx-vals='{"status":"confirmed"}'
                     hx-indicator="#finding-status-loading"
-                    class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-emerald-700 ring-2 ring-emerald-100' if finding.status == 'confirmed' else 'text-emerald-700 hover:bg-emerald-50' }}">
+                    class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2 text-sm font-semibold transition {{ 'ring-2 ring-emerald-100' if finding.status == 'confirmed' else '' }}"
+                    style="color:var(--hm-positive-text);border-color:var(--hm-positive-border)">
                 <span>Accept</span>
                 <span class="htmx-indicator-inline ml-2 items-center gap-2 text-emerald-700/80">
                     <svg class="h-4 w-4 animate-spin text-emerald-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -38,10 +39,10 @@
                     hx-swap="outerHTML"
                     hx-vals='{"status":"dismissed"}'
                     hx-indicator="#finding-status-loading"
-                    class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-slate-900 ring-2 ring-slate-100' if finding.status == 'dismissed' else 'text-slate-600 hover:bg-slate-50' }}">
+                    class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2 text-sm font-semibold transition {{ 'ring-2 ring-slate-100' if finding.status == 'dismissed' else '' }}">
                 <span>Dismiss</span>
-                <span class="htmx-indicator-inline ml-2 items-center gap-2 text-slate-500">
-                    <svg class="h-4 w-4 animate-spin text-slate-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <span class="htmx-indicator-inline ml-2 items-center gap-2" style="color:var(--hm-text-500)">
+                    <svg class="h-4 w-4 animate-spin" style="color:var(--hm-text-400)" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
                         <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
                     </svg>
@@ -53,7 +54,8 @@
                     hx-swap="outerHTML"
                     hx-vals='{"status":"false_positive"}'
                     hx-indicator="#finding-status-loading"
-                    class="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-amber-700 ring-2 ring-amber-100' if finding.status == 'false_positive' else 'text-amber-700 hover:bg-amber-50' }}">
+                    class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2 text-sm font-semibold transition {{ 'ring-2 ring-amber-100' if finding.status == 'false_positive' else '' }}"
+                    style="color:var(--hm-warning-text);border-color:var(--hm-warning-border)">
                 <span>False Positive</span>
                 <span class="htmx-indicator-inline ml-2 items-center gap-2 text-amber-700/80">
                     <svg class="h-4 w-4 animate-spin text-amber-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -68,10 +70,11 @@
                     hx-swap="outerHTML"
                     hx-vals='{"status":"fixed"}'
                     hx-indicator="#finding-status-loading"
-                    class="inline-flex items-center justify-center rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold transition {{ 'text-blue-700 ring-2 ring-blue-100' if finding.status == 'fixed' else 'text-blue-700 hover:bg-blue-50' }}">
+                    class="hm-oatmeal-ghost inline-flex items-center justify-center px-4 py-2 text-sm font-semibold transition {{ 'ring-2 ring-blue-100' if finding.status == 'fixed' else '' }}"
+                    style="color:var(--mist-900);border-color:var(--mist-300)">
                 <span>Mark Fixed</span>
-                <span class="htmx-indicator-inline ml-2 items-center gap-2 text-blue-700/80">
-                    <svg class="h-4 w-4 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <span class="htmx-indicator-inline ml-2 items-center gap-2" style="color:var(--mist-950)">
+                    <svg class="h-4 w-4 animate-spin" style="color:var(--mist-900)" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
                         <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
                     </svg>
@@ -82,16 +85,16 @@
     </div>
 
     <div id="finding-status-loading"
-         class="htmx-indicator-flex mt-4 items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-700">
-        <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200">
-            <svg class="h-4 w-4 animate-spin text-slate-500" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+         class="hm-oatmeal-callout-info htmx-indicator-flex mt-4 items-start gap-3">
+        <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl hm-oatmeal-panel-soft">
+            <svg class="h-4 w-4 animate-spin" style="color:var(--hm-text-500)" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
                 <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
             </svg>
         </div>
         <div>
-            <p class="text-sm font-semibold text-slate-900">Updating finding status</p>
-            <p class="mt-1 text-sm leading-6 text-slate-600">
+            <p class="text-sm font-semibold" style="color:var(--hm-text-900)">Updating finding status</p>
+            <p class="mt-1 text-sm leading-6" style="color:var(--hm-text-600)">
                 Recording the triage decision and refreshing the activity timeline.
             </p>
         </div>

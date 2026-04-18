@@ -6,39 +6,45 @@
 {% set active_nav = "repos" %}
 {% set breadcrumb_parent = "Repositories" %}
 {% set breadcrumb_current = "Add Repository" %}
-<div class="min-h-screen bg-slate-100 text-slate-900">
+<div class="min-h-screen" style="background:var(--hm-shell-bg);color:var(--hm-text-900)">
     <div class="flex min-h-screen">
         {% include "partials/app_sidebar.html" %}
 
         <div class="flex min-h-screen flex-1 flex-col">
             {% include "partials/app_topbar.html" %}
 
-            <main class="flex-1 px-7 py-6">
+            <main class="flex-1 px-7 py-6" style="background:var(--hm-shell-bg);color:var(--hm-text-900)">
                 <div class="mx-auto max-w-6xl space-y-6">
                     <div>
-                        <h1 class="text-2xl font-bold tracking-tight text-slate-900">Add Repository</h1>
-                        <p class="mt-1 text-sm text-slate-500">Connect a repository to start scanning for vulnerabilities.</p>
+                        <p class="hm-oatmeal-kicker">02 / Connect</p>
+                        <h1 class="mt-2 text-2xl font-semibold tracking-tight" style="color:var(--hm-text-900)">Add Repository</h1>
+                        <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Connect a repository to start scanning for vulnerabilities.</p>
                     </div>
 
-                    <div class="flex flex-wrap gap-2 border-b border-slate-200">
+                    <div class="flex flex-wrap gap-2 border-b hm-oatmeal-rule pb-2">
                         <a href="/repos/new?source=github"
-                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'github' else 'text-slate-500 hover:text-slate-900' }}">
+                           class="rounded-xl px-4 py-3 text-sm font-semibold transition {{ 'hm-oatmeal-ghost' if active_source == 'github' else '' }}"
+                           style="color:{{ 'var(--hm-text-900)' if active_source == 'github' else 'var(--hm-text-500)' }};box-shadow:{{ 'inset 0 0 0 1px var(--hm-border)' if active_source == 'github' else 'none' }};background:{{ 'rgba(255,255,255,0.05)' if active_source == 'github' else 'transparent' }}">
                             GitHub
                         </a>
                         <a href="/repos/new?source=gitlab"
-                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'gitlab' else 'text-slate-500 hover:text-slate-900' }}">
+                           class="rounded-xl px-4 py-3 text-sm font-semibold transition {{ 'hm-oatmeal-ghost' if active_source == 'gitlab' else '' }}"
+                           style="color:{{ 'var(--hm-text-900)' if active_source == 'gitlab' else 'var(--hm-text-500)' }};box-shadow:{{ 'inset 0 0 0 1px var(--hm-border)' if active_source == 'gitlab' else 'none' }};background:{{ 'rgba(255,255,255,0.05)' if active_source == 'gitlab' else 'transparent' }}">
                             GitLab
                         </a>
                         <a href="/repos/new?source=bitbucket"
-                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'bitbucket' else 'text-slate-500 hover:text-slate-900' }}">
+                           class="rounded-xl px-4 py-3 text-sm font-semibold transition {{ 'hm-oatmeal-ghost' if active_source == 'bitbucket' else '' }}"
+                           style="color:{{ 'var(--hm-text-900)' if active_source == 'bitbucket' else 'var(--hm-text-500)' }};box-shadow:{{ 'inset 0 0 0 1px var(--hm-border)' if active_source == 'bitbucket' else 'none' }};background:{{ 'rgba(255,255,255,0.05)' if active_source == 'bitbucket' else 'transparent' }}">
                             Bitbucket
                         </a>
                         <a href="/repos/new?source=git_url"
-                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'git_url' else 'text-slate-500 hover:text-slate-900' }}">
+                           class="rounded-xl px-4 py-3 text-sm font-semibold transition {{ 'hm-oatmeal-ghost' if active_source == 'git_url' else '' }}"
+                           style="color:{{ 'var(--hm-text-900)' if active_source == 'git_url' else 'var(--hm-text-500)' }};box-shadow:{{ 'inset 0 0 0 1px var(--hm-border)' if active_source == 'git_url' else 'none' }};background:{{ 'rgba(255,255,255,0.05)' if active_source == 'git_url' else 'transparent' }}">
                             Git URL
                         </a>
                         <a href="/repos/new?source=zip"
-                           class="rounded-t-xl px-4 py-3 text-sm font-semibold transition {{ 'border-b-2 border-blue-500 text-blue-600' if active_source == 'zip' else 'text-slate-500 hover:text-slate-900' }}">
+                           class="rounded-xl px-4 py-3 text-sm font-semibold transition {{ 'hm-oatmeal-ghost' if active_source == 'zip' else '' }}"
+                           style="color:{{ 'var(--hm-text-900)' if active_source == 'zip' else 'var(--hm-text-500)' }};box-shadow:{{ 'inset 0 0 0 1px var(--hm-border)' if active_source == 'zip' else 'none' }};background:{{ 'rgba(255,255,255,0.05)' if active_source == 'zip' else 'transparent' }}">
                             Upload ZIP
                         </a>
                     </div>
@@ -58,8 +64,8 @@
                         {% set connect_href = "/api/auth/bitbucket/authorize?next=%2Frepos%2Fnew%3Fsource%3Dbitbucket" %}
                     {% endif %}
                     <section class="space-y-4">
-                        <div class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
-                            <span class="h-2 w-2 rounded-full {{ 'bg-emerald-500' if provider.connected else 'bg-slate-300' }}"></span>
+                        <div class="hm-oatmeal-chip inline-flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full {{ 'hm-oatmeal-dot-positive' if provider.connected else 'hm-oatmeal-dot-neutral' }}"></span>
                             {{ provider_name }} {{ 'connected' if provider.connected else 'not connected' }}
                         </div>
 
@@ -69,7 +75,7 @@
                                 <input type="search"
                                        name="q"
                                        placeholder="Search your repositories..."
-                                       class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       class="hm-oatmeal-input px-4 py-3 text-sm"
                                        hx-get="/api/repos/{{ active_source }}/list"
                                        hx-target="#provider-results"
                                        hx-trigger="input changed delay:250ms, search">
@@ -80,34 +86,34 @@
                                  hx-trigger="load"
                                  hx-swap="innerHTML"
                                  class="min-h-[20rem]">
-                                <div class="flex h-80 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-400 shadow-sm">
+                                <div class="hm-oatmeal-panel flex h-80 items-center justify-center text-sm" style="color:var(--hm-text-400)">
                                     Loading {{ provider_name }} repositories...
                                 </div>
                             </div>
                         </div>
                         {% else %}
-                        <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-16 text-center shadow-sm">
+                        <div class="hm-oatmeal-panel-outline px-8 py-16 text-center">
                             <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl {{ 'bg-slate-900 text-white' if active_source == 'github' else 'bg-orange-500 text-white' if active_source == 'gitlab' else 'bg-blue-600 text-white' }}">
                                 <svg class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
                                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
                                 </svg>
                             </div>
-                            <h2 class="mt-5 text-lg font-semibold text-slate-900">Connect {{ provider_name }}</h2>
-                            <p class="mx-auto mt-2 max-w-md text-sm text-slate-500">Authorize once and Heimdall will list all your repositories so you can pick which to scan. You can also save a personal access token in <a href="/settings" class="font-semibold text-blue-600 hover:text-blue-700">Settings</a> instead.</p>
+                            <h2 class="mt-5 text-lg font-semibold" style="color:var(--hm-text-900)">Connect {{ provider_name }}</h2>
+                            <p class="mx-auto mt-2 max-w-md text-sm" style="color:var(--hm-text-500)">Authorize once and Heimdall will list all your repositories so you can pick which to scan. You can also save a personal access token in <a href="/settings" class="font-semibold" style="color:var(--hm-text-700)">Settings</a> instead.</p>
                             <a href="{{ connect_href }}"
                                hx-boost="false"
-                               class="mt-6 inline-flex items-center justify-center rounded-xl {{ 'bg-slate-900 text-white hover:bg-slate-800' if active_source == 'github' else 'bg-orange-500 text-white hover:bg-orange-600' if active_source == 'gitlab' else 'bg-blue-600 text-white hover:bg-blue-700' }} px-4 py-2.5 text-sm font-semibold transition">
+                               class="hm-oatmeal-action mt-6 inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                 Continue with {{ provider_name }}
                             </a>
                         </div>
                         {% endif %}
                     </section>
                     {% elif active_source == "git_url" %}
-                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <section class="hm-oatmeal-panel p-6">
                         <div class="max-w-2xl">
-                            <h2 class="text-lg font-semibold text-slate-900">Add a public Git URL</h2>
-                            <p class="mt-1 text-sm text-slate-500">Use this when the repository is public or you want to point Heimdall at a simple HTTPS clone URL.</p>
+                            <h2 class="text-lg font-semibold" style="color:var(--hm-text-900)">Add a public Git URL</h2>
+                            <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Use this when the repository is public or you want to point Heimdall at a simple HTTPS clone URL.</p>
                         </div>
 
                         <form class="mt-6 grid gap-4 md:grid-cols-2"
@@ -117,39 +123,39 @@
                             <input type="hidden" name="source_type" value="git_url">
 
                             <label class="block">
-                                <span class="mb-2 block text-sm font-medium text-slate-700">Repository name</span>
+                                <span class="mb-2 block text-sm font-medium" style="color:var(--hm-text-700)">Repository name</span>
                                 <input name="name" required
-                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       class="hm-oatmeal-input px-4 py-2.5 text-sm"
                                        placeholder="acme-api">
                             </label>
 
                             <label class="block">
-                                <span class="mb-2 block text-sm font-medium text-slate-700">Default branch</span>
+                                <span class="mb-2 block text-sm font-medium" style="color:var(--hm-text-700)">Default branch</span>
                                 <input name="default_branch"
-                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       class="hm-oatmeal-input px-4 py-2.5 text-sm"
                                        placeholder="main">
                             </label>
 
                             <label class="block md:col-span-2">
-                                <span class="mb-2 block text-sm font-medium text-slate-700">HTTPS clone URL</span>
+                                <span class="mb-2 block text-sm font-medium" style="color:var(--hm-text-700)">HTTPS clone URL</span>
                                 <input name="remote_url" required
-                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       class="hm-oatmeal-input px-4 py-2.5 text-sm"
                                        placeholder="https://github.com/acme/acme-api.git">
                             </label>
 
                             <div class="md:col-span-2">
                                 <button type="submit"
-                                        class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                        class="hm-oatmeal-action inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                     Add Repository
                                 </button>
                             </div>
                         </form>
                     </section>
                     {% else %}
-                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <section class="hm-oatmeal-panel p-6">
                         <div class="max-w-2xl">
-                            <h2 class="text-lg font-semibold text-slate-900">Upload a ZIP archive</h2>
-                            <p class="mt-1 text-sm text-slate-500">Use this for local source snapshots or when source control access is not available.</p>
+                            <h2 class="text-lg font-semibold" style="color:var(--hm-text-900)">Upload a ZIP archive</h2>
+                            <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Use this for local source snapshots or when source control access is not available.</p>
                         </div>
 
                         <form class="mt-6 space-y-4"
@@ -158,20 +164,20 @@
                               hx-swap="none"
                               hx-on::after-request="HeimdallRepoConnect.handleCreateResponse(event)">
                             <label class="block max-w-xl">
-                                <span class="mb-2 block text-sm font-medium text-slate-700">Repository name</span>
+                                <span class="mb-2 block text-sm font-medium" style="color:var(--hm-text-700)">Repository name</span>
                                 <input name="name"
-                                       class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                       class="hm-oatmeal-input px-4 py-2.5 text-sm"
                                        placeholder="acme-api-snapshot">
                             </label>
 
                             <label class="block max-w-xl">
-                                <span class="mb-2 block text-sm font-medium text-slate-700">ZIP file</span>
+                                <span class="mb-2 block text-sm font-medium" style="color:var(--hm-text-700)">ZIP file</span>
                                 <input type="file" name="file" accept=".zip" required
-                                       class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700">
+                                       class="hm-oatmeal-input block w-full px-4 py-3 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700">
                             </label>
 
                             <button type="submit"
-                                    class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600">
+                                    class="hm-oatmeal-action inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
                                 Upload Repository
                             </button>
                         </form>

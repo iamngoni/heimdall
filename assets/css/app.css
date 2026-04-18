@@ -379,26 +379,130 @@ tbody tr {
 
 /* Content shell — let the page breathe directly on the dark rail */
 [data-theme="oatmeal"] .hm-oatmeal-paper {
-    background: transparent;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+        var(--hm-surface);
     color: var(--hm-text-900);
-    border-radius: 0;
-    border: 0;
-    box-shadow: none;
+    border-radius: 1.75rem;
+    border: 1px solid var(--hm-border);
+    box-shadow:
+        0 28px 72px rgba(0, 0, 0, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-/* Inner layout groups should not read as boxed cards */
+/* Inner layout groups should read as raised surfaces on the shell */
 [data-theme="oatmeal"] .hm-oatmeal-panel {
-    background: transparent;
-    border: 0;
-    border-radius: 0;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0)),
+        var(--hm-surface-strong);
+    border: 1px solid var(--hm-border);
+    border-radius: 1.25rem;
     color: var(--hm-text-900);
+    box-shadow:
+        0 16px 34px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-panel-soft {
-    background: transparent;
-    border: 0;
-    border-radius: 0;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+        var(--hm-surface-muted);
+    border: 1px solid var(--hm-border);
+    border-radius: 1rem;
     color: var(--hm-text-900);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.025),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-panel-outline {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px dashed var(--hm-border-strong);
+    border-radius: 1.25rem;
+    color: var(--hm-text-700);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-callout-info,
+[data-theme="oatmeal"] .hm-oatmeal-callout-success,
+[data-theme="oatmeal"] .hm-oatmeal-callout-warning {
+    border-radius: 1rem;
+    border: 1px solid var(--hm-border);
+    padding: 1rem 1.125rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-callout-info {
+    background: rgba(208, 214, 216, 0.08);
+    border-color: rgba(208, 214, 216, 0.16);
+    color: var(--hm-text-700);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-callout-success {
+    background: var(--hm-positive-bg);
+    border-color: var(--hm-positive-border);
+    color: var(--hm-positive-text);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-callout-warning {
+    background: var(--hm-warning-bg);
+    border-color: var(--hm-warning-border);
+    color: var(--hm-warning-text);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-badge-positive {
+    background: var(--hm-positive-bg);
+    color: var(--hm-positive-text);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-badge-warning {
+    background: var(--hm-warning-bg);
+    color: var(--hm-warning-text);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-badge-danger {
+    background: var(--hm-danger-bg);
+    color: var(--hm-danger-text);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-badge-info {
+    background: rgba(208, 214, 216, 0.12);
+    color: var(--hm-text-700);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-badge-neutral {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--hm-text-600);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-input {
+    width: 100%;
+    border-radius: 0.95rem;
+    border: 1px solid var(--hm-border-strong);
+    background: var(--hm-surface-muted);
+    color: var(--hm-text-900);
+    outline: none;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-input::placeholder {
+    color: var(--hm-text-400);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-input:focus {
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.12),
+        0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-wash {
@@ -407,9 +511,10 @@ tbody tr {
 
 [data-theme="oatmeal"] .hm-oatmeal-pill {
     border: 0;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.05);
     color: var(--hm-text-600);
     border-radius: 0.75rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 /* Primary pill — INVERTED: light pill on dark bg */
@@ -418,11 +523,18 @@ tbody tr {
     color: var(--hm-accent-text);
     border-radius: 0.75rem;
     font-weight: 500;
-    transition: background-color 150ms ease;
+    box-shadow:
+        0 14px 28px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    transition: background-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-action:hover {
     background: var(--hm-accent-hover);
+    transform: translateY(-1px);
+    box-shadow:
+        0 18px 34px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 /* Soft pill — subtle white overlay on dark */
@@ -431,16 +543,23 @@ tbody tr {
     color: var(--hm-text-900);
     border-radius: 0.75rem;
     font-weight: 500;
+    border: 1px solid var(--hm-border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-action-soft:hover {
     background: rgba(255, 255, 255, 0.09);
 }
 
-/* Tabs list — active = raised dark chip; idle = transparent */
+/* Tabs list — active reads as selected surface, idle remains quiet */
 [data-theme="oatmeal"] .hm-oatmeal-tab-active {
-    background: var(--hm-surface-deep);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0)),
+        var(--hm-surface-deep);
     color: var(--hm-text-900);
+    box-shadow:
+        inset 0 0 0 1px var(--hm-border),
+        0 10px 20px rgba(0, 0, 0, 0.16);
 }
 
 [data-theme="oatmeal"] .hm-oatmeal-tab-idle {
@@ -466,6 +585,30 @@ tbody tr {
     font-weight: 600;
     letter-spacing: 0.22em;
     text-transform: uppercase;
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-scan-grid,
+[data-theme="oatmeal"] .hm-oatmeal-repo-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+[data-theme="oatmeal"] .hm-oatmeal-repo-head {
+    display: none;
+}
+
+@media (min-width: 1024px) {
+    [data-theme="oatmeal"] .hm-oatmeal-scan-grid {
+        grid-template-columns: minmax(0, 1.6fr) minmax(120px, 0.9fr) minmax(56px, 0.5fr) minmax(140px, 0.9fr);
+        align-items: center;
+    }
+
+    [data-theme="oatmeal"] .hm-oatmeal-repo-head,
+    [data-theme="oatmeal"] .hm-oatmeal-repo-row {
+        display: grid;
+        grid-template-columns: minmax(0, 2.6fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) minmax(160px, 1fr) minmax(72px, 0.6fr) minmax(140px, 0.9fr);
+        align-items: center;
+    }
 }
 
 /* ── Sidebar-standard vocabulary ─────────────────────────────── */
