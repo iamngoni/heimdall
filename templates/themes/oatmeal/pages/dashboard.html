@@ -29,51 +29,49 @@
                     </div>
 
                     <section>
-                        <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
+                        <div class="flex items-center justify-between pb-4">
                             <p class="hm-oatmeal-kicker">02 / Posture</p>
                             <span class="hm-oatmeal-number">04 metrics</span>
                         </div>
 
-                        <div class="grid gap-px mt-px" style="background:var(--hm-border)" >
-                            <div class="grid gap-px sm:grid-cols-2 xl:grid-cols-4" style="background:var(--hm-border)">
-                                <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
-                                    <div class="flex items-center justify-between">
-                                        <p class="hm-oatmeal-kicker">Connected Repos</p>
-                                        <span class="hm-oatmeal-number">01</span>
-                                    </div>
-                                    <p class="text-3xl font-semibold tracking-tight" style="color:var(--hm-text-900)">{{ stats.total_repos }}</p>
-                                    <p class="text-sm" style="color:var(--hm-text-600)">Repositories available for scans and review.</p>
+                        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            <div class="hm-oatmeal-metric">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker">Connected Repos</p>
+                                    <span class="hm-oatmeal-number">01</span>
                                 </div>
-                                <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
-                                    <div class="flex items-center justify-between">
-                                        <p class="hm-oatmeal-kicker">Recent Scans</p>
-                                        <span class="hm-oatmeal-number">02</span>
-                                    </div>
-                                    <p class="text-3xl font-semibold tracking-tight" style="color:var(--hm-text-900)">{{ stats.recent_scans }}</p>
-                                    <p class="text-sm" style="color:var(--hm-text-600)">Latest pipeline runs across connected codebases.</p>
+                                <p class="hm-oatmeal-metric-value">{{ stats.total_repos }}</p>
+                                <p class="hm-oatmeal-metric-caption">Repositories available for scans and review.</p>
+                            </div>
+                            <div class="hm-oatmeal-metric">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker">Recent Scans</p>
+                                    <span class="hm-oatmeal-number">02</span>
                                 </div>
-                                <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
-                                    <div class="flex items-center justify-between">
-                                        <p class="hm-oatmeal-kicker">Open Findings</p>
-                                        <span class="hm-oatmeal-number">03</span>
-                                    </div>
-                                    <p class="text-3xl font-semibold tracking-tight" style="color:var(--hm-text-900)">{{ stats.open_findings }}</p>
-                                    <p class="text-sm" style="color:var(--hm-text-600)">Findings still waiting on triage or remediation.</p>
+                                <p class="hm-oatmeal-metric-value">{{ stats.recent_scans }}</p>
+                                <p class="hm-oatmeal-metric-caption">Latest pipeline runs across connected codebases.</p>
+                            </div>
+                            <div class="hm-oatmeal-metric">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker">Open Findings</p>
+                                    <span class="hm-oatmeal-number">03</span>
                                 </div>
-                                <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
-                                    <div class="flex items-center justify-between">
-                                        <p class="hm-oatmeal-kicker">Critical Issues</p>
-                                        <span class="hm-oatmeal-number">04</span>
-                                    </div>
-                                    <p class="text-3xl font-semibold tracking-tight" style="color:var(--hm-danger-text)">{{ stats.critical_findings }}</p>
-                                    <p class="text-sm" style="color:var(--hm-text-600)">Highest-severity risks requiring attention.</p>
+                                <p class="hm-oatmeal-metric-value">{{ stats.open_findings }}</p>
+                                <p class="hm-oatmeal-metric-caption">Findings still waiting on triage or remediation.</p>
+                            </div>
+                            <div class="hm-oatmeal-metric">
+                                <div class="flex items-center justify-between">
+                                    <p class="hm-oatmeal-kicker" style="color:var(--hm-danger-text)">Critical Issues</p>
+                                    <span class="hm-oatmeal-number">04</span>
                                 </div>
+                                <p class="hm-oatmeal-metric-value" style="color:var(--hm-danger-text)">{{ stats.critical_findings }}</p>
+                                <p class="hm-oatmeal-metric-caption">Highest-severity risks requiring attention.</p>
                             </div>
                         </div>
                     </section>
 
                     <div class="grid gap-8 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)]">
-                        <section>
+                        <section class="hm-oatmeal-panel p-6">
                             <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                 <div>
                                     <p class="hm-oatmeal-kicker">03 / Activity</p>
@@ -86,7 +84,7 @@
                             <div class="mt-1">
                                 {% for scan in recent_scans %}
                                 <a href="/scans/{{ scan.id }}"
-                                   class="hm-oatmeal-row hm-oatmeal-scan-grid group gap-4 border-b hm-oatmeal-rule px-3 py-4">
+                                   class="hm-oatmeal-row hm-oatmeal-scan-grid group gap-4 border-b hm-oatmeal-rule px-3 py-4 last:border-b-0">
                                     <div class="min-w-0 flex items-center gap-3">
                                         <span class="hm-oatmeal-number shrink-0">{{ "%02d" | format(loop.index) }}</span>
                                         <div class="min-w-0">
@@ -105,7 +103,7 @@
                                 {% endfor %}
                             </div>
                             {% else %}
-                            <div class="mt-6 border hm-oatmeal-rule rounded-2xl px-8 py-16 text-center" style="background:transparent">
+                            <div class="hm-oatmeal-panel-outline mt-5 px-8 py-16 text-center">
                                 <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl hm-oatmeal-monogram">
                                     <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                         <path d="M12 3v1m0 16v1m-8-9H3m18 0h-1m-2.636-6.364-.707.707M6.343 17.657l-.707.707m12.728 0-.707-.707M6.343 6.343l-.707-.707"/>
@@ -120,7 +118,7 @@
                         </section>
 
                         <div class="space-y-8">
-                            <section>
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
                                         <p class="hm-oatmeal-kicker">04 / Sources</p>
@@ -133,7 +131,7 @@
                                 <div class="mt-1">
                                     {% for repo in repo_summaries %}
                                     <a href="/repos/{{ repo.id }}"
-                                       class="hm-oatmeal-row flex items-start justify-between gap-4 border-b hm-oatmeal-rule px-3 py-4">
+                                       class="hm-oatmeal-row flex items-start justify-between gap-4 border-b hm-oatmeal-rule px-3 py-4 last:border-b-0">
                                         <div class="flex min-w-0 items-center gap-3">
                                             <span class="hm-oatmeal-number shrink-0">{{ "%02d" | format(loop.index) }}</span>
                                             <div class="min-w-0">
@@ -153,7 +151,7 @@
                                     {% endfor %}
                                 </div>
                                 {% else %}
-                                <div class="mt-4 border hm-oatmeal-rule rounded-2xl px-5 py-8 text-center">
+                                <div class="hm-oatmeal-panel-outline mt-4 px-5 py-8 text-center">
                                     <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl hm-oatmeal-monogram">
                                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                             <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
@@ -166,7 +164,7 @@
                                 {% endif %}
                             </section>
 
-                            <section>
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
                                         <p class="hm-oatmeal-kicker">05 / Integrations</p>
@@ -196,7 +194,7 @@
                                         </div>
                                         <span class="hm-oatmeal-dot {{ 'hm-oatmeal-dot-positive' if integrations.gitlab.connected else 'hm-oatmeal-dot-neutral' }}"></span>
                                     </div>
-                                    <div class="flex items-center justify-between border-b hm-oatmeal-rule px-3 py-3.5">
+                                    <div class="flex items-center justify-between px-3 py-3.5">
                                         <div class="flex items-center gap-3">
                                             <span class="hm-oatmeal-number shrink-0">03</span>
                                             <div>

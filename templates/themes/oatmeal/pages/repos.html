@@ -27,8 +27,7 @@
                                 <input id="repo-search"
                                        type="search"
                                        placeholder="Search repositories..."
-                                       class="w-full rounded-xl border px-4 py-2.5 text-sm outline-none transition"
-                                       style="background:var(--hm-surface-muted); color:var(--hm-text-900); border-color:var(--hm-border)">
+                                       class="hm-oatmeal-input text-sm">
                             </div>
                             <a href="/repos/new"
                                class="hm-oatmeal-action inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold transition">
@@ -49,7 +48,7 @@
                     </div>
 
                     {% if repos|length > 0 %}
-                    <section>
+                    <section class="hm-oatmeal-panel p-6">
                         <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                             <p class="hm-oatmeal-kicker">Index</p>
                             <span class="hm-oatmeal-number">{{ total }} total</span>
@@ -67,7 +66,7 @@
                         <div>
                             {% for repo in repos %}
                             <a href="/repos/{{ repo.id }}"
-                               class="repo-row hm-oatmeal-row hm-oatmeal-repo-row gap-4 border-b hm-oatmeal-rule px-3 py-4"
+                               class="repo-row hm-oatmeal-row hm-oatmeal-repo-row gap-4 border-b hm-oatmeal-rule px-3 py-4 last:border-b-0"
                                data-search="{{ repo.name }} {{ repo.host }} {{ repo.source_label }}">
                                 <div class="flex min-w-0 items-center gap-3">
                                     <span class="hm-oatmeal-number shrink-0">{{ "%02d" | format(loop.index) }}</span>
@@ -95,7 +94,7 @@
                         </div>
                     </section>
                     {% else %}
-                    <div class="border hm-oatmeal-rule rounded-2xl px-8 py-20 text-center">
+                    <div class="hm-oatmeal-panel px-8 py-20 text-center">
                         <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl hm-oatmeal-monogram">
                             <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -120,7 +119,7 @@
                     {% endif %}
 
                     {% if total_pages > 1 %}
-                    <nav class="flex items-center justify-between border-t hm-oatmeal-rule pt-4">
+                    <nav class="hm-oatmeal-panel-soft flex items-center justify-between px-5 py-4">
                         <p class="text-sm" style="color:var(--hm-text-500)">Page {{ page }} of {{ total_pages }} ({{ total }} total)</p>
                         <div class="flex items-center gap-2">
                             {% if page > 1 %}

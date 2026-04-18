@@ -66,8 +66,7 @@
                         </div>
                     </div>
 
-                    <section id="scan-live-panel"
-                             class="border-t border-b hm-oatmeal-rule py-5">
+                    <section id="scan-live-panel" class="hm-oatmeal-panel p-5">
                         <div class="flex items-start gap-3">
                             <div id="scan-live-indicator"
                                  class="mt-1 h-2 w-2 rounded-full
@@ -124,46 +123,46 @@
                     </div>
 
                     <section>
-                        <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
+                        <div class="flex items-center justify-between pb-4">
                             <p class="hm-oatmeal-kicker">01 / Severity</p>
                             <span class="hm-oatmeal-number">04 tiers</span>
                         </div>
 
-                        <div class="grid gap-px mt-px sm:grid-cols-2 xl:grid-cols-4" style="background:var(--hm-border)">
-                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                        <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            <div class="hm-oatmeal-metric">
                                 <div class="flex items-center justify-between">
                                     <p class="hm-oatmeal-kicker" style="color:var(--hm-danger-text)">Critical</p>
                                     <span class="hm-oatmeal-number">01</span>
                                 </div>
-                                <p id="scan-count-critical" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-danger-text)">{{ scan.critical_count }}</p>
+                                <p id="scan-count-critical" class="hm-oatmeal-metric-value" style="color:var(--hm-danger-text)">{{ scan.critical_count }}</p>
                             </div>
-                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                            <div class="hm-oatmeal-metric">
                                 <div class="flex items-center justify-between">
                                     <p class="hm-oatmeal-kicker" style="color:var(--hm-danger-text)">High</p>
                                     <span class="hm-oatmeal-number">02</span>
                                 </div>
-                                <p id="scan-count-high" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-danger-text)">{{ scan.high_count }}</p>
+                                <p id="scan-count-high" class="hm-oatmeal-metric-value" style="color:var(--hm-danger-text)">{{ scan.high_count }}</p>
                             </div>
-                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                            <div class="hm-oatmeal-metric">
                                 <div class="flex items-center justify-between">
                                     <p class="hm-oatmeal-kicker" style="color:var(--hm-warning-text)">Medium</p>
                                     <span class="hm-oatmeal-number">03</span>
                                 </div>
-                                <p id="scan-count-medium" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-warning-text)">{{ scan.medium_count }}</p>
+                                <p id="scan-count-medium" class="hm-oatmeal-metric-value" style="color:var(--hm-warning-text)">{{ scan.medium_count }}</p>
                             </div>
-                            <div class="flex flex-col gap-2 p-5" style="background:var(--hm-shell-bg)">
+                            <div class="hm-oatmeal-metric">
                                 <div class="flex items-center justify-between">
                                     <p class="hm-oatmeal-kicker">Low</p>
                                     <span class="hm-oatmeal-number">04</span>
                                 </div>
-                                <p id="scan-count-low" class="text-3xl font-semibold tracking-tight" style="color:var(--hm-text-700)">{{ scan.low_count }}</p>
+                                <p id="scan-count-low" class="hm-oatmeal-metric-value" style="color:var(--hm-text-700)">{{ scan.low_count }}</p>
                             </div>
                         </div>
                     </section>
 
                     <div class="grid gap-8 xl:grid-cols-[minmax(0,1.45fr)_360px]">
                         <div class="space-y-8">
-                            <section>
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
                                         <p class="hm-oatmeal-kicker">02 / Pipeline Stages</p>
@@ -235,7 +234,7 @@
                                 </div>
                             </section>
 
-                            <section>
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
                                         <p class="hm-oatmeal-kicker">03 / Execution Log</p>
@@ -276,7 +275,7 @@
                         </div>
 
                         <aside class="space-y-8">
-                            <section id="scan-current-task">
+                            <section id="scan-current-task" class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
                                         <p class="hm-oatmeal-kicker">Current Operation</p>
@@ -316,7 +315,7 @@
                                 </div>
                             </section>
 
-                            <section>
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
                                         <p class="hm-oatmeal-kicker">Agent Trace</p>
@@ -351,7 +350,7 @@
                                 </div>
                             </section>
 
-                            <section>
+                            <section class="hm-oatmeal-panel p-6">
                                 <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
                                     <div>
                                         <p class="hm-oatmeal-kicker">Next Steps</p>
