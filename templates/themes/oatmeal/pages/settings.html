@@ -5,7 +5,7 @@
 {% block body %}
 {% set active_nav = "settings" %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
-{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
 <div class="min-h-screen" style="background:var(--hm-shell-bg);color:var(--hm-text-900)">
@@ -70,7 +70,7 @@
                             {"id": "profile", "label": "Profile"},
                             {"id": "appearance", "label": "Appearance"},
                             {"id": "integrations", "label": "Integrations", "count": vcs_connected, "total": 3},
-                            {"id": "providers", "label": "AI Providers", "count": ai_connected, "total": 3},
+                            {"id": "providers", "label": "AI Providers", "count": ai_connected, "total": 4},
                             {"id": "keys", "label": "API Keys"},
                             {"id": "security", "label": "Security"}
                         ] %}
@@ -283,6 +283,7 @@
                             <div class="overflow-hidden rounded-2xl border" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
                                 {% set ai_providers = [
                                     {"id": "anthropic", "label": "Anthropic", "status": ai_config.has_anthropic},
+                                    {"id": "codex", "label": "Codex", "status": ai_config.has_codex},
                                     {"id": "openai", "label": "OpenAI", "status": ai_config.has_openai},
                                     {"id": "ollama", "label": "Ollama (local)", "status": ai_config.has_ollama}
                                 ] %}
@@ -294,20 +295,102 @@
                                         <div>
                                             <p class="font-display text-[15px] font-semibold" style="color:var(--hm-text-900)">{{ provider.label }}</p>
                                             <p class="text-[12px]" style="color:var(--hm-text-500)">
-                                                {% if provider.status %}Configured{% else %}No key configured{% endif %}
+                                                {% if provider.status %}Configured{% elif provider.id == 'codex' %}Not connected{% else %}No key configured{% endif %}
                                             </p>
                                         </div>
                                     </div>
-                                    {% if provider.status %}
-                                    <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
-                                          style="background:var(--hm-positive-bg);color:var(--hm-positive-text);border:1px solid var(--hm-positive-border)">Ready</span>
-                                    {% else %}
-                                    <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
-                                          style="background:var(--hm-surface-deep);color:var(--hm-text-500)">Idle</span>
-                                    {% endif %}
+                                    <div class="flex items-center gap-2">
+                                        {% if provider.status %}
+                                        <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                                              style="background:var(--hm-positive-bg);color:var(--hm-positive-text);border:1px solid var(--hm-positive-border)">Ready</span>
+                                        {% else %}
+                                        <span class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                                              style="background:var(--hm-surface-deep);color:var(--hm-text-500)">Idle</span>
+                                        {% endif %}
+                                        {% if provider.id == 'codex' %}
+                                        <a href="/api/settings/codex/authorize"
+                                           hx-boost="false"
+                                           class="hm-oatmeal-action-soft px-3 py-1.5 text-xs">{{ 'Reconnect' if provider.status else 'Configure' }}</a>
+                                        {% endif %}
+                                    </div>
                                 </div>
                                 {% endfor %}
                             </div>
+
+                            {% set ai_provider_options = [
+                                {"id": "codex", "label": "Codex", "enabled": ai_config.has_codex},
+                                {"id": "openai", "label": "OpenAI", "enabled": ai_config.has_openai},
+                                {"id": "anthropic", "label": "Anthropic", "enabled": ai_config.has_anthropic},
+                                {"id": "ollama", "label": "Ollama", "enabled": ai_config.has_ollama}
+                            ] %}
+                            <form hx-patch="/api/settings/ai-routing"
+                                  hx-target="#ai-routing-feedback"
+                                  hx-swap="innerHTML"
+                                  class="mt-5 rounded-2xl border p-5"
+                                  style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
+                                <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                                    <label class="block">
+                                        <span class="mb-2 block text-[12px] font-medium" style="color:var(--hm-text-700)">Preferred provider</span>
+                                        <select name="preferred_provider"
+                                                {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                class="w-full rounded-xl border px-4 py-2.5 text-sm outline-none"
+                                                style="background:var(--hm-surface);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                            {% for provider in ai_provider_options %}
+                                            <option value="{{ provider.id }}"
+                                                    {% if not provider.enabled %}disabled{% endif %}
+                                                    {% if ai_config.preferred_provider == provider.id %}selected{% endif %}>
+                                                {{ provider.label }}{% if not provider.enabled %} (not configured){% endif %}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                    <label class="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium"
+                                           style="background:var(--hm-surface);border-color:var(--hm-border);color:var(--hm-text-700)">
+                                        <input type="checkbox"
+                                               name="fallbacks_enabled"
+                                               value="true"
+                                               {% if ai_config.fallbacks_enabled %}checked{% endif %}
+                                               {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                               class="h-4 w-4 rounded">
+                                        Enable fallbacks
+                                    </label>
+                                </div>
+
+                                <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                    {% for item in [
+                                        {"name": "fallback_order_1", "label": "1", "value": ai_config.fallback_order_1},
+                                        {"name": "fallback_order_2", "label": "2", "value": ai_config.fallback_order_2},
+                                        {"name": "fallback_order_3", "label": "3", "value": ai_config.fallback_order_3},
+                                        {"name": "fallback_order_4", "label": "4", "value": ai_config.fallback_order_4}
+                                    ] %}
+                                    <label class="block">
+                                        <span class="mb-2 block text-[11px] font-semibold uppercase tracking-wide" style="color:var(--hm-text-500)">Order {{ item.label }}</span>
+                                        <select name="{{ item.name }}"
+                                                {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                class="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                                                style="background:var(--hm-surface);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                            <option value="" {% if item.value == "" %}selected{% endif %}>None</option>
+                                            {% for provider in ai_provider_options %}
+                                            <option value="{{ provider.id }}"
+                                                    {% if not provider.enabled %}disabled{% endif %}
+                                                    {% if item.value == provider.id %}selected{% endif %}>
+                                                {{ provider.label }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div id="ai-routing-feedback"></div>
+                                    <button type="submit"
+                                            {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                            class="hm-oatmeal-action px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">
+                                        Save Routing
+                                    </button>
+                                </div>
+                            </form>
 
                             <p class="mt-4 text-[12px]" style="color:var(--hm-text-500)">Default model: <span style="color:var(--hm-text-900)">{{ ai_config.default_model | default('—') }}</span></p>
                         </section>

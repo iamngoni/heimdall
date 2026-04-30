@@ -56,6 +56,14 @@ async fn main() -> std::io::Result<()> {
             format!("Schema apply failed: {e}"),
         )
     })?;
+    db::apply_runtime_schema_updates(&db_pool)
+        .await
+        .map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Runtime schema update failed: {e:#}"),
+            )
+        })?;
 
     info!("Schema applied");
 

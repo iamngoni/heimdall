@@ -27,6 +27,13 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("avatar_url");
             t.text("role").not_null().default_str("'user'");
             t.text("theme").not_null().default_str("'sentinel'");
+            t.text("preferred_ai_provider");
+            t.boolean("ai_fallbacks_enabled")
+                .not_null()
+                .default_bool(false);
+            t.text("ai_fallback_order")
+                .not_null()
+                .default_str("'codex,openai,anthropic,ollama'");
             t.timestamps();
             t.soft_delete();
         })
@@ -280,9 +287,7 @@ pub fn heimdall_schema() -> SchemaDef {
             t.int("line_end");
             t.text("code_snippet");
             t.text("suggested_patch");
-            t.text("fix_type")
-                .not_null()
-                .default_str("'manual_review'");
+            t.text("fix_type").not_null().default_str("'manual_review'");
             t.text("fix_summary");
             t.jsonb("references_json");
             t.jsonb("manifest_coordinates_json");

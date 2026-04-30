@@ -7,7 +7,7 @@
 {% set breadcrumb_parent = "Settings" %}
 {% set breadcrumb_current = none %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
-{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
 <div class="min-h-screen bg-slate-100 text-slate-900">
@@ -66,7 +66,7 @@
                                         data-settings-tab="providers"
                                         class="flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition {{ 'bg-slate-200/70 font-medium text-slate-900' if initial_settings_tab == 'providers' else 'font-normal text-slate-600 hover:bg-slate-200/50 hover:text-slate-900' }}">
                                     <span>AI Providers</span>
-                                    <span class="rounded-full bg-white px-1.5 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">{{ ai_connected }}/3</span>
+                                    <span class="rounded-full bg-white px-1.5 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">{{ ai_connected }}/4</span>
                                 </button>
                                 <button type="button"
                                         data-settings-tab="keys"
@@ -547,6 +547,34 @@
 
                                     <div class="flex items-center justify-between gap-4 py-5">
                                         <div class="flex items-start gap-4">
+                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">C</div>
+                                            <div>
+                                                <h3 class="text-sm font-semibold text-slate-900">Codex</h3>
+                                                <p class="mt-1 text-xs text-slate-500">OpenAI models through a ChatGPT subscription.</p>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-3">
+                                            {% if ai_config.has_codex %}
+                                            <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+                                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                                Active
+                                            </span>
+                                            {% else %}
+                                            <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                                <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                                                Not set
+                                            </span>
+                                            {% endif %}
+                                            <a href="/api/settings/codex/authorize"
+                                               hx-boost="false"
+                                               class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                                                {{ 'Reconnect' if ai_config.has_codex else 'Configure' }}
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center justify-between gap-4 py-5">
+                                        <div class="flex items-start gap-4">
                                             <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-sm font-bold text-white">L</div>
                                             <div>
                                                 <h3 class="text-sm font-semibold text-slate-900">Ollama</h3>
@@ -567,8 +595,79 @@
                                     </div>
                                 </div>
 
+                                {% set ai_provider_options = [
+                                    {"id": "codex", "label": "Codex", "enabled": ai_config.has_codex},
+                                    {"id": "openai", "label": "OpenAI", "enabled": ai_config.has_openai},
+                                    {"id": "anthropic", "label": "Anthropic", "enabled": ai_config.has_anthropic},
+                                    {"id": "ollama", "label": "Ollama", "enabled": ai_config.has_ollama}
+                                ] %}
+                                <form hx-patch="/api/settings/ai-routing"
+                                      hx-target="#ai-routing-feedback"
+                                      hx-swap="innerHTML"
+                                      class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                                        <label class="block">
+                                            <span class="mb-1.5 block text-xs font-medium text-slate-700">Preferred provider</span>
+                                            <select name="preferred_provider"
+                                                    {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                                                {% for provider in ai_provider_options %}
+                                                <option value="{{ provider.id }}"
+                                                        {% if not provider.enabled %}disabled{% endif %}
+                                                        {% if ai_config.preferred_provider == provider.id %}selected{% endif %}>
+                                                    {{ provider.label }}{% if not provider.enabled %} (not configured){% endif %}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </label>
+                                        <label class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700">
+                                            <input type="checkbox"
+                                                   name="fallbacks_enabled"
+                                                   value="true"
+                                                   {% if ai_config.fallbacks_enabled %}checked{% endif %}
+                                                   {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                   class="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-200">
+                                            Enable fallbacks
+                                        </label>
+                                    </div>
+
+                                    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                        {% for item in [
+                                            {"name": "fallback_order_1", "label": "1", "value": ai_config.fallback_order_1},
+                                            {"name": "fallback_order_2", "label": "2", "value": ai_config.fallback_order_2},
+                                            {"name": "fallback_order_3", "label": "3", "value": ai_config.fallback_order_3},
+                                            {"name": "fallback_order_4", "label": "4", "value": ai_config.fallback_order_4}
+                                        ] %}
+                                        <label class="block">
+                                            <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Order {{ item.label }}</span>
+                                            <select name="{{ item.name }}"
+                                                    {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                                                <option value="" {% if item.value == "" %}selected{% endif %}>None</option>
+                                                {% for provider in ai_provider_options %}
+                                                <option value="{{ provider.id }}"
+                                                        {% if not provider.enabled %}disabled{% endif %}
+                                                        {% if item.value == provider.id %}selected{% endif %}>
+                                                    {{ provider.label }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+
+                                    <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div id="ai-routing-feedback"></div>
+                                        <button type="submit"
+                                                {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+                                            Save Routing
+                                        </button>
+                                    </div>
+                                </form>
+
                                 <div class="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                                    <p>Add or remove provider credentials on the <button type="button" class="font-semibold text-blue-600 hover:underline" onclick="setSettingsTab('keys', true)">API Keys</button> tab.</p>
+                                    <p>Add API-key provider credentials on the <button type="button" class="font-semibold text-blue-600 hover:underline" onclick="setSettingsTab('keys', true)">API Keys</button> tab, or configure Codex here.</p>
                                 </div>
                             </section>
 
@@ -676,7 +775,7 @@
                                     {% else %}
                                     <div id="api-keys-empty" class="py-10 text-center">
                                         <p class="text-sm font-medium text-slate-600">No API keys yet</p>
-                                        <p class="mt-1 text-xs text-slate-400">Add an Anthropic, OpenAI, or Ollama key to enable AI-powered scanning.</p>
+                                        <p class="mt-1 text-xs text-slate-400">Add an Anthropic, OpenAI, or Ollama key, or configure Codex, to enable AI-powered scanning.</p>
                                     </div>
                                     {% endif %}
                                 </div>

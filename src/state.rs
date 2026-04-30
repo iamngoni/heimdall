@@ -16,7 +16,7 @@ use crate::ai::{self, ModelProvider, ProviderKind};
 use crate::config::{AiConfig, Config};
 use crate::crypto;
 use crate::db::DatabaseOperations;
-use crate::models::ApiKey;
+use crate::models::{ApiKey, User};
 use crate::sse::ScanBroadcaster;
 use crate::templates::ThemeRegistry;
 
@@ -48,6 +48,27 @@ struct ResolvedProviderCandidate {
     model: String,
     provider_kind: ProviderKind,
     source: RuntimeProviderSource,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AiRoutingPreferences {
+    preferred_provider: Option<ProviderKind>,
+    fallbacks_enabled: bool,
+    fallback_order: Vec<ProviderKind>,
+}
+
+impl AiRoutingPreferences {
+    fn from_user(user: Option<&User>) -> Self {
+        Self {
+            preferred_provider: user
+                .and_then(|user| user.preferred_ai_provider.as_deref())
+                .and_then(ai::provider_kind_from_name),
+            fallbacks_enabled: user.map(|user| user.ai_fallbacks_enabled).unwrap_or(false),
+            fallback_order: user
+                .map(|user| ai::normalize_provider_order(&user.ai_fallback_order))
+                .unwrap_or_else(ai::default_provider_order),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -99,19 +120,20 @@ impl AppState {
     pub fn require_ai(&self) -> anyhow::Result<&dyn ModelProvider> {
         self.ai.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
-                "No AI provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL."
+                "No AI provider configured. Configure Codex in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL."
             )
         })
     }
 
     pub async fn resolve_ai_for_user(&self, user_id: Uuid) -> anyhow::Result<ResolvedAiRuntime> {
         let stored_keys = self.db.list_runtime_api_keys_by_user(user_id).await?;
-        let preferred_provider = ai::provider_kind_from_model(&self.config.ai.default_model);
-        let mut candidates = self.resolve_ai_candidates(&stored_keys, preferred_provider);
+        let db_user = self.db.get_user_by_id(user_id).await?;
+        let preferences = AiRoutingPreferences::from_user(db_user.as_ref());
+        let mut candidates = self.resolve_ai_candidates(&stored_keys, &preferences);
 
         if candidates.is_empty() {
             anyhow::bail!(
-                "No AI provider configured. Add an Anthropic, OpenAI, or Ollama key in Settings, or configure server env vars."
+                "No AI provider configured. Configure Codex or add an Anthropic, OpenAI, or Ollama provider in Settings, or configure server env vars."
             );
         }
 
@@ -141,12 +163,12 @@ impl AppState {
     fn resolve_ai_candidates(
         &self,
         stored_keys: &[ApiKey],
-        preferred_provider: Option<ProviderKind>,
+        preferences: &AiRoutingPreferences,
     ) -> Vec<ResolvedProviderCandidate> {
         let mut candidates = Vec::new();
 
         for (provider_kind, source) in
-            runtime_provider_plan(&self.config.ai, stored_keys, preferred_provider)
+            runtime_provider_plan(&self.config.ai, stored_keys, preferences)
         {
             match source {
                 RuntimeProviderSource::Stored => {
@@ -186,10 +208,22 @@ impl AppState {
     ) -> anyhow::Result<ResolvedProviderCandidate> {
         let secret =
             crypto::decode_stored_secret(&api_key.encrypted_key, self.encryption_key.as_ref())?;
+        let provider: Box<dyn ModelProvider> = if provider_kind == ProviderKind::Codex {
+            Box::new(ai::codex::CodexProvider::with_persistence(
+                secret,
+                ai::codex::CodexTokenPersistence {
+                    db: Arc::clone(&self.db),
+                    api_key_id: api_key.id,
+                    encryption_key: self.encryption_key,
+                },
+            )?)
+        } else {
+            ai::build_provider_for_kind(provider_kind, secret)
+        };
         Ok(ResolvedProviderCandidate {
             model: ai::model_for_provider(provider_kind, &self.config.ai.default_model),
             provider_kind,
-            provider: ai::build_provider_for_kind(provider_kind, secret),
+            provider,
             source: RuntimeProviderSource::Stored,
         })
     }
@@ -208,45 +242,84 @@ impl AppState {
     }
 }
 
-fn runtime_provider_order(preferred_provider: Option<ProviderKind>) -> Vec<ProviderKind> {
-    let mut provider_order = Vec::new();
-    if let Some(provider) = preferred_provider {
-        provider_order.push(provider);
-    }
-    for provider in ProviderKind::ordered() {
-        if Some(provider) != preferred_provider {
-            provider_order.push(provider);
-        }
-    }
-    provider_order
-}
-
 fn runtime_provider_plan(
     config: &AiConfig,
     stored_keys: &[ApiKey],
-    preferred_provider: Option<ProviderKind>,
+    preferences: &AiRoutingPreferences,
 ) -> Vec<(ProviderKind, RuntimeProviderSource)> {
     let mut plan = Vec::new();
+    let Some(primary_provider) = selected_primary_provider(config, stored_keys, preferences) else {
+        return plan;
+    };
 
-    for provider_kind in runtime_provider_order(preferred_provider) {
-        if stored_keys
-            .iter()
-            .any(|key| key.provider.as_deref() == Some(provider_kind.as_str()))
-        {
-            plan.push((provider_kind, RuntimeProviderSource::Stored));
+    let mut provider_order = vec![primary_provider];
+    if preferences.fallbacks_enabled {
+        for provider in &preferences.fallback_order {
+            ai::push_provider_once(&mut provider_order, *provider);
         }
+        for provider in ai::default_provider_order() {
+            ai::push_provider_once(&mut provider_order, provider);
+        }
+    }
 
-        if env_credential_for_provider(config, provider_kind).is_some() {
-            plan.push((provider_kind, RuntimeProviderSource::Environment));
+    for provider_kind in provider_order {
+        if let Some(source) = runtime_source_for_provider(config, stored_keys, provider_kind) {
+            plan.push((provider_kind, source));
         }
     }
 
     plan
 }
 
+fn selected_primary_provider(
+    config: &AiConfig,
+    stored_keys: &[ApiKey],
+    preferences: &AiRoutingPreferences,
+) -> Option<ProviderKind> {
+    if let Some(provider) = preferences.preferred_provider {
+        if provider_is_configured(config, stored_keys, provider) {
+            return Some(provider);
+        }
+    }
+
+    if let Some(provider) = ai::provider_kind_from_model(&config.default_model) {
+        if provider_is_configured(config, stored_keys, provider) {
+            return Some(provider);
+        }
+    }
+
+    ai::default_provider_order()
+        .into_iter()
+        .find(|provider| provider_is_configured(config, stored_keys, *provider))
+}
+
+fn provider_is_configured(
+    config: &AiConfig,
+    stored_keys: &[ApiKey],
+    provider_kind: ProviderKind,
+) -> bool {
+    runtime_source_for_provider(config, stored_keys, provider_kind).is_some()
+}
+
+fn runtime_source_for_provider(
+    config: &AiConfig,
+    stored_keys: &[ApiKey],
+    provider_kind: ProviderKind,
+) -> Option<RuntimeProviderSource> {
+    if stored_keys
+        .iter()
+        .any(|key| key.provider.as_deref() == Some(provider_kind.as_str()))
+    {
+        return Some(RuntimeProviderSource::Stored);
+    }
+
+    env_credential_for_provider(config, provider_kind).map(|_| RuntimeProviderSource::Environment)
+}
+
 fn env_credential_for_provider(config: &AiConfig, provider_kind: ProviderKind) -> Option<String> {
     match provider_kind {
         ProviderKind::Anthropic => config.anthropic_api_key.clone(),
+        ProviderKind::Codex => None,
         ProviderKind::OpenAi => config.openai_api_key.clone(),
         ProviderKind::Ollama => config.ollama_url.clone(),
     }
@@ -289,54 +362,92 @@ mod tests {
     }
 
     #[test]
-    fn runtime_plan_keeps_env_fallback_when_stored_provider_is_preferred() {
+    fn runtime_plan_uses_only_primary_provider_when_fallbacks_disabled() {
         let config = ai_config(None, Some("sk-openai"), None, "claude-sonnet-4-20250514");
         let stored_keys = vec![stored_key("anthropic")];
+        let preferences = AiRoutingPreferences {
+            preferred_provider: None,
+            fallbacks_enabled: false,
+            fallback_order: ai::default_provider_order(),
+        };
 
-        let plan = runtime_provider_plan(
-            &config,
-            &stored_keys,
-            ai::provider_kind_from_model(&config.default_model),
-        );
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
 
         assert_eq!(
             plan,
-            vec![
-                (ProviderKind::Anthropic, RuntimeProviderSource::Stored),
-                (ProviderKind::OpenAi, RuntimeProviderSource::Environment),
-            ]
+            vec![(ProviderKind::Anthropic, RuntimeProviderSource::Stored)]
         );
     }
 
     #[test]
-    fn runtime_plan_prefers_model_matched_provider_before_others() {
+    fn runtime_plan_prefers_user_selected_provider() {
+        let config = ai_config(None, Some("sk-openai"), None, "claude-sonnet-4-20250514");
+        let stored_keys = vec![stored_key("anthropic")];
+        let preferences = AiRoutingPreferences {
+            preferred_provider: Some(ProviderKind::OpenAi),
+            fallbacks_enabled: false,
+            fallback_order: ai::default_provider_order(),
+        };
+
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
+
+        assert_eq!(
+            plan,
+            vec![(ProviderKind::OpenAi, RuntimeProviderSource::Environment)]
+        );
+    }
+
+    #[test]
+    fn runtime_plan_uses_configured_fallback_order_when_enabled() {
         let config = ai_config(
-            Some("sk-ant"),
+            None,
             Some("sk-openai"),
             Some("http://localhost:11434"),
             "gpt-4o",
         );
         let stored_keys = vec![stored_key("anthropic")];
+        let preferences = AiRoutingPreferences {
+            preferred_provider: Some(ProviderKind::OpenAi),
+            fallbacks_enabled: true,
+            fallback_order: vec![
+                ProviderKind::OpenAi,
+                ProviderKind::Anthropic,
+                ProviderKind::Ollama,
+            ],
+        };
 
-        let plan = runtime_provider_plan(
-            &config,
-            &stored_keys,
-            ai::provider_kind_from_model(&config.default_model),
-        );
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
 
         assert_eq!(
             plan,
             vec![
                 (ProviderKind::OpenAi, RuntimeProviderSource::Environment),
                 (ProviderKind::Anthropic, RuntimeProviderSource::Stored),
-                (ProviderKind::Anthropic, RuntimeProviderSource::Environment),
                 (ProviderKind::Ollama, RuntimeProviderSource::Environment),
             ]
         );
     }
 
     #[test]
-    fn runtime_plan_includes_both_stored_and_env_for_same_provider() {
+    fn runtime_plan_ignores_unconfigured_preferred_provider() {
+        let config = ai_config(None, Some("sk-openai"), None, "claude-3-7-sonnet");
+        let stored_keys = Vec::new();
+        let preferences = AiRoutingPreferences {
+            preferred_provider: Some(ProviderKind::Anthropic),
+            fallbacks_enabled: false,
+            fallback_order: ai::default_provider_order(),
+        };
+
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
+
+        assert_eq!(
+            plan,
+            vec![(ProviderKind::OpenAi, RuntimeProviderSource::Environment)]
+        );
+    }
+
+    #[test]
+    fn runtime_plan_prefers_stored_key_over_env_for_same_provider() {
         let config = ai_config(
             Some("sk-ant-env"),
             Some("sk-openai"),
@@ -344,18 +455,18 @@ mod tests {
             "claude-3-7-sonnet",
         );
         let stored_keys = vec![stored_key("anthropic")];
+        let preferences = AiRoutingPreferences {
+            preferred_provider: Some(ProviderKind::Anthropic),
+            fallbacks_enabled: true,
+            fallback_order: ai::default_provider_order(),
+        };
 
-        let plan = runtime_provider_plan(
-            &config,
-            &stored_keys,
-            ai::provider_kind_from_model(&config.default_model),
-        );
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
 
         assert_eq!(
             plan,
             vec![
                 (ProviderKind::Anthropic, RuntimeProviderSource::Stored),
-                (ProviderKind::Anthropic, RuntimeProviderSource::Environment),
                 (ProviderKind::OpenAi, RuntimeProviderSource::Environment),
             ]
         );

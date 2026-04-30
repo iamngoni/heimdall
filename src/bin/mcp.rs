@@ -71,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
 
     let ddl = heimdall::db::schema::generate_ddl(heimdall::db::schema::DbDriver::Postgres);
     sqlx::raw_sql(&ddl).execute(&pool).await?;
+    heimdall::db::apply_runtime_schema_updates(&pool).await?;
 
     let ai_provider = ai::build_provider(&config.ai);
     if ai_provider.is_some() {

@@ -13,9 +13,10 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::ai;
+use crate::ai::ProviderKind;
 use crate::ai::types::{CompletionRequest, Message};
 use crate::middleware::auth::AuthenticatedUser;
-use crate::models::ApiResponse;
+use crate::models::{ApiKey, ApiResponse, User};
 use crate::state::AppState;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
@@ -31,6 +32,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/integrations/{provider}/pat", web::post().to(save_pat))
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
+            .route("/codex/authorize", web::get().to(codex_authorize))
+            .route("/ai-routing", web::patch().to(update_ai_routing))
             .route("/theme", web::patch().to(update_theme))
             .route("/test-connection", web::post().to(test_connection))
             .route("/ai-status", web::get().to(ai_status)),
@@ -71,6 +74,16 @@ struct UpdateThemeRequest {
 }
 
 #[derive(Deserialize)]
+struct UpdateAiRoutingForm {
+    preferred_provider: String,
+    fallbacks_enabled: Option<String>,
+    fallback_order_1: Option<String>,
+    fallback_order_2: Option<String>,
+    fallback_order_3: Option<String>,
+    fallback_order_4: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ChangePasswordRequest {
     current_password: String,
     new_password: String,
@@ -79,9 +92,13 @@ struct ChangePasswordRequest {
 #[derive(Serialize)]
 struct SettingsResponse {
     has_anthropic: bool,
+    has_codex: bool,
     has_openai: bool,
     has_ollama: bool,
     default_model: String,
+    preferred_provider: Option<String>,
+    fallbacks_enabled: bool,
+    fallback_order: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -106,9 +123,13 @@ struct AiStatusResponse {
     env_openai: bool,
     env_ollama: bool,
     stored_anthropic: bool,
+    stored_codex: bool,
     stored_openai: bool,
     stored_ollama: bool,
     default_model: String,
+    preferred_provider: Option<String>,
+    fallbacks_enabled: bool,
+    fallback_order: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +198,11 @@ fn render_api_key_row(
         })),
     };
 
-    match state.themes.get(theme).render("partials/api_key_row.html", ctx) {
+    match state
+        .themes
+        .get(theme)
+        .render("partials/api_key_row.html", ctx)
+    {
         Ok(html) => HttpResponse::Created()
             .content_type("text/html; charset=utf-8")
             .body(html),
@@ -234,20 +259,324 @@ fn inline_feedback_html(success: bool, message: &str) -> HttpResponse {
         .body(body)
 }
 
+fn settings_return_url(req: &HttpRequest) -> String {
+    let connection_info = req.connection_info();
+    format!(
+        "{}://{}/settings#settings-providers",
+        connection_info.scheme(),
+        connection_info.host()
+    )
+}
+
+fn stored_provider_configured(api_keys: &[ApiKey], provider: ProviderKind) -> bool {
+    api_keys
+        .iter()
+        .any(|key| key.provider.as_deref() == Some(provider.as_str()))
+}
+
+fn provider_configured(
+    ai_cfg: &crate::config::AiConfig,
+    api_keys: &[ApiKey],
+    provider: ProviderKind,
+) -> bool {
+    if stored_provider_configured(api_keys, provider) {
+        return true;
+    }
+
+    match provider {
+        ProviderKind::Anthropic => ai_cfg.anthropic_api_key.is_some(),
+        ProviderKind::Codex => false,
+        ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
+        ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
+    }
+}
+
+fn configured_ai_providers(
+    ai_cfg: &crate::config::AiConfig,
+    api_keys: &[ApiKey],
+) -> Vec<ProviderKind> {
+    ai::default_provider_order()
+        .into_iter()
+        .filter(|provider| provider_configured(ai_cfg, api_keys, *provider))
+        .collect()
+}
+
+fn effective_preferred_ai_provider(
+    user: Option<&User>,
+    ai_cfg: &crate::config::AiConfig,
+    api_keys: &[ApiKey],
+) -> Option<ProviderKind> {
+    if let Some(provider) = user
+        .and_then(|user| user.preferred_ai_provider.as_deref())
+        .and_then(ai::provider_kind_from_name)
+    {
+        if provider_configured(ai_cfg, api_keys, provider) {
+            return Some(provider);
+        }
+    }
+
+    if let Some(provider) = ai::provider_kind_from_model(&ai_cfg.default_model) {
+        if provider_configured(ai_cfg, api_keys, provider) {
+            return Some(provider);
+        }
+    }
+
+    configured_ai_providers(ai_cfg, api_keys).into_iter().next()
+}
+
+fn effective_fallback_order(
+    user: Option<&User>,
+    ai_cfg: &crate::config::AiConfig,
+    api_keys: &[ApiKey],
+    preferred_provider: Option<ProviderKind>,
+) -> Vec<ProviderKind> {
+    let configured = configured_ai_providers(ai_cfg, api_keys);
+    let mut order = Vec::new();
+
+    if let Some(provider) = preferred_provider {
+        if configured.contains(&provider) {
+            ai::push_provider_once(&mut order, provider);
+        }
+    }
+
+    let saved_order = user
+        .map(|user| ai::normalize_provider_order(&user.ai_fallback_order))
+        .unwrap_or_else(ai::default_provider_order);
+
+    for provider in saved_order {
+        if configured.contains(&provider) {
+            ai::push_provider_once(&mut order, provider);
+        }
+    }
+
+    for provider in ai::default_provider_order() {
+        if configured.contains(&provider) {
+            ai::push_provider_once(&mut order, provider);
+        }
+    }
+
+    order
+}
+
+fn provider_order_strings(order: &[ProviderKind]) -> Vec<String> {
+    order
+        .iter()
+        .map(|provider| provider.as_str().to_string())
+        .collect()
+}
+
+fn routing_form_order(body: &UpdateAiRoutingForm) -> [&Option<String>; 4] {
+    [
+        &body.fallback_order_1,
+        &body.fallback_order_2,
+        &body.fallback_order_3,
+        &body.fallback_order_4,
+    ]
+}
+
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
 
 /// GET /settings — return current AI provider configuration (no secrets).
-async fn get_settings(state: web::Data<AppState>) -> HttpResponse {
+async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
     let ai_cfg = &state.config.ai;
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let api_keys = state
+        .db
+        .list_api_keys_by_user(user.id)
+        .await
+        .unwrap_or_default();
+    let db_user = state.db.get_user_by_id(user.id).await.unwrap_or(None);
+    let preferred_provider = effective_preferred_ai_provider(db_user.as_ref(), ai_cfg, &api_keys);
+    let fallback_order =
+        effective_fallback_order(db_user.as_ref(), ai_cfg, &api_keys, preferred_provider);
+
+    let has_anthropic = provider_configured(ai_cfg, &api_keys, ProviderKind::Anthropic);
+    let has_codex = provider_configured(ai_cfg, &api_keys, ProviderKind::Codex);
+    let has_openai = provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
+    let has_ollama = provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
+
     let resp = SettingsResponse {
-        has_anthropic: ai_cfg.anthropic_api_key.is_some(),
-        has_openai: ai_cfg.openai_api_key.is_some(),
-        has_ollama: ai_cfg.ollama_url.is_some(),
+        has_anthropic,
+        has_codex,
+        has_openai,
+        has_ollama,
         default_model: ai_cfg.default_model.clone(),
+        preferred_provider: preferred_provider.map(|provider| provider.as_str().to_string()),
+        fallbacks_enabled: db_user
+            .as_ref()
+            .map(|user| user.ai_fallbacks_enabled)
+            .unwrap_or(false),
+        fallback_order: provider_order_strings(&fallback_order),
     };
     HttpResponse::Ok().json(ApiResponse::ok(resp))
+}
+
+/// PATCH /settings/ai-routing — update provider routing preferences.
+async fn update_ai_routing(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Form<UpdateAiRoutingForm>,
+) -> HttpResponse {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let api_keys = match state.db.list_api_keys_by_user(user.id).await {
+        Ok(keys) => keys,
+        Err(error) => {
+            log::error!("Failed to load API keys for AI routing: {error:#}");
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "Failed to load provider settings.");
+            }
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to load provider settings.",
+            ));
+        }
+    };
+    let configured = configured_ai_providers(&state.config.ai, &api_keys);
+    if configured.is_empty() {
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, "Configure at least one AI provider first.");
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Configure at least one AI provider first.",
+        ));
+    }
+
+    let Some(preferred_provider) = ai::provider_kind_from_name(&body.preferred_provider) else {
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, "Choose a valid preferred provider.");
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Choose a valid preferred provider.",
+        ));
+    };
+
+    if !configured.contains(&preferred_provider) {
+        let msg = format!(
+            "{} is not configured yet. Configure it before selecting it as preferred.",
+            preferred_provider.label()
+        );
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, &msg);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
+    }
+
+    let mut fallback_order = vec![preferred_provider];
+    for raw in routing_form_order(&body).into_iter().flatten() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some(provider) = ai::provider_kind_from_name(trimmed) else {
+            let msg = format!("Unknown fallback provider: {trimmed}");
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, &msg);
+            }
+            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
+        };
+        if !configured.contains(&provider) {
+            let msg = format!(
+                "{} is not configured yet. Remove it from the fallback order or configure it first.",
+                provider.label()
+            );
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, &msg);
+            }
+            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
+        }
+        ai::push_provider_once(&mut fallback_order, provider);
+    }
+
+    for provider in configured {
+        ai::push_provider_once(&mut fallback_order, provider);
+    }
+
+    let fallbacks_enabled = body.fallbacks_enabled.is_some();
+    let fallback_order_csv = ai::provider_order_csv(&fallback_order);
+
+    match state
+        .db
+        .update_user_ai_routing_preferences(
+            user.id,
+            Some(preferred_provider.as_str()),
+            fallbacks_enabled,
+            &fallback_order_csv,
+        )
+        .await
+    {
+        Ok(true) => {
+            if is_hx_request(&req) {
+                return inline_feedback_html(true, "AI provider routing saved.");
+            }
+            HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+                "preferred_provider": preferred_provider.as_str(),
+                "fallbacks_enabled": fallbacks_enabled,
+                "fallback_order": provider_order_strings(&fallback_order),
+            })))
+        }
+        Ok(false) => {
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "User not found.");
+            }
+            HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "User not found."))
+        }
+        Err(error) => {
+            log::error!(
+                "Failed to update AI routing for user {}: {error:#}",
+                user.id
+            );
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "Failed to save AI provider routing.");
+            }
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to save AI provider routing.",
+            ))
+        }
+    }
+}
+
+/// GET /settings/codex/authorize — start ChatGPT OAuth for Codex model access.
+async fn codex_authorize(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    match ai::codex::start_login_flow(
+        state.db.clone(),
+        user.id,
+        state.encryption_key,
+        settings_return_url(&req),
+    )
+    .await
+    {
+        Ok(authorize_url) => HttpResponse::Found()
+            .insert_header(("Location", authorize_url))
+            .finish(),
+        Err(error) => {
+            log::error!("Failed to start Codex authorization: {error:#}");
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to start Codex authorization: {error:#}"),
+            ))
+        }
+    }
 }
 
 /// POST /settings/api-keys — store an AI provider key.
@@ -433,33 +762,36 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
         .expect("auth middleware ensures user exists");
     let user_id = user.id;
 
-    let stored_anthropic = state
+    let api_keys = state
         .db
-        .count_api_keys_by_provider(user_id, "anthropic")
+        .list_api_keys_by_user(user_id)
         .await
-        .unwrap_or(0)
-        > 0;
-    let stored_openai = state
-        .db
-        .count_api_keys_by_provider(user_id, "openai")
-        .await
-        .unwrap_or(0)
-        > 0;
-    let stored_ollama = state
-        .db
-        .count_api_keys_by_provider(user_id, "ollama")
-        .await
-        .unwrap_or(0)
-        > 0;
+        .unwrap_or_default();
+    let db_user = state.db.get_user_by_id(user_id).await.unwrap_or(None);
+    let preferred_provider = effective_preferred_ai_provider(db_user.as_ref(), ai_cfg, &api_keys);
+    let fallback_order =
+        effective_fallback_order(db_user.as_ref(), ai_cfg, &api_keys, preferred_provider);
+
+    let stored_anthropic = stored_provider_configured(&api_keys, ProviderKind::Anthropic);
+    let stored_codex = stored_provider_configured(&api_keys, ProviderKind::Codex);
+    let stored_openai = stored_provider_configured(&api_keys, ProviderKind::OpenAi);
+    let stored_ollama = stored_provider_configured(&api_keys, ProviderKind::Ollama);
 
     let resp = AiStatusResponse {
         env_anthropic: ai_cfg.anthropic_api_key.is_some(),
         env_openai: ai_cfg.openai_api_key.is_some(),
         env_ollama: ai_cfg.ollama_url.is_some(),
         stored_anthropic,
+        stored_codex,
         stored_openai,
         stored_ollama,
         default_model: ai_cfg.default_model.clone(),
+        preferred_provider: preferred_provider.map(|provider| provider.as_str().to_string()),
+        fallbacks_enabled: db_user
+            .as_ref()
+            .map(|user| user.ai_fallbacks_enabled)
+            .unwrap_or(false),
+        fallback_order: provider_order_strings(&fallback_order),
     };
 
     HttpResponse::Ok().json(ApiResponse::ok(resp))

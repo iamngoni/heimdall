@@ -40,6 +40,20 @@ pub struct DatabaseOperations {
     pool: PgPool,
 }
 
+pub async fn apply_runtime_schema_updates(pool: &PgPool) -> HeimdallResult<()> {
+    sqlx::raw_sql(
+        "ALTER TABLE users \
+             ADD COLUMN IF NOT EXISTS preferred_ai_provider TEXT, \
+             ADD COLUMN IF NOT EXISTS ai_fallbacks_enabled BOOLEAN NOT NULL DEFAULT FALSE, \
+             ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama'",
+    )
+    .execute(pool)
+    .await
+    .context("Failed to apply runtime schema updates")?;
+
+    Ok(())
+}
+
 impl DatabaseOperations {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -249,6 +263,31 @@ impl DatabaseOperations {
         .execute(&self.pool)
         .await
         .context("Failed to update user theme")?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn update_user_ai_routing_preferences(
+        &self,
+        user_id: Uuid,
+        preferred_provider: Option<&str>,
+        fallbacks_enabled: bool,
+        fallback_order: &str,
+    ) -> HeimdallResult<bool> {
+        let result = sqlx::query(
+            "UPDATE users SET \
+                 preferred_ai_provider = $1, \
+                 ai_fallbacks_enabled = $2, \
+                 ai_fallback_order = $3, \
+                 updated_at = now() \
+             WHERE id = $4 AND deleted_at IS NULL",
+        )
+        .bind(preferred_provider)
+        .bind(fallbacks_enabled)
+        .bind(fallback_order)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to update user AI routing preferences")?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -1695,6 +1734,42 @@ impl DatabaseOperations {
         .execute(&self.pool)
         .await
         .context("Failed to soft-delete API key")?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_api_keys_by_provider(
+        &self,
+        user_id: Uuid,
+        provider: &str,
+    ) -> HeimdallResult<u64> {
+        let result = sqlx::query(
+            "UPDATE api_keys SET deleted_at = now() \
+             WHERE user_id = $1 AND provider = $2 AND deleted_at IS NULL",
+        )
+        .bind(user_id)
+        .bind(provider)
+        .execute(&self.pool)
+        .await
+        .context("Failed to soft-delete API keys by provider")?;
+        Ok(result.rows_affected())
+    }
+
+    pub async fn update_api_key_secret(
+        &self,
+        id: Uuid,
+        key_hash: &str,
+        encrypted_key: &str,
+    ) -> HeimdallResult<bool> {
+        let result = sqlx::query(
+            "UPDATE api_keys SET key_hash = $2, encrypted_key = $3 \
+             WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(key_hash)
+        .bind(encrypted_key)
+        .execute(&self.pool)
+        .await
+        .context("Failed to update API key secret")?;
         Ok(result.rows_affected() > 0)
     }
 

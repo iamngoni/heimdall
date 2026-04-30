@@ -252,7 +252,7 @@
                                 </div>
                             </div>
 
-                            <div class="mt-6 grid gap-4 lg:grid-cols-3">
+                            <div class="mt-6 grid gap-4 lg:grid-cols-4">
                                 <div class="rounded-2xl border {{ 'border-emerald-200 bg-emerald-50' if ai_config.has_anthropic else 'border-slate-200 bg-slate-50' }} p-4">
                                     <div class="flex items-center justify-between">
                                         <span class="text-sm font-semibold text-slate-900">Anthropic</span>
@@ -271,6 +271,20 @@
                                     </div>
                                     <p class="mt-2 text-sm text-slate-500">Balanced provider choice for hosted or hybrid deployments.</p>
                                 </div>
+                                <div class="rounded-2xl border {{ 'border-emerald-200 bg-emerald-50' if ai_config.has_codex else 'border-slate-200 bg-slate-50' }} p-4">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-sm font-semibold text-slate-900">Codex</span>
+                                        <span class="text-xs font-semibold {{ 'text-emerald-700' if ai_config.has_codex else 'text-slate-500' }}">
+                                            {{ 'Active' if ai_config.has_codex else 'Not set' }}
+                                        </span>
+                                    </div>
+                                    <p class="mt-2 text-sm text-slate-500">OpenAI models through a ChatGPT subscription.</p>
+                                    <a href="/api/settings/codex/authorize"
+                                       hx-boost="false"
+                                       class="mt-4 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50">
+                                        {{ 'Reconnect' if ai_config.has_codex else 'Configure Codex' }}
+                                    </a>
+                                </div>
                                 <div class="rounded-2xl border {{ 'border-emerald-200 bg-emerald-50' if ai_config.has_ollama else 'border-slate-200 bg-slate-50' }} p-4">
                                     <div class="flex items-center justify-between">
                                         <span class="text-sm font-semibold text-slate-900">Ollama</span>
@@ -281,6 +295,77 @@
                                     <p class="mt-2 text-sm text-slate-500">Local model support for self-hosted installations.</p>
                                 </div>
                             </div>
+
+                            {% set ai_provider_options = [
+                                {"id": "codex", "label": "Codex", "enabled": ai_config.has_codex},
+                                {"id": "openai", "label": "OpenAI", "enabled": ai_config.has_openai},
+                                {"id": "anthropic", "label": "Anthropic", "enabled": ai_config.has_anthropic},
+                                {"id": "ollama", "label": "Ollama", "enabled": ai_config.has_ollama}
+                            ] %}
+                            <form hx-patch="/api/settings/ai-routing"
+                                  hx-target="#ai-routing-feedback"
+                                  hx-swap="innerHTML"
+                                  class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                                    <label class="block">
+                                        <span class="mb-2 block text-sm font-medium text-slate-700">Preferred provider</span>
+                                        <select name="preferred_provider"
+                                                {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                                            {% for provider in ai_provider_options %}
+                                            <option value="{{ provider.id }}"
+                                                    {% if not provider.enabled %}disabled{% endif %}
+                                                    {% if ai_config.preferred_provider == provider.id %}selected{% endif %}>
+                                                {{ provider.label }}{% if not provider.enabled %} (not configured){% endif %}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                    <label class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700">
+                                        <input type="checkbox"
+                                               name="fallbacks_enabled"
+                                               value="true"
+                                               {% if ai_config.fallbacks_enabled %}checked{% endif %}
+                                               {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                               class="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-200">
+                                        Enable fallbacks
+                                    </label>
+                                </div>
+
+                                <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                    {% for item in [
+                                        {"name": "fallback_order_1", "label": "1", "value": ai_config.fallback_order_1},
+                                        {"name": "fallback_order_2", "label": "2", "value": ai_config.fallback_order_2},
+                                        {"name": "fallback_order_3", "label": "3", "value": ai_config.fallback_order_3},
+                                        {"name": "fallback_order_4", "label": "4", "value": ai_config.fallback_order_4}
+                                    ] %}
+                                    <label class="block">
+                                        <span class="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Order {{ item.label }}</span>
+                                        <select name="{{ item.name }}"
+                                                {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                                            <option value="" {% if item.value == "" %}selected{% endif %}>None</option>
+                                            {% for provider in ai_provider_options %}
+                                            <option value="{{ provider.id }}"
+                                                    {% if not provider.enabled %}disabled{% endif %}
+                                                    {% if item.value == provider.id %}selected{% endif %}>
+                                                {{ provider.label }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div id="ai-routing-feedback" class="min-h-0"></div>
+                                    <button type="submit"
+                                            {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                            class="inline-flex items-center justify-center rounded-xl bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-slate-300">
+                                        Save Routing
+                                    </button>
+                                </div>
+                            </form>
                         </section>
 
                         <section id="profile" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -427,7 +512,7 @@
                                 {% else %}
                                 <div id="api-keys-empty" class="rounded-xl border border-dashed border-slate-200 px-4 py-5 text-center text-sm">
                                     <p class="font-medium text-slate-600">No API keys configured</p>
-                                    <p class="mt-1 text-slate-400">Add an Anthropic, OpenAI, or Ollama key above to enable AI-powered scanning.</p>
+                                    <p class="mt-1 text-slate-400">Add an Anthropic, OpenAI, or Ollama key above, or configure Codex, to enable AI-powered scanning.</p>
                                 </div>
                                 {% endif %}
                             </div>

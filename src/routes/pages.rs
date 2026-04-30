@@ -11,9 +11,11 @@ use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
 use log::error;
 use uuid::Uuid;
 
+use crate::ai::{self, ProviderKind};
+use crate::config::AiConfig;
 use crate::integrations::issues;
 use crate::middleware::auth::AuthenticatedUser;
-use crate::models::PaginationParams;
+use crate::models::{ApiKey, PaginationParams, User};
 use crate::routes::scans::build_scan_live_snapshot;
 use crate::state::AppState;
 
@@ -42,7 +44,12 @@ pub fn init_protected(cfg: &mut web::ServiceConfig) {
 ///
 /// Automatically injects `current_theme` into the template context so every
 /// page can render the `data-theme` attribute on `<body>`.
-fn render_html(state: &AppState, template: &str, theme: &str, ctx: minijinja::Value) -> HttpResponse {
+fn render_html(
+    state: &AppState,
+    template: &str,
+    theme: &str,
+    ctx: minijinja::Value,
+) -> HttpResponse {
     let ctx = minijinja::context! {
         current_theme => theme,
         ..ctx
@@ -52,7 +59,10 @@ fn render_html(state: &AppState, template: &str, theme: &str, ctx: minijinja::Va
             .content_type("text/html; charset=utf-8")
             .body(html),
         Err(e) => {
-            error!("Template render error for '{}' (theme '{}'): {e:#}", template, theme);
+            error!(
+                "Template render error for '{}' (theme '{}'): {e:#}",
+                template, theme
+            );
             server_error_html(state, theme)
         }
     }
@@ -1031,15 +1041,21 @@ async fn settings_page(
         .list_api_keys_by_user(user.id)
         .await
         .unwrap_or_default();
-    let has_stored_anthropic = api_keys
-        .iter()
-        .any(|key| key.provider.as_deref() == Some("anthropic"));
-    let has_stored_openai = api_keys
-        .iter()
-        .any(|key| key.provider.as_deref() == Some("openai"));
-    let has_stored_ollama = api_keys
-        .iter()
-        .any(|key| key.provider.as_deref() == Some("ollama"));
+    let db_user = state.db.get_user_by_id(user.id).await.unwrap_or(None);
+    let has_anthropic = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Anthropic);
+    let has_codex = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Codex);
+    let has_openai = page_provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
+    let has_ollama = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
+    let has_any_provider = has_anthropic || has_codex || has_openai || has_ollama;
+    let preferred_provider =
+        page_effective_preferred_ai_provider(db_user.as_ref(), ai_cfg, &api_keys);
+    let fallback_order =
+        page_effective_fallback_order(db_user.as_ref(), ai_cfg, &api_keys, preferred_provider);
+    let fallback_order_values = page_provider_order_strings(&fallback_order);
+    let fallback_order_1 = fallback_order_values.first().cloned().unwrap_or_default();
+    let fallback_order_2 = fallback_order_values.get(1).cloned().unwrap_or_default();
+    let fallback_order_3 = fallback_order_values.get(2).cloned().unwrap_or_default();
+    let fallback_order_4 = fallback_order_values.get(3).cloned().unwrap_or_default();
     let key_values: Vec<minijinja::Value> = api_keys
         .iter()
         .map(|k| {
@@ -1057,10 +1073,19 @@ async fn settings_page(
         user_initial => user_initial(&req),
         integrations => oauth_connections_ctx(&state, user.id).await,
         ai_config => minijinja::Value::from_serialize(&serde_json::json!({
-            "has_anthropic": ai_cfg.anthropic_api_key.is_some() || has_stored_anthropic,
-            "has_openai": ai_cfg.openai_api_key.is_some() || has_stored_openai,
-            "has_ollama": ai_cfg.ollama_url.is_some() || has_stored_ollama,
+            "has_anthropic": has_anthropic,
+            "has_codex": has_codex,
+            "has_openai": has_openai,
+            "has_ollama": has_ollama,
+            "has_any_provider": has_any_provider,
             "default_model": ai_cfg.default_model,
+            "preferred_provider": preferred_provider.map(|provider| provider.as_str()).unwrap_or(""),
+            "fallbacks_enabled": db_user.as_ref().map(|user| user.ai_fallbacks_enabled).unwrap_or(false),
+            "fallback_order": fallback_order_values,
+            "fallback_order_1": fallback_order_1,
+            "fallback_order_2": fallback_order_2,
+            "fallback_order_3": fallback_order_3,
+            "fallback_order_4": fallback_order_4,
         })),
         api_keys => key_values,
         integration_error => query.integration_error.clone(),
@@ -1069,6 +1094,102 @@ async fn settings_page(
     };
 
     render_html(&state, "pages/settings.html", &user_theme(&req), ctx)
+}
+
+fn page_stored_provider_configured(api_keys: &[ApiKey], provider: ProviderKind) -> bool {
+    api_keys
+        .iter()
+        .any(|key| key.provider.as_deref() == Some(provider.as_str()))
+}
+
+fn page_provider_configured(
+    ai_cfg: &AiConfig,
+    api_keys: &[ApiKey],
+    provider: ProviderKind,
+) -> bool {
+    if page_stored_provider_configured(api_keys, provider) {
+        return true;
+    }
+
+    match provider {
+        ProviderKind::Anthropic => ai_cfg.anthropic_api_key.is_some(),
+        ProviderKind::Codex => false,
+        ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
+        ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
+    }
+}
+
+fn page_configured_ai_providers(ai_cfg: &AiConfig, api_keys: &[ApiKey]) -> Vec<ProviderKind> {
+    ai::default_provider_order()
+        .into_iter()
+        .filter(|provider| page_provider_configured(ai_cfg, api_keys, *provider))
+        .collect()
+}
+
+fn page_effective_preferred_ai_provider(
+    user: Option<&User>,
+    ai_cfg: &AiConfig,
+    api_keys: &[ApiKey],
+) -> Option<ProviderKind> {
+    if let Some(provider) = user
+        .and_then(|user| user.preferred_ai_provider.as_deref())
+        .and_then(ai::provider_kind_from_name)
+    {
+        if page_provider_configured(ai_cfg, api_keys, provider) {
+            return Some(provider);
+        }
+    }
+
+    if let Some(provider) = ai::provider_kind_from_model(&ai_cfg.default_model) {
+        if page_provider_configured(ai_cfg, api_keys, provider) {
+            return Some(provider);
+        }
+    }
+
+    page_configured_ai_providers(ai_cfg, api_keys)
+        .into_iter()
+        .next()
+}
+
+fn page_effective_fallback_order(
+    user: Option<&User>,
+    ai_cfg: &AiConfig,
+    api_keys: &[ApiKey],
+    preferred_provider: Option<ProviderKind>,
+) -> Vec<ProviderKind> {
+    let configured = page_configured_ai_providers(ai_cfg, api_keys);
+    let mut order = Vec::new();
+
+    if let Some(provider) = preferred_provider {
+        if configured.contains(&provider) {
+            ai::push_provider_once(&mut order, provider);
+        }
+    }
+
+    let saved_order = user
+        .map(|user| ai::normalize_provider_order(&user.ai_fallback_order))
+        .unwrap_or_else(ai::default_provider_order);
+
+    for provider in saved_order {
+        if configured.contains(&provider) {
+            ai::push_provider_once(&mut order, provider);
+        }
+    }
+
+    for provider in ai::default_provider_order() {
+        if configured.contains(&provider) {
+            ai::push_provider_once(&mut order, provider);
+        }
+    }
+
+    order
+}
+
+fn page_provider_order_strings(order: &[ProviderKind]) -> Vec<String> {
+    order
+        .iter()
+        .map(|provider| provider.as_str().to_string())
+        .collect()
 }
 
 /// Default 404 handler for unmatched routes.
