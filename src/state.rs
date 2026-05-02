@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use log::warn;
@@ -55,6 +56,7 @@ struct AiRoutingPreferences {
     preferred_provider: Option<ProviderKind>,
     fallbacks_enabled: bool,
     fallback_order: Vec<ProviderKind>,
+    provider_models: BTreeMap<ProviderKind, String>,
 }
 
 impl AiRoutingPreferences {
@@ -67,6 +69,9 @@ impl AiRoutingPreferences {
             fallback_order: user
                 .map(|user| ai::normalize_provider_order(&user.ai_fallback_order))
                 .unwrap_or_else(ai::default_provider_order),
+            provider_models: user
+                .map(|user| ai::parse_provider_models(&user.ai_provider_models))
+                .unwrap_or_default(),
         }
     }
 }
@@ -179,7 +184,11 @@ impl AppState {
                         continue;
                     };
 
-                    match self.provider_candidate_from_stored_key(provider_kind, api_key) {
+                    match self.provider_candidate_from_stored_key(
+                        provider_kind,
+                        api_key,
+                        preferences,
+                    ) {
                         Ok(candidate) => candidates.push(candidate),
                         Err(error) => {
                             warn!(
@@ -191,7 +200,9 @@ impl AppState {
                     }
                 }
                 RuntimeProviderSource::Environment => {
-                    if let Some(candidate) = self.provider_candidate_from_env(provider_kind) {
+                    if let Some(candidate) =
+                        self.provider_candidate_from_env(provider_kind, preferences)
+                    {
                         candidates.push(candidate);
                     }
                 }
@@ -205,6 +216,7 @@ impl AppState {
         &self,
         provider_kind: ProviderKind,
         api_key: &ApiKey,
+        preferences: &AiRoutingPreferences,
     ) -> anyhow::Result<ResolvedProviderCandidate> {
         let secret =
             crypto::decode_stored_secret(&api_key.encrypted_key, self.encryption_key.as_ref())?;
@@ -221,7 +233,11 @@ impl AppState {
             ai::build_provider_for_kind(provider_kind, secret)
         };
         Ok(ResolvedProviderCandidate {
-            model: ai::model_for_provider(provider_kind, &self.config.ai.default_model),
+            model: model_for_provider_with_preferences(
+                provider_kind,
+                &self.config.ai.default_model,
+                preferences,
+            ),
             provider_kind,
             provider,
             source: RuntimeProviderSource::Stored,
@@ -231,15 +247,32 @@ impl AppState {
     fn provider_candidate_from_env(
         &self,
         provider_kind: ProviderKind,
+        preferences: &AiRoutingPreferences,
     ) -> Option<ResolvedProviderCandidate> {
         let credential = env_credential_for_provider(&self.config.ai, provider_kind)?;
         Some(ResolvedProviderCandidate {
-            model: ai::model_for_provider(provider_kind, &self.config.ai.default_model),
+            model: model_for_provider_with_preferences(
+                provider_kind,
+                &self.config.ai.default_model,
+                preferences,
+            ),
             provider_kind,
             provider: ai::build_provider_for_kind(provider_kind, credential),
             source: RuntimeProviderSource::Environment,
         })
     }
+}
+
+fn model_for_provider_with_preferences(
+    provider: ProviderKind,
+    configured_model: &str,
+    preferences: &AiRoutingPreferences,
+) -> String {
+    let override_model = preferences
+        .provider_models
+        .get(&provider)
+        .map(String::as_str);
+    ai::resolve_model_for_provider(provider, override_model, configured_model)
 }
 
 fn runtime_provider_plan(
@@ -369,6 +402,7 @@ mod tests {
             preferred_provider: None,
             fallbacks_enabled: false,
             fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
         };
 
         let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
@@ -387,6 +421,7 @@ mod tests {
             preferred_provider: Some(ProviderKind::OpenAi),
             fallbacks_enabled: false,
             fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
         };
 
         let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
@@ -414,6 +449,7 @@ mod tests {
                 ProviderKind::Anthropic,
                 ProviderKind::Ollama,
             ],
+            provider_models: BTreeMap::new(),
         };
 
         let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
@@ -436,6 +472,7 @@ mod tests {
             preferred_provider: Some(ProviderKind::Anthropic),
             fallbacks_enabled: false,
             fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
         };
 
         let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
@@ -459,6 +496,7 @@ mod tests {
             preferred_provider: Some(ProviderKind::Anthropic),
             fallbacks_enabled: true,
             fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
         };
 
         let plan = runtime_provider_plan(&config, &stored_keys, &preferences);

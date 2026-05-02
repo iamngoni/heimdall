@@ -337,69 +337,88 @@
                                 <header class="mb-10 border-b border-ink-900 pb-6">
                                     <p class="section-num">04 · AI Providers</p>
                                     <h2 class="mt-2 font-serif text-[32px] font-normal leading-tight tracking-tightest text-ink-900">Model access</h2>
-                                    <p class="mt-2 max-w-measure text-sm text-ink-600">Default model: <span class="font-mono text-ink-900">{{ ai_config.default_model }}</span></p>
+                                    <p class="mt-2 max-w-measure text-sm text-ink-600">Pick the model for each provider. Default is <span class="font-mono text-ink-900">{{ ai_config.default_model }}</span> when blank.</p>
                                 </header>
 
-                                <div class="border-t border-ink-200">
-                                    {% for p in [
-                                        {"name": "Anthropic", "desc": "Claude models for threat modeling and report generation.", "active": ai_config.has_anthropic, "codex": false},
-                                        {"name": "Codex", "desc": "OpenAI models through a ChatGPT subscription.", "active": ai_config.has_codex, "codex": true},
-                                        {"name": "OpenAI", "desc": "Balanced provider for hosted or hybrid deployments.", "active": ai_config.has_openai, "codex": false},
-                                        {"name": "Ollama", "desc": "Local models for self-hosted, private deployments.", "active": ai_config.has_ollama, "codex": false}
-                                    ] %}
-                                    <div class="flex items-baseline justify-between gap-4 border-b border-ink-200 py-5">
-                                        <div class="flex items-baseline gap-4">
-                                            <span class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">{{ '%02d'|format(loop.index) }}</span>
-                                            <div>
-                                                <h3 class="font-serif text-lg font-normal text-ink-900">{{ p.name }}</h3>
-                                                <p class="mt-1 text-sm text-ink-600">{{ p.desc }}</p>
-                                            </div>
-                                        </div>
-                                        <div class="flex items-baseline gap-4">
-                                            {% if p.active %}
-                                            <span class="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-900">
-                                                <span class="inline-block h-1.5 w-1.5 rounded-full bg-ink-900"></span>
-                                                Active
-                                            </span>
-                                            {% else %}
-                                            <span class="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-500">
-                                                <span class="inline-block h-1.5 w-1.5 rounded-full bg-ink-300"></span>
-                                                Not set
-                                            </span>
-                                            {% endif %}
-                                            {% if p.codex %}
-                                            <a href="/api/settings/codex/authorize"
-                                               hx-boost="false"
-                                               class="link-editorial font-mono text-[11px] uppercase tracking-[0.14em] text-ink-900">{{ 'Reconnect' if p.active else 'Configure' }}</a>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-
-                                <p class="mt-8 max-w-measure text-sm text-ink-600">
-                                    Manage API-key provider credentials on the
-                                    <button type="button" class="link-editorial font-medium text-ink-900" onclick="setSettingsTab('keys', true)">API Keys</button>
-                                    tab, or configure Codex here.
-                                </p>
-
-                                {% set ai_provider_options = [
-                                    {"id": "codex", "label": "Codex", "enabled": ai_config.has_codex},
-                                    {"id": "openai", "label": "OpenAI", "enabled": ai_config.has_openai},
-                                    {"id": "anthropic", "label": "Anthropic", "enabled": ai_config.has_anthropic},
-                                    {"id": "ollama", "label": "Ollama", "enabled": ai_config.has_ollama}
+                                {% set ai_provider_catalog = [
+                                    {"id": "anthropic", "label": "Anthropic", "blurb": "Claude models for threat modeling and report generation.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_anthropic, "model": ai_config.provider_models.anthropic},
+                                    {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
+                                    {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
+                                    {"id": "ollama", "label": "Ollama", "blurb": "Local models for self-hosted, private deployments.", "placeholder": "llama3.3", "enabled": ai_config.has_ollama, "model": ai_config.provider_models.ollama}
                                 ] %}
+
                                 <form hx-patch="/api/settings/ai-routing"
                                       hx-target="#ai-routing-feedback"
                                       hx-swap="innerHTML"
-                                      class="mt-8 border-t border-ink-900 pt-6">
-                                    <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                                        <label class="block">
+                                      data-ai-routing-form
+                                      class="space-y-8">
+
+                                    <div class="border-t border-ink-200">
+                                        {% for provider in ai_provider_catalog %}
+                                        <div class="grid gap-5 border-b border-ink-200 py-6 sm:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] sm:items-start">
+                                            <div class="flex items-baseline gap-4">
+                                                <span class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">{{ '%02d'|format(loop.index) }}</span>
+                                                <div>
+                                                    <div class="flex items-baseline gap-3">
+                                                        <h3 class="font-serif text-lg font-normal text-ink-900">{{ provider.label }}</h3>
+                                                        {% if provider.enabled %}
+                                                        <span class="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-900">
+                                                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-ink-900"></span>
+                                                            Active
+                                                        </span>
+                                                        {% else %}
+                                                        <span class="flex items-baseline gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-500">
+                                                            <span class="inline-block h-1.5 w-1.5 rounded-full bg-ink-300"></span>
+                                                            Not set
+                                                        </span>
+                                                        {% endif %}
+                                                    </div>
+                                                    <p class="mt-1 text-sm text-ink-600">{{ provider.blurb }}</p>
+                                                    {% if provider.id == 'codex' %}
+                                                    <a href="/api/settings/codex/authorize"
+                                                       hx-boost="false"
+                                                       class="link-editorial mt-2 inline-flex font-mono text-[11px] uppercase tracking-[0.14em] text-ink-900">{{ 'Reconnect ChatGPT' if provider.enabled else 'Connect ChatGPT' }}</a>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            <label class="block">
+                                                <span class="mb-2 block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Model</span>
+                                                <input type="text"
+                                                       name="model_{{ provider.id }}"
+                                                       value="{{ provider.model }}"
+                                                       placeholder="{{ provider.placeholder }}"
+                                                       autocomplete="off"
+                                                       spellcheck="false"
+                                                       {% if not provider.enabled %}disabled{% endif %}
+                                                       class="w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none transition focus:border-ink-700 disabled:opacity-50">
+                                            </label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+
+                                    <div class="border-t border-ink-900 pt-6">
+                                        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                                            <div>
+                                                <p class="section-num">Routing</p>
+                                                <p class="mt-1 max-w-measure text-sm text-ink-600">Pick a primary provider and drag the rail below to set fallback priority.</p>
+                                            </div>
+                                            <label class="inline-flex items-center gap-3 self-start border border-ink-300 bg-paper px-3 py-2 text-sm font-medium text-ink-800 lg:self-auto">
+                                                <input type="checkbox"
+                                                       name="fallbacks_enabled"
+                                                       value="true"
+                                                       {% if ai_config.fallbacks_enabled %}checked{% endif %}
+                                                       {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                       class="h-4 w-4 rounded-none border-ink-400 text-ink-900 focus:ring-ink-200">
+                                                Enable fallbacks
+                                            </label>
+                                        </div>
+
+                                        <label class="mt-5 block">
                                             <span class="mb-2 block font-mono text-[11px] uppercase tracking-[0.14em] text-ink-500">Preferred provider</span>
                                             <select name="preferred_provider"
                                                     {% if not ai_config.has_any_provider %}disabled{% endif %}
                                                     class="w-full border border-ink-300 bg-paper px-3 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
-                                                {% for provider in ai_provider_options %}
+                                                {% for provider in ai_provider_catalog %}
                                                 <option value="{{ provider.id }}"
                                                         {% if not provider.enabled %}disabled{% endif %}
                                                         {% if ai_config.preferred_provider == provider.id %}selected{% endif %}>
@@ -408,51 +427,52 @@
                                                 {% endfor %}
                                             </select>
                                         </label>
-                                        <label class="flex items-center gap-3 border border-ink-300 bg-paper px-3 py-2 text-sm font-medium text-ink-800">
-                                            <input type="checkbox"
-                                                   name="fallbacks_enabled"
-                                                   value="true"
-                                                   {% if ai_config.fallbacks_enabled %}checked{% endif %}
-                                                   {% if not ai_config.has_any_provider %}disabled{% endif %}
-                                                   class="h-4 w-4 rounded-none border-ink-400 text-ink-900 focus:ring-ink-200">
-                                            Enable fallbacks
-                                        </label>
-                                    </div>
 
-                                    <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                        {% for item in [
-                                            {"name": "fallback_order_1", "label": "1", "value": ai_config.fallback_order_1},
-                                            {"name": "fallback_order_2", "label": "2", "value": ai_config.fallback_order_2},
-                                            {"name": "fallback_order_3", "label": "3", "value": ai_config.fallback_order_3},
-                                            {"name": "fallback_order_4", "label": "4", "value": ai_config.fallback_order_4}
-                                        ] %}
-                                        <label class="block">
-                                            <span class="mb-2 block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Order {{ item.label }}</span>
-                                            <select name="{{ item.name }}"
-                                                    {% if not ai_config.has_any_provider %}disabled{% endif %}
-                                                    class="w-full border border-ink-300 bg-paper px-3 py-2 text-sm text-ink-900 outline-none transition focus:border-ink-900">
-                                                <option value="" {% if item.value == "" %}selected{% endif %}>None</option>
-                                                {% for provider in ai_provider_options %}
-                                                <option value="{{ provider.id }}"
-                                                        {% if not provider.enabled %}disabled{% endif %}
-                                                        {% if item.value == provider.id %}selected{% endif %}>
-                                                    {{ provider.label }}
-                                                </option>
+                                        <div class="mt-6">
+                                            <div class="flex items-baseline justify-between">
+                                                <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-500">Fallback priority</span>
+                                                <span class="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-400">Drag to reorder</span>
+                                            </div>
+
+                                            <ol id="fallback-order-list"
+                                                data-fallback-order-list
+                                                class="mt-3 space-y-2">
+                                                {% for slug in ai_config.fallback_order %}
+                                                    {% set provider = ai_provider_catalog | selectattr("id", "equalto", slug) | first %}
+                                                    {% if provider %}
+                                                    <li data-provider="{{ provider.id }}"
+                                                        draggable="true"
+                                                        class="group/item flex cursor-grab items-baseline gap-4 border border-ink-300 bg-paper px-4 py-3 text-sm transition active:cursor-grabbing">
+                                                        <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-300 transition group-hover/item:text-ink-600" aria-hidden="true">≡≡</span>
+                                                        <span data-rank class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">{{ '%02d'|format(loop.index) }}</span>
+                                                        <span class="font-serif text-base text-ink-900">{{ provider.label }}</span>
+                                                        {% if provider.model %}
+                                                        <span class="ml-auto font-mono text-[11px] text-ink-500">{{ provider.model }}</span>
+                                                        {% endif %}
+                                                    </li>
+                                                    {% endif %}
                                                 {% endfor %}
-                                            </select>
-                                        </label>
-                                        {% endfor %}
-                                    </div>
+                                            </ol>
 
-                                    <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                        <div id="ai-routing-feedback"></div>
-                                        <button type="submit"
-                                                {% if not ai_config.has_any_provider %}disabled{% endif %}
-                                                class="border border-ink-900 bg-ink-900 px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-paper transition hover:bg-ink-700 disabled:cursor-not-allowed disabled:border-ink-300 disabled:bg-ink-300">
-                                            Save Routing
-                                        </button>
+                                            <input type="hidden" name="fallback_order" data-fallback-order-input value="{{ ai_config.fallback_order_csv }}">
+                                        </div>
+
+                                        <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div id="ai-routing-feedback"></div>
+                                            <button type="submit"
+                                                    {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                    class="border border-ink-900 bg-ink-900 px-4 py-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-paper transition hover:bg-ink-700 disabled:cursor-not-allowed disabled:border-ink-300 disabled:bg-ink-300">
+                                                Save Providers
+                                            </button>
+                                        </div>
                                     </div>
                                 </form>
+
+                                <p class="mt-8 max-w-measure text-sm text-ink-600">
+                                    Manage API-key provider credentials on the
+                                    <button type="button" class="link-editorial font-medium text-ink-900" onclick="setSettingsTab('keys', true)">API Keys</button>
+                                    tab.
+                                </p>
                             </section>
 
                             <!-- API Keys -->
@@ -740,5 +760,64 @@ document.getElementById('password-form')?.addEventListener('submit', async (even
         result.innerHTML = '<span class="font-mono text-[11px] uppercase tracking-[0.14em] text-red-700">× Network error.</span>';
     }
 });
+
+// Draggable fallback priority list
+(function () {
+    const list = document.querySelector('[data-fallback-order-list]');
+    const input = document.querySelector('[data-fallback-order-input]');
+    if (!list || !input) {
+        return;
+    }
+
+    const syncInput = function () {
+        const slugs = Array.from(list.querySelectorAll('[data-provider]')).map(function (node) {
+            return node.dataset.provider;
+        });
+        input.value = slugs.join(',');
+        list.querySelectorAll('[data-provider]').forEach(function (node, index) {
+            const rank = node.querySelector('[data-rank]');
+            if (rank) {
+                rank.textContent = String(index + 1).padStart(2, '0');
+            }
+        });
+    };
+
+    let dragged = null;
+    const findItem = function (event) {
+        let node = event.target;
+        while (node && node !== list && !(node.dataset && node.dataset.provider)) {
+            node = node.parentElement;
+        }
+        return node && node.dataset && node.dataset.provider ? node : null;
+    };
+
+    list.addEventListener('dragstart', function (event) {
+        const item = findItem(event);
+        if (!item) { return; }
+        dragged = item;
+        item.classList.add('opacity-50');
+        event.dataTransfer.effectAllowed = 'move';
+        try { event.dataTransfer.setData('text/plain', item.dataset.provider); } catch (_) {}
+    });
+    list.addEventListener('dragend', function () {
+        if (dragged) { dragged.classList.remove('opacity-50'); }
+        dragged = null;
+    });
+    list.addEventListener('dragover', function (event) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        const target = findItem(event);
+        if (!target || !dragged || target === dragged) { return; }
+        const rect = target.getBoundingClientRect();
+        const after = event.clientY - rect.top > rect.height / 2;
+        if (after) { target.after(dragged); } else { target.before(dragged); }
+    });
+    list.addEventListener('drop', function (event) {
+        event.preventDefault();
+        syncInput();
+    });
+
+    syncInput();
+})();
 </script>
 {% endblock %}

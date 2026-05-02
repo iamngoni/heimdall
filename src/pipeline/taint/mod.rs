@@ -603,9 +603,7 @@ impl TaintAnalysisStage {
 
 fn taint_fix_summary(category: &SinkCategory) -> &'static str {
     match category {
-        SinkCategory::Sql => {
-            "Break the tainted flow by switching to parameterized queries."
-        }
+        SinkCategory::Sql => "Break the tainted flow by switching to parameterized queries.",
         SinkCategory::Command => {
             "Break the tainted flow by passing arguments as an argv list, not a shell string."
         }
@@ -644,18 +642,12 @@ fn taint_fix_guidance(category: &SinkCategory) -> &'static str {
 fn taint_reference(category: &SinkCategory) -> &'static str {
     match category {
         SinkCategory::Sql => "https://owasp.org/www-community/attacks/SQL_Injection",
-        SinkCategory::Command => {
-            "https://owasp.org/www-community/attacks/Command_Injection"
-        }
-        SinkCategory::Xss => {
-            "https://owasp.org/www-community/attacks/xss/"
-        }
+        SinkCategory::Command => "https://owasp.org/www-community/attacks/Command_Injection",
+        SinkCategory::Xss => "https://owasp.org/www-community/attacks/xss/",
         SinkCategory::Deserialization => {
             "https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data"
         }
-        SinkCategory::FileAccess => {
-            "https://owasp.org/www-community/attacks/Path_Traversal"
-        }
+        SinkCategory::FileAccess => "https://owasp.org/www-community/attacks/Path_Traversal",
     }
 }
 

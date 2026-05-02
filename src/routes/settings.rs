@@ -7,6 +7,8 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
+use std::collections::BTreeMap;
+
 use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -77,10 +79,12 @@ struct UpdateThemeRequest {
 struct UpdateAiRoutingForm {
     preferred_provider: String,
     fallbacks_enabled: Option<String>,
-    fallback_order_1: Option<String>,
-    fallback_order_2: Option<String>,
-    fallback_order_3: Option<String>,
-    fallback_order_4: Option<String>,
+    /// CSV of provider ids in priority order, e.g. "codex,openai,anthropic,ollama".
+    fallback_order: Option<String>,
+    model_anthropic: Option<String>,
+    model_codex: Option<String>,
+    model_openai: Option<String>,
+    model_ollama: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -99,6 +103,7 @@ struct SettingsResponse {
     preferred_provider: Option<String>,
     fallbacks_enabled: bool,
     fallback_order: Vec<String>,
+    provider_models: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -130,6 +135,7 @@ struct AiStatusResponse {
     preferred_provider: Option<String>,
     fallbacks_enabled: bool,
     fallback_order: Vec<String>,
+    provider_models: serde_json::Map<String, serde_json::Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -365,13 +371,38 @@ fn provider_order_strings(order: &[ProviderKind]) -> Vec<String> {
         .collect()
 }
 
-fn routing_form_order(body: &UpdateAiRoutingForm) -> [&Option<String>; 4] {
-    [
-        &body.fallback_order_1,
-        &body.fallback_order_2,
-        &body.fallback_order_3,
-        &body.fallback_order_4,
-    ]
+fn provider_models_to_json_map(
+    models: &BTreeMap<ProviderKind, String>,
+) -> serde_json::Map<String, serde_json::Value> {
+    models
+        .iter()
+        .map(|(provider, model)| {
+            (
+                provider.as_str().to_string(),
+                serde_json::Value::String(model.clone()),
+            )
+        })
+        .collect()
+}
+
+/// Pull non-empty per-provider model overrides off the form into a map keyed by provider.
+fn provider_models_from_form(body: &UpdateAiRoutingForm) -> BTreeMap<ProviderKind, String> {
+    let mut models = BTreeMap::new();
+    let pairs = [
+        (ProviderKind::Anthropic, body.model_anthropic.as_deref()),
+        (ProviderKind::Codex, body.model_codex.as_deref()),
+        (ProviderKind::OpenAi, body.model_openai.as_deref()),
+        (ProviderKind::Ollama, body.model_ollama.as_deref()),
+    ];
+    for (provider, value) in pairs {
+        if let Some(raw) = value {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                models.insert(provider, trimmed.to_string());
+            }
+        }
+    }
+    models
 }
 
 // ---------------------------------------------------------------------------
@@ -402,6 +433,11 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
     let has_openai = provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
     let has_ollama = provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
 
+    let provider_models = db_user
+        .as_ref()
+        .map(|user| ai::parse_provider_models(&user.ai_provider_models))
+        .unwrap_or_default();
+
     let resp = SettingsResponse {
         has_anthropic,
         has_codex,
@@ -414,6 +450,7 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
             .map(|user| user.ai_fallbacks_enabled)
             .unwrap_or(false),
         fallback_order: provider_order_strings(&fallback_order),
+        provider_models: provider_models_to_json_map(&provider_models),
     };
     HttpResponse::Ok().json(ApiResponse::ok(resp))
 }
@@ -476,29 +513,31 @@ async fn update_ai_routing(
     }
 
     let mut fallback_order = vec![preferred_provider];
-    for raw in routing_form_order(&body).into_iter().flatten() {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let Some(provider) = ai::provider_kind_from_name(trimmed) else {
-            let msg = format!("Unknown fallback provider: {trimmed}");
-            if is_hx_request(&req) {
-                return inline_feedback_html(false, &msg);
+    if let Some(raw) = body.fallback_order.as_deref() {
+        for token in raw.split(',') {
+            let trimmed = token.trim();
+            if trimmed.is_empty() {
+                continue;
             }
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
-        };
-        if !configured.contains(&provider) {
-            let msg = format!(
-                "{} is not configured yet. Remove it from the fallback order or configure it first.",
-                provider.label()
-            );
-            if is_hx_request(&req) {
-                return inline_feedback_html(false, &msg);
+            let Some(provider) = ai::provider_kind_from_name(trimmed) else {
+                let msg = format!("Unknown fallback provider: {trimmed}");
+                if is_hx_request(&req) {
+                    return inline_feedback_html(false, &msg);
+                }
+                return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
+            };
+            if !configured.contains(&provider) {
+                let msg = format!(
+                    "{} is not configured yet. Remove it from the fallback order or configure it first.",
+                    provider.label()
+                );
+                if is_hx_request(&req) {
+                    return inline_feedback_html(false, &msg);
+                }
+                return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
             }
-            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
+            ai::push_provider_once(&mut fallback_order, provider);
         }
-        ai::push_provider_once(&mut fallback_order, provider);
     }
 
     for provider in configured {
@@ -507,6 +546,8 @@ async fn update_ai_routing(
 
     let fallbacks_enabled = body.fallbacks_enabled.is_some();
     let fallback_order_csv = ai::provider_order_csv(&fallback_order);
+    let provider_models = provider_models_from_form(&body);
+    let provider_models_json = ai::serialize_provider_models(&provider_models);
 
     match state
         .db
@@ -515,6 +556,7 @@ async fn update_ai_routing(
             Some(preferred_provider.as_str()),
             fallbacks_enabled,
             &fallback_order_csv,
+            &provider_models_json,
         )
         .await
     {
@@ -526,6 +568,7 @@ async fn update_ai_routing(
                 "preferred_provider": preferred_provider.as_str(),
                 "fallbacks_enabled": fallbacks_enabled,
                 "fallback_order": provider_order_strings(&fallback_order),
+                "provider_models": provider_models_to_json_map(&provider_models),
             })))
         }
         Ok(false) => {
@@ -777,6 +820,11 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
     let stored_openai = stored_provider_configured(&api_keys, ProviderKind::OpenAi);
     let stored_ollama = stored_provider_configured(&api_keys, ProviderKind::Ollama);
 
+    let provider_models = db_user
+        .as_ref()
+        .map(|user| ai::parse_provider_models(&user.ai_provider_models))
+        .unwrap_or_default();
+
     let resp = AiStatusResponse {
         env_anthropic: ai_cfg.anthropic_api_key.is_some(),
         env_openai: ai_cfg.openai_api_key.is_some(),
@@ -792,6 +840,7 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
             .map(|user| user.ai_fallbacks_enabled)
             .unwrap_or(false),
         fallback_order: provider_order_strings(&fallback_order),
+        provider_models: provider_models_to_json_map(&provider_models),
     };
 
     HttpResponse::Ok().json(ApiResponse::ok(resp))

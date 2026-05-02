@@ -45,7 +45,8 @@ pub async fn apply_runtime_schema_updates(pool: &PgPool) -> HeimdallResult<()> {
         "ALTER TABLE users \
              ADD COLUMN IF NOT EXISTS preferred_ai_provider TEXT, \
              ADD COLUMN IF NOT EXISTS ai_fallbacks_enabled BOOLEAN NOT NULL DEFAULT FALSE, \
-             ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama'",
+             ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama', \
+             ADD COLUMN IF NOT EXISTS ai_provider_models TEXT NOT NULL DEFAULT '{}'",
     )
     .execute(pool)
     .await
@@ -272,18 +273,21 @@ impl DatabaseOperations {
         preferred_provider: Option<&str>,
         fallbacks_enabled: bool,
         fallback_order: &str,
+        provider_models: &str,
     ) -> HeimdallResult<bool> {
         let result = sqlx::query(
             "UPDATE users SET \
                  preferred_ai_provider = $1, \
                  ai_fallbacks_enabled = $2, \
                  ai_fallback_order = $3, \
+                 ai_provider_models = $4, \
                  updated_at = now() \
-             WHERE id = $4 AND deleted_at IS NULL",
+             WHERE id = $5 AND deleted_at IS NULL",
         )
         .bind(preferred_provider)
         .bind(fallbacks_enabled)
         .bind(fallback_order)
+        .bind(provider_models)
         .bind(user_id)
         .execute(&self.pool)
         .await

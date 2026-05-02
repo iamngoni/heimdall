@@ -234,10 +234,7 @@ fn leading_excerpt(content: &str, max_lines: usize) -> (String, Option<i32>) {
         return (String::new(), None);
     }
 
-    (
-        lines.join("\n"),
-        Some(lines.len() as i32),
-    )
+    (lines.join("\n"), Some(lines.len() as i32))
 }
 
 fn build_config_evidence(
@@ -273,8 +270,7 @@ fn config_fix_summary(rule: &rules::ConfigRule) -> String {
             || name.contains("host-network")
             || name.contains("host-pid") =>
         {
-            "Tighten the exposed security boundary to the minimum allow-list required."
-                .to_string()
+            "Tighten the exposed security boundary to the minimum allow-list required.".to_string()
         }
         name if name.contains("debug") => {
             "Disable debug / development behavior in production configuration.".to_string()
@@ -288,7 +284,10 @@ fn config_fix_summary(rule: &rules::ConfigRule) -> String {
         name if name.contains("resource-limits") => {
             "Define CPU and memory requests/limits for the workload.".to_string()
         }
-        _ => format!("Update this configuration to address: {}.", rule.description),
+        _ => format!(
+            "Update this configuration to address: {}.",
+            rule.description
+        ),
     }
 }
 

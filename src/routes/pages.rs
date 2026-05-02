@@ -1052,10 +1052,10 @@ async fn settings_page(
     let fallback_order =
         page_effective_fallback_order(db_user.as_ref(), ai_cfg, &api_keys, preferred_provider);
     let fallback_order_values = page_provider_order_strings(&fallback_order);
-    let fallback_order_1 = fallback_order_values.first().cloned().unwrap_or_default();
-    let fallback_order_2 = fallback_order_values.get(1).cloned().unwrap_or_default();
-    let fallback_order_3 = fallback_order_values.get(2).cloned().unwrap_or_default();
-    let fallback_order_4 = fallback_order_values.get(3).cloned().unwrap_or_default();
+    let provider_models = db_user
+        .as_ref()
+        .map(|user| ai::parse_provider_models(&user.ai_provider_models))
+        .unwrap_or_default();
     let key_values: Vec<minijinja::Value> = api_keys
         .iter()
         .map(|k| {
@@ -1067,6 +1067,18 @@ async fn settings_page(
             }))
         })
         .collect();
+
+    let provider_models_ctx: serde_json::Map<String, serde_json::Value> = ProviderKind::ordered()
+        .iter()
+        .map(|provider| {
+            let value = provider_models.get(provider).cloned().unwrap_or_default();
+            (
+                provider.as_str().to_string(),
+                serde_json::Value::String(value),
+            )
+        })
+        .collect();
+    let fallback_order_csv = fallback_order_values.join(",");
 
     let ctx = minijinja::context! {
         user => user_ctx(&req),
@@ -1082,10 +1094,8 @@ async fn settings_page(
             "preferred_provider": preferred_provider.map(|provider| provider.as_str()).unwrap_or(""),
             "fallbacks_enabled": db_user.as_ref().map(|user| user.ai_fallbacks_enabled).unwrap_or(false),
             "fallback_order": fallback_order_values,
-            "fallback_order_1": fallback_order_1,
-            "fallback_order_2": fallback_order_2,
-            "fallback_order_3": fallback_order_3,
-            "fallback_order_4": fallback_order_4,
+            "fallback_order_csv": fallback_order_csv,
+            "provider_models": provider_models_ctx,
         })),
         api_keys => key_values,
         integration_error => query.integration_error.clone(),

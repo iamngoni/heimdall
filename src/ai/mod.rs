@@ -14,11 +14,13 @@ pub mod ollama;
 pub mod openai;
 pub mod types;
 
+use std::collections::BTreeMap;
+
 use crate::config::AiConfig;
 use crate::models::HeimdallResult;
 use types::{CompletionRequest, CompletionResponse};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProviderKind {
     Anthropic,
     Codex,
@@ -166,6 +168,69 @@ pub fn model_for_provider(provider: ProviderKind, configured_model: &str) -> Str
     }
 }
 
+/// Decide which model to use for a provider, preferring an explicit user override.
+/// `override_model` takes precedence when non-empty; otherwise falls back to
+/// `model_for_provider`.
+pub fn resolve_model_for_provider(
+    provider: ProviderKind,
+    override_model: Option<&str>,
+    configured_model: &str,
+) -> String {
+    if let Some(override_model) = override_model {
+        let trimmed = override_model.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    model_for_provider(provider, configured_model)
+}
+
+/// Parse a per-provider model overrides map from its JSON-encoded form.
+/// Returns an empty map when the input is empty or malformed.
+pub fn parse_provider_models(value: &str) -> BTreeMap<ProviderKind, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return BTreeMap::new();
+    }
+
+    let parsed: serde_json::Value = match serde_json::from_str(value) {
+        Ok(parsed) => parsed,
+        Err(_) => return BTreeMap::new(),
+    };
+
+    let Some(object) = parsed.as_object() else {
+        return BTreeMap::new();
+    };
+
+    let mut models = BTreeMap::new();
+    for (key, val) in object {
+        let Some(provider) = provider_kind_from_name(key) else {
+            continue;
+        };
+        let Some(model) = val.as_str() else { continue };
+        let trimmed = model.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        models.insert(provider, trimmed.to_string());
+    }
+    models
+}
+
+/// Encode a per-provider model overrides map back to JSON.
+pub fn serialize_provider_models(models: &BTreeMap<ProviderKind, String>) -> String {
+    let map: serde_json::Map<String, serde_json::Value> = models
+        .iter()
+        .map(|(provider, model)| {
+            (
+                provider.as_str().to_string(),
+                serde_json::Value::String(model.clone()),
+            )
+        })
+        .collect();
+    serde_json::Value::Object(map).to_string()
+}
+
 pub fn build_provider_for_kind(
     provider: ProviderKind,
     credential: String,
@@ -297,6 +362,54 @@ mod tests {
             Some(ProviderKind::Ollama)
         );
         assert_eq!(provider_kind_from_name("unknown"), None);
+    }
+
+    #[test]
+    fn resolve_model_prefers_explicit_override() {
+        assert_eq!(
+            resolve_model_for_provider(
+                ProviderKind::OpenAi,
+                Some("gpt-4o-mini"),
+                "claude-sonnet-4-20250514"
+            ),
+            "gpt-4o-mini"
+        );
+    }
+
+    #[test]
+    fn resolve_model_falls_back_when_override_blank() {
+        assert_eq!(
+            resolve_model_for_provider(ProviderKind::Anthropic, Some("   "), ""),
+            "claude-sonnet-4-20250514"
+        );
+        assert_eq!(
+            resolve_model_for_provider(ProviderKind::OpenAi, None, ""),
+            "gpt-4o"
+        );
+    }
+
+    #[test]
+    fn parse_provider_models_round_trip() {
+        let mut original = BTreeMap::new();
+        original.insert(ProviderKind::OpenAi, "gpt-4o-mini".to_string());
+        original.insert(ProviderKind::Anthropic, "claude-sonnet-4-5".to_string());
+        let serialized = serialize_provider_models(&original);
+        let parsed = parse_provider_models(&serialized);
+        assert_eq!(parsed, original);
+    }
+
+    #[test]
+    fn parse_provider_models_handles_garbage() {
+        assert!(parse_provider_models("").is_empty());
+        assert!(parse_provider_models("not-json").is_empty());
+        let parsed = parse_provider_models(
+            r#"{"openai":"gpt-4o","unknown":"x","ollama":"  ","anthropic":42}"#,
+        );
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(
+            parsed.get(&ProviderKind::OpenAi).map(String::as_str),
+            Some("gpt-4o")
+        );
     }
 
     #[test]

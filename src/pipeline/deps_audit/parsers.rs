@@ -300,7 +300,11 @@ fn parse_requirements_txt(content: &str) -> Vec<Dependency> {
             if let Some(idx) = line.find(sep) {
                 let name = line[..idx].trim();
                 let version_spec = line[idx + sep.len()..].trim();
-                let declared_version = version_spec.split(',').next().unwrap_or(version_spec).trim();
+                let declared_version = version_spec
+                    .split(',')
+                    .next()
+                    .unwrap_or(version_spec)
+                    .trim();
                 if !name.is_empty() && !declared_version.is_empty() {
                     deps.push(make_dependency(
                         name,

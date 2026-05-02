@@ -167,8 +167,10 @@ impl SemgrepStage {
                     )
                 });
 
-            let fix_summary =
-                format!("Apply the semgrep-suggested remediation for rule `{}`.", result.check_id);
+            let fix_summary = format!(
+                "Apply the semgrep-suggested remediation for rule `{}`.",
+                result.check_id
+            );
 
             let references = metadata
                 .and_then(|m| m.references.clone())

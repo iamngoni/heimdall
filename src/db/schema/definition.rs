@@ -34,6 +34,7 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("ai_fallback_order")
                 .not_null()
                 .default_str("'codex,openai,anthropic,ollama'");
+            t.text("ai_provider_models").not_null().default_str("'{}'");
             t.timestamps();
             t.soft_delete();
         })

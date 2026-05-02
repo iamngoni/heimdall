@@ -155,8 +155,7 @@ impl DepsAuditStage {
         let mut vulns = Vec::new();
         for (i, vulns_for_dep) in results.iter().enumerate() {
             let query_occurrence = &query_occurrences[i];
-            let report_occurrence =
-                resolve_report_occurrence(&all_occurrences, query_occurrence);
+            let report_occurrence = resolve_report_occurrence(&all_occurrences, query_occurrence);
             for vuln in vulns_for_dep {
                 let severity = classify_severity(vuln);
                 let fixed_versions = fixed_versions_for(vuln, &query_occurrence.dep);
@@ -343,7 +342,9 @@ fn resolve_report_occurrence<'a>(
 
 fn supports_lockfile_query(path: &str) -> bool {
     matches!(
-        std::path::Path::new(path).file_name().and_then(|name| name.to_str()),
+        std::path::Path::new(path)
+            .file_name()
+            .and_then(|name| name.to_str()),
         Some("Cargo.lock" | "package-lock.json")
     )
 }
@@ -475,7 +476,10 @@ fn dependency_fix_guidance(
 fn rendered_dependency_replacement(dep: &Dependency, target_version: &str) -> String {
     let replacement_spec = apply_version_style(&dep.declared_version, target_version);
     if dep.declared_version.is_empty() {
-        return format!("Set `{}` to `{replacement_spec}` in the manifest entry.", dep.name);
+        return format!(
+            "Set `{}` to `{replacement_spec}` in the manifest entry.",
+            dep.name
+        );
     }
 
     dep.code_snippet

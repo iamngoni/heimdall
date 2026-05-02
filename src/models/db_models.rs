@@ -147,6 +147,7 @@ pub struct User {
     pub preferred_ai_provider: Option<String>,
     pub ai_fallbacks_enabled: bool,
     pub ai_fallback_order: String,
+    pub ai_provider_models: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,

@@ -204,7 +204,9 @@ const RULES: &[Rule] = &[
         fix_summary: "Render as text with `{value}` if possible; otherwise sanitize with DOMPurify before passing to __html.",
         fix_template: "// Prefer plain rendering (React auto-escapes):\n//   <div>{userContent}</div>\n//\n// If HTML is truly required:\n//   import DOMPurify from 'isomorphic-dompurify';\n//   <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(userContent) }} />\n//\n// Document WHY raw HTML is needed in a comment — this API is called\n// `dangerous` for a reason. Review any data that reaches it as untrusted.",
         fix_type: FindingFixType::CodeChange,
-        references: &["https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html"],
+        references: &[
+            "https://react.dev/reference/react-dom/components/common#dangerously-setting-the-inner-html",
+        ],
     },
     // Deserialization
     Rule {

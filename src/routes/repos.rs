@@ -1213,7 +1213,14 @@ async fn list_remote_repos(
             };
 
             let filtered = filter_remote_repos(repos, query.q.as_deref());
-            render_remote_repo_list(&state, &theme, provider, &filtered, Some(&connected_urls), None)
+            render_remote_repo_list(
+                &state,
+                &theme,
+                provider,
+                &filtered,
+                Some(&connected_urls),
+                None,
+            )
         }
         Err(e) => {
             error!("[{provider}] network error: {e}");

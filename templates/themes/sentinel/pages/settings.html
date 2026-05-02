@@ -499,119 +499,90 @@
                             <section data-settings-panel="providers" class="{{ 'hidden' if initial_settings_tab != 'providers' else '' }}">
                                 <header class="mb-8">
                                     <h2 class="text-xl font-semibold tracking-tight text-slate-900">AI Providers</h2>
-                                    <p class="mt-1 text-sm text-slate-500">Model providers available for threat modeling and analysis. Current default: <span class="font-mono text-slate-700">{{ ai_config.default_model }}</span></p>
+                                    <p class="mt-1 text-sm text-slate-500">Pick the model used for each provider. Default is <span class="font-mono text-slate-700">{{ ai_config.default_model }}</span> when left blank.</p>
                                 </header>
 
-                                <div class="divide-y divide-slate-200 border-y border-slate-200">
-                                    <div class="flex items-center justify-between gap-4 py-5">
-                                        <div class="flex items-start gap-4">
-                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">A</div>
-                                            <div>
-                                                <h3 class="text-sm font-semibold text-slate-900">Anthropic</h3>
-                                                <p class="mt-1 text-xs text-slate-500">Claude models for threat modeling and report generation.</p>
-                                            </div>
-                                        </div>
-                                        {% if ai_config.has_anthropic %}
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                            Active
-                                        </span>
-                                        {% else %}
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
-                                            Not set
-                                        </span>
-                                        {% endif %}
-                                    </div>
-
-                                    <div class="flex items-center justify-between gap-4 py-5">
-                                        <div class="flex items-start gap-4">
-                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-sm font-bold text-white">O</div>
-                                            <div>
-                                                <h3 class="text-sm font-semibold text-slate-900">OpenAI</h3>
-                                                <p class="mt-1 text-xs text-slate-500">Balanced provider for hosted or hybrid deployments.</p>
-                                            </div>
-                                        </div>
-                                        {% if ai_config.has_openai %}
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                            Active
-                                        </span>
-                                        {% else %}
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
-                                            Not set
-                                        </span>
-                                        {% endif %}
-                                    </div>
-
-                                    <div class="flex items-center justify-between gap-4 py-5">
-                                        <div class="flex items-start gap-4">
-                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">C</div>
-                                            <div>
-                                                <h3 class="text-sm font-semibold text-slate-900">Codex</h3>
-                                                <p class="mt-1 text-xs text-slate-500">OpenAI models through a ChatGPT subscription.</p>
-                                            </div>
-                                        </div>
-                                        <div class="flex items-center gap-3">
-                                            {% if ai_config.has_codex %}
-                                            <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                                                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                                Active
-                                            </span>
-                                            {% else %}
-                                            <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                                                <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
-                                                Not set
-                                            </span>
-                                            {% endif %}
-                                            <a href="/api/settings/codex/authorize"
-                                               hx-boost="false"
-                                               class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
-                                                {{ 'Reconnect' if ai_config.has_codex else 'Configure' }}
-                                            </a>
-                                        </div>
-                                    </div>
-
-                                    <div class="flex items-center justify-between gap-4 py-5">
-                                        <div class="flex items-start gap-4">
-                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-sm font-bold text-white">L</div>
-                                            <div>
-                                                <h3 class="text-sm font-semibold text-slate-900">Ollama</h3>
-                                                <p class="mt-1 text-xs text-slate-500">Local models for self-hosted, private deployments.</p>
-                                            </div>
-                                        </div>
-                                        {% if ai_config.has_ollama %}
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                            Active
-                                        </span>
-                                        {% else %}
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                                            <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
-                                            Not set
-                                        </span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                {% set ai_provider_options = [
-                                    {"id": "codex", "label": "Codex", "enabled": ai_config.has_codex},
-                                    {"id": "openai", "label": "OpenAI", "enabled": ai_config.has_openai},
-                                    {"id": "anthropic", "label": "Anthropic", "enabled": ai_config.has_anthropic},
-                                    {"id": "ollama", "label": "Ollama", "enabled": ai_config.has_ollama}
+                                {% set ai_provider_catalog = [
+                                    {"id": "anthropic", "label": "Anthropic", "blurb": "Claude models for threat modeling and report generation.", "placeholder": "claude-sonnet-4-20250514", "swatch": "bg-slate-900", "initial": "A", "enabled": ai_config.has_anthropic, "model": ai_config.provider_models.anthropic},
+                                    {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "swatch": "bg-emerald-600", "initial": "O", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
+                                    {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "swatch": "bg-blue-600", "initial": "C", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
+                                    {"id": "ollama", "label": "Ollama", "blurb": "Local models for self-hosted, private deployments.", "placeholder": "llama3.3", "swatch": "bg-violet-600", "initial": "L", "enabled": ai_config.has_ollama, "model": ai_config.provider_models.ollama}
                                 ] %}
+
                                 <form hx-patch="/api/settings/ai-routing"
                                       hx-target="#ai-routing-feedback"
                                       hx-swap="innerHTML"
-                                      class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                                    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                                        <label class="block">
-                                            <span class="mb-1.5 block text-xs font-medium text-slate-700">Preferred provider</span>
+                                      data-ai-routing-form
+                                      class="space-y-6">
+
+                                    <div class="divide-y divide-slate-200 border-y border-slate-200">
+                                        {% for provider in ai_provider_catalog %}
+                                        <div class="grid gap-4 py-5 sm:grid-cols-[minmax(0,1fr)_minmax(220px,260px)] sm:items-center">
+                                            <div class="flex items-start gap-4">
+                                                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg {{ provider.swatch }} text-sm font-bold text-white">{{ provider.initial }}</div>
+                                                <div class="min-w-0">
+                                                    <div class="flex items-center gap-2">
+                                                        <h3 class="text-sm font-semibold text-slate-900">{{ provider.label }}</h3>
+                                                        {% if provider.enabled %}
+                                                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+                                                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                                            Active
+                                                        </span>
+                                                        {% else %}
+                                                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                                            <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                                                            Not set
+                                                        </span>
+                                                        {% endif %}
+                                                    </div>
+                                                    <p class="mt-1 text-xs text-slate-500">{{ provider.blurb }}</p>
+                                                    {% if provider.id == "codex" %}
+                                                    <a href="/api/settings/codex/authorize"
+                                                       hx-boost="false"
+                                                       class="mt-2 inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50">
+                                                        {{ 'Reconnect ChatGPT' if ai_config.has_codex else 'Connect ChatGPT' }}
+                                                    </a>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                            <label class="block">
+                                                <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Model</span>
+                                                <input type="text"
+                                                       name="model_{{ provider.id }}"
+                                                       value="{{ provider.model }}"
+                                                       placeholder="{{ provider.placeholder }}"
+                                                       autocomplete="off"
+                                                       spellcheck="false"
+                                                       {% if not provider.enabled %}disabled{% endif %}
+                                                       class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-400">
+                                            </label>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+
+                                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                            <div>
+                                                <h3 class="text-sm font-semibold text-slate-900">Routing</h3>
+                                                <p class="mt-1 text-xs text-slate-500">Pick a primary provider, then drag the rail below to set fallback priority.</p>
+                                            </div>
+                                            <label class="inline-flex items-center gap-2.5 self-start rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 lg:self-auto">
+                                                <input type="checkbox"
+                                                       name="fallbacks_enabled"
+                                                       value="true"
+                                                       {% if ai_config.fallbacks_enabled %}checked{% endif %}
+                                                       {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                       class="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-200">
+                                                Enable fallbacks
+                                            </label>
+                                        </div>
+
+                                        <label class="mt-4 block">
+                                            <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Preferred provider</span>
                                             <select name="preferred_provider"
                                                     {% if not ai_config.has_any_provider %}disabled{% endif %}
                                                     class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                                                {% for provider in ai_provider_options %}
+                                                {% for provider in ai_provider_catalog %}
                                                 <option value="{{ provider.id }}"
                                                         {% if not provider.enabled %}disabled{% endif %}
                                                         {% if ai_config.preferred_provider == provider.id %}selected{% endif %}>
@@ -620,54 +591,56 @@
                                                 {% endfor %}
                                             </select>
                                         </label>
-                                        <label class="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700">
-                                            <input type="checkbox"
-                                                   name="fallbacks_enabled"
-                                                   value="true"
-                                                   {% if ai_config.fallbacks_enabled %}checked{% endif %}
-                                                   {% if not ai_config.has_any_provider %}disabled{% endif %}
-                                                   class="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-200">
-                                            Enable fallbacks
-                                        </label>
-                                    </div>
 
-                                    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                        {% for item in [
-                                            {"name": "fallback_order_1", "label": "1", "value": ai_config.fallback_order_1},
-                                            {"name": "fallback_order_2", "label": "2", "value": ai_config.fallback_order_2},
-                                            {"name": "fallback_order_3", "label": "3", "value": ai_config.fallback_order_3},
-                                            {"name": "fallback_order_4", "label": "4", "value": ai_config.fallback_order_4}
-                                        ] %}
-                                        <label class="block">
-                                            <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Order {{ item.label }}</span>
-                                            <select name="{{ item.name }}"
-                                                    {% if not ai_config.has_any_provider %}disabled{% endif %}
-                                                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                                                <option value="" {% if item.value == "" %}selected{% endif %}>None</option>
-                                                {% for provider in ai_provider_options %}
-                                                <option value="{{ provider.id }}"
-                                                        {% if not provider.enabled %}disabled{% endif %}
-                                                        {% if item.value == provider.id %}selected{% endif %}>
-                                                    {{ provider.label }}
-                                                </option>
+                                        <div class="mt-5">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Fallback priority</span>
+                                                <span class="text-[11px] text-slate-400">Drag to reorder</span>
+                                            </div>
+
+                                            <ol id="fallback-order-list"
+                                                data-fallback-order-list
+                                                class="mt-3 space-y-2">
+                                                {% for slug in ai_config.fallback_order %}
+                                                    {% set provider = ai_provider_catalog | selectattr("id", "equalto", slug) | first %}
+                                                    {% if provider %}
+                                                    <li data-provider="{{ provider.id }}"
+                                                        draggable="true"
+                                                        class="group/item flex cursor-grab items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm shadow-sm transition hover:border-blue-200 hover:shadow active:cursor-grabbing">
+                                                        <span class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-slate-300 transition group-hover/item:bg-slate-100 group-hover/item:text-slate-500"
+                                                              aria-hidden="true">
+                                                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                                                <circle cx="5" cy="3" r="1.4"/><circle cx="5" cy="8" r="1.4"/><circle cx="5" cy="13" r="1.4"/>
+                                                                <circle cx="11" cy="3" r="1.4"/><circle cx="11" cy="8" r="1.4"/><circle cx="11" cy="13" r="1.4"/>
+                                                            </svg>
+                                                        </span>
+                                                        <span data-rank class="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-slate-100 text-[11px] font-bold text-slate-600">{{ loop.index }}</span>
+                                                        <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md {{ provider.swatch }} text-[11px] font-bold text-white">{{ provider.initial }}</span>
+                                                        <span class="font-semibold text-slate-900">{{ provider.label }}</span>
+                                                        {% if provider.model %}
+                                                        <span class="ml-auto truncate font-mono text-[11px] text-slate-400">{{ provider.model }}</span>
+                                                        {% endif %}
+                                                    </li>
+                                                    {% endif %}
                                                 {% endfor %}
-                                            </select>
-                                        </label>
-                                        {% endfor %}
-                                    </div>
+                                            </ol>
 
-                                    <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                        <div id="ai-routing-feedback"></div>
-                                        <button type="submit"
-                                                {% if not ai_config.has_any_provider %}disabled{% endif %}
-                                                class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
-                                            Save Routing
-                                        </button>
+                                            <input type="hidden" name="fallback_order" data-fallback-order-input value="{{ ai_config.fallback_order_csv }}">
+                                        </div>
+
+                                        <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div id="ai-routing-feedback"></div>
+                                            <button type="submit"
+                                                    {% if not ai_config.has_any_provider %}disabled{% endif %}
+                                                    class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+                                                Save Providers
+                                            </button>
+                                        </div>
                                     </div>
                                 </form>
 
                                 <div class="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                                    <p>Add API-key provider credentials on the <button type="button" class="font-semibold text-blue-600 hover:underline" onclick="setSettingsTab('keys', true)">API Keys</button> tab, or configure Codex here.</p>
+                                    <p>Add API-key provider credentials on the <button type="button" class="font-semibold text-blue-600 hover:underline" onclick="setSettingsTab('keys', true)">API Keys</button> tab, or configure Codex above.</p>
                                 </div>
                             </section>
 
@@ -914,6 +887,78 @@ function selectTheme(themeName) {
         HeimdallUI.error('Network error');
     });
 }
+
+(function () {
+    const list = document.querySelector('[data-fallback-order-list]');
+    const input = document.querySelector('[data-fallback-order-input]');
+    if (!list || !input) {
+        return;
+    }
+
+    const syncInput = function () {
+        const slugs = Array.from(list.querySelectorAll('[data-provider]')).map(function (node) {
+            return node.dataset.provider;
+        });
+        input.value = slugs.join(',');
+        list.querySelectorAll('[data-provider]').forEach(function (node, index) {
+            const rank = node.querySelector('[data-rank]');
+            if (rank) {
+                rank.textContent = String(index + 1);
+            }
+        });
+    };
+
+    let dragged = null;
+
+    const findItem = function (event) {
+        let node = event.target;
+        while (node && node !== list && !(node.dataset && node.dataset.provider)) {
+            node = node.parentElement;
+        }
+        return node && node.dataset && node.dataset.provider ? node : null;
+    };
+
+    list.addEventListener('dragstart', function (event) {
+        const item = findItem(event);
+        if (!item) {
+            return;
+        }
+        dragged = item;
+        item.classList.add('opacity-50', 'ring-2', 'ring-blue-300');
+        event.dataTransfer.effectAllowed = 'move';
+        try { event.dataTransfer.setData('text/plain', item.dataset.provider); } catch (_) {}
+    });
+
+    list.addEventListener('dragend', function () {
+        if (dragged) {
+            dragged.classList.remove('opacity-50', 'ring-2', 'ring-blue-300');
+        }
+        dragged = null;
+    });
+
+    list.addEventListener('dragover', function (event) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        const target = findItem(event);
+        if (!target || !dragged || target === dragged) {
+            return;
+        }
+        const rect = target.getBoundingClientRect();
+        const after = event.clientY - rect.top > rect.height / 2;
+        if (after) {
+            target.after(dragged);
+        } else {
+            target.before(dragged);
+        }
+    });
+
+    list.addEventListener('drop', function (event) {
+        event.preventDefault();
+        syncInput();
+    });
+
+    syncInput();
+})();
 
 document.getElementById('password-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
