@@ -4,65 +4,49 @@
 
 {% block body %}
 {% set active_nav = "settings" %}
+{% set breadcrumb_parent = "Settings" %}
+{% set breadcrumb_current = none %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
 {% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
-<div class="min-h-screen" style="background:var(--hm-shell-bg);color:var(--hm-text-900)">
-    <div class="mx-auto flex min-h-screen max-w-[1440px] gap-6 px-6 py-6 lg:px-8 lg:py-8">
+<div class="min-h-screen" style="color:var(--hm-text-900)">
+    <div class="flex min-h-screen">
+        {% include "partials/app_sidebar.html" %}
 
-        {# ── LEFT RAIL ─────────────────────────────────────────────── #}
-        <div class="hidden lg:block lg:shrink-0">
-            {% include "partials/app_sidebar.html" %}
-        </div>
+        <div class="flex min-h-screen flex-1 flex-col">
+            {% include "partials/app_topbar.html" %}
 
-        {# ── RIGHT PAPER PANEL ─────────────────────────────────────── #}
-        <section class="hm-oatmeal-paper flex min-w-0 flex-1 flex-col overflow-hidden">
+            <main class="flex-1 px-8 py-8">
+                <div class="space-y-8">
+                    <div class="max-w-2xl">
+                        <p class="hm-oatmeal-kicker">Settings</p>
+                        <h1 class="mt-2 text-2xl font-semibold tracking-tight" style="color:var(--hm-text-900)">Workspace settings</h1>
+                        <p class="mt-1 text-sm" style="color:var(--hm-text-600)">Manage your workspace, integrations, and preferences from a single panel.</p>
+                    </div>
 
-            {# Top bar: breadcrumb + user menu #}
-            <div class="flex items-center justify-between border-b px-8 py-5" style="border-color:var(--hm-border)">
-                <nav class="flex items-center gap-2 text-[13px]" aria-label="Breadcrumb">
-                    <a href="/" style="color:var(--hm-text-600)" class="transition hover:text-[color:var(--hm-text-900)]">Heimdall</a>
-                    <span style="color:var(--hm-text-400)">/</span>
-                    <span style="color:var(--hm-text-400)">Settings</span>
-                </nav>
-                <button type="button"
-                        class="flex items-center rounded-full p-0 transition hover:opacity-90"
-                        style="color:var(--hm-text-900)">
-                    <span class="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold"
-                          style="background:rgba(255,255,255,0.06);color:var(--hm-text-900)">{{ user_initial | default('?') }}</span>
-                </button>
-            </div>
-
-            {# Page header #}
-            <div class="px-8 pt-10 pb-6 lg:px-12">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.22em]" style="color:var(--hm-text-500)">Workspace</p>
-                <h1 class="mt-3 font-display text-[44px] font-semibold leading-[1.02] tracking-[-0.03em]" style="color:var(--hm-text-900)">Settings</h1>
-                <p class="mt-3 max-w-xl text-[15px] leading-relaxed" style="color:var(--hm-text-500)">Manage your workspace, integrations, and preferences from a single panel.</p>
-            </div>
-
-            {% if integration_error %}
-            <div class="mx-8 mb-6 flex items-start gap-3 rounded-2xl px-5 py-4 text-sm lg:mx-12" style="background:var(--hm-warning-bg);border:1px solid var(--hm-warning-border);color:var(--hm-warning-text)">
-                <svg class="mt-0.5 h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 0 0-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
-                </svg>
-                <div>
-                    {% if integration_error == "github-account-in-use" %}
-                    That GitHub account is already linked to another Heimdall user.
-                    {% elif integration_error == "gitlab-account-in-use" %}
-                    That GitLab account is already linked to another Heimdall user.
-                    {% elif integration_error == "bitbucket-account-in-use" %}
-                    That Bitbucket account is already linked to another Heimdall user.
-                    {% else %}
-                    {{ integration_error }}
+                    {% if integration_error %}
+                    <div class="flex items-start gap-3 rounded-2xl px-5 py-4 text-sm" style="background:var(--hm-warning-bg);border:1px solid var(--hm-warning-border);color:var(--hm-warning-text)">
+                        <svg class="mt-0.5 h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 0 0-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
+                        </svg>
+                        <div>
+                            {% if integration_error == "github-account-in-use" %}
+                            That GitHub account is already linked to another Heimdall user.
+                            {% elif integration_error == "gitlab-account-in-use" %}
+                            That GitLab account is already linked to another Heimdall user.
+                            {% elif integration_error == "bitbucket-account-in-use" %}
+                            That Bitbucket account is already linked to another Heimdall user.
+                            {% else %}
+                            {{ integration_error }}
+                            {% endif %}
+                        </div>
+                    </div>
                     {% endif %}
-                </div>
-            </div>
-            {% endif %}
 
-            {# Body: vertical tab list + active panel #}
-            <div class="flex-1 overflow-hidden px-8 pb-10 lg:px-12">
-                <div class="grid h-full gap-10 lg:grid-cols-[220px_minmax(0,1fr)]">
+                    {# Body: vertical tab list + active panel #}
+                    <div>
+                        <div class="grid gap-10 lg:grid-cols-[220px_minmax(0,1fr)]">
 
                     {# Sub-tab nav #}
                     <nav class="flex flex-col gap-1" data-settings-tabs aria-label="Settings sections">
@@ -520,10 +504,12 @@
                             </form>
                         </section>
 
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </main>
+        </div>
     </div>
 </div>
 

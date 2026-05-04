@@ -39,7 +39,7 @@
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-3">
+                        <div class="flex flex-wrap items-center gap-2">
                             <span id="scan-status-pill"
                                   data-status="{{ scan.status }}"
                                   class="inline-flex rounded-full px-3 py-1.5 text-sm font-semibold
@@ -67,6 +67,16 @@
                                 Retry
                             </button>
                             {% endif %}
+                            <a href="/scans/{{ scan.id }}/threat-model"
+                               class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50">
+                                Threat Model
+                            </a>
+                            <a href="/scans/{{ scan.id }}/findings"
+                               class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600">
+                                Findings
+                                <span id="scan-total-findings-header"
+                                      class="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold">{{ scan.finding_count }}</span>
+                            </a>
                         </div>
                     </div>
 

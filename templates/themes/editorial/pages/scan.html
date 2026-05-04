@@ -72,6 +72,15 @@
                                 Retry
                             </button>
                             {% endif %}
+                            <a href="/scans/{{ scan.id }}/threat-model"
+                               class="border-b border-transparent pb-1 text-ink-700 transition hover:border-ink-900 hover:text-ink-900">
+                                Threat Model
+                            </a>
+                            <a href="/scans/{{ scan.id }}/findings"
+                               class="inline-flex items-center gap-2 border-b border-ink-900 pb-1 font-medium text-ink-900 transition hover:border-ink-400">
+                                Findings
+                                <span id="scan-total-findings-header" class="font-mono text-xs text-ink-500">{{ scan.finding_count }}</span>
+                            </a>
                         </div>
                     </header>
 

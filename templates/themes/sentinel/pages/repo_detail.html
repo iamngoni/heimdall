@@ -282,21 +282,20 @@
                                         </select>
                                     </label>
 
-                                    <button type="button"
-                                            id="repo-issue-save-button"
-                                            onclick="HeimdallRepoDetail.saveIssueAutomation('{{ repo.id }}', this)"
-                                            {% if not issue_support.supported %}disabled{% endif %}
-                                            class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
-                                        Save Policy
-                                    </button>
-                                </form>
-                            </section>
+                                    <div class="flex items-center justify-between gap-3">
+                                        <button type="button"
+                                                id="repo-issue-save-button"
+                                                onclick="HeimdallRepoDetail.saveIssueAutomation('{{ repo.id }}', this)"
+                                                {% if not issue_support.supported %}disabled{% endif %}
+                                                class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500">
+                                            Save Policy
+                                        </button>
+                                    </div>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <h2 class="text-sm font-semibold text-slate-900">Execution Standard</h2>
-                                <p class="mt-2 text-sm leading-6 text-slate-600">
-                                    Repo-level policy is the guardrail. Findings can still be escalated manually from the review screen, but automatic issue creation should stay conservative until your team trusts the output.
-                                </p>
+                                    <p class="text-xs leading-5 text-slate-500 border-t border-slate-100 pt-3">
+                                        Repo-level policy is the guardrail. Findings can still be escalated manually from the review screen — keep automatic creation conservative until your team trusts the output.
+                                    </p>
+                                </form>
                             </section>
                         </aside>
                     </div>

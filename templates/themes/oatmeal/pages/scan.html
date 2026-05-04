@@ -35,7 +35,7 @@
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <span id="scan-status-pill"
                                   data-status="{{ scan.status }}"
                                   class="hm-oatmeal-status
@@ -63,6 +63,17 @@
                                 Retry
                             </button>
                             {% endif %}
+                            <a href="/scans/{{ scan.id }}/threat-model"
+                               class="hm-oatmeal-ghost inline-flex items-center px-3 py-1.5 text-sm font-semibold transition">
+                                Threat Model
+                            </a>
+                            <a href="/scans/{{ scan.id }}/findings"
+                               class="hm-oatmeal-action inline-flex items-center gap-2 px-4 py-1.5 text-sm font-semibold transition">
+                                Findings
+                                <span id="scan-total-findings-header"
+                                      class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                                      style="background:rgba(255,255,255,0.18);color:inherit">{{ scan.finding_count }}</span>
+                            </a>
                         </div>
                     </div>
 

@@ -278,7 +278,7 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
     recent_scan_rows.sort_by(|left, right| right.0.cmp(&left.0));
     let recent_scans: Vec<minijinja::Value> = recent_scan_rows
         .into_iter()
-        .take(8)
+        .take(6)
         .map(|(_, scan)| scan)
         .collect();
 
@@ -457,7 +457,10 @@ async fn repo_detail_page(
     req: HttpRequest,
 ) -> HttpResponse {
     let repo_id = path.into_inner();
-    let pagination = query.into_inner();
+    let pagination = PaginationParams {
+        page: query.page,
+        per_page: query.per_page.or(Some(5)),
+    };
     let user = get_user(&req).expect("auth middleware ensures user exists");
 
     let repo = match state.db.get_repo_by_id_for_user(repo_id, user.id).await {
