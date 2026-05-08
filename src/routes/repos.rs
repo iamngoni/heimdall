@@ -906,6 +906,8 @@ struct GitLabProject {
 #[derive(Debug, Deserialize)]
 struct BitbucketResponse {
     values: Vec<BitbucketRepo>,
+    #[serde(default)]
+    next: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -932,6 +934,358 @@ struct BitbucketLinks {
 struct BitbucketCloneLink {
     name: String,
     href: String,
+}
+
+enum RemoteFetchError {
+    Auth(String),
+    Other(String),
+}
+
+// Cap the total pages we'll follow per listing as a safety stop against
+// runaway pagination loops or pathological accounts.
+const REMOTE_REPO_MAX_PAGES: usize = 50;
+
+fn parse_next_link(link_header: &str) -> Option<String> {
+    for part in link_header.split(',') {
+        let segs: Vec<&str> = part.split(';').map(str::trim).collect();
+        if segs.len() < 2 {
+            continue;
+        }
+        let url_seg = segs[0];
+        if !url_seg.starts_with('<') || !url_seg.ends_with('>') {
+            continue;
+        }
+        let url = &url_seg[1..url_seg.len() - 1];
+        if segs[1..].contains(&"rel=\"next\"") {
+            return Some(url.to_string());
+        }
+    }
+    None
+}
+
+fn apply_bitbucket_auth(
+    builder: reqwest::RequestBuilder,
+    conn: &crate::models::db_models::OauthConnection,
+    token: &str,
+) -> reqwest::RequestBuilder {
+    if conn.token_source == "pat" {
+        builder.basic_auth(&conn.provider_user_id, Some(token))
+    } else {
+        builder.header("Authorization", format!("Bearer {token}"))
+    }
+}
+
+async fn fetch_bitbucket_repos(
+    client: &reqwest::Client,
+    conn: &crate::models::db_models::OauthConnection,
+    token: &str,
+) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
+    let mut workspace_slugs: Vec<String> = Vec::new();
+    // /2.0/workspaces?role=member and /2.0/user/permissions/workspaces are
+    // both sunset under CHANGE-2770/3022 (deprecation triggers post-auth, so
+    // unauth probes return 401 misleadingly). /2.0/user/workspaces is the
+    // shared base path of the documented replacement
+    // /2.0/user/workspaces/{workspace}/permissions/repositories, so it's the
+    // live discovery route.
+    let mut next_url: Option<String> = Some(
+        "https://api.bitbucket.org/2.0/user/workspaces?pagelen=100".to_string(),
+    );
+    let mut pages = 0usize;
+    while let Some(url) = next_url.take() {
+        if pages >= REMOTE_REPO_MAX_PAGES {
+            error!("[bitbucket] workspaces pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping");
+            break;
+        }
+        pages += 1;
+        info!("[bitbucket] listing workspaces page={pages}");
+        let resp = apply_bitbucket_auth(client.get(&url), conn, token)
+            .send()
+            .await
+            .map_err(|e| RemoteFetchError::Other(format!("Failed to reach Bitbucket: {e}")))?;
+        let status = resp.status();
+        info!("[bitbucket] workspaces API response: {status}");
+        if status == reqwest::StatusCode::UNAUTHORIZED
+            || status == reqwest::StatusCode::FORBIDDEN
+        {
+            let body = resp.text().await.unwrap_or_default();
+            error!("[bitbucket] workspaces auth failed ({status}): {body}");
+            return Err(RemoteFetchError::Auth(format!(
+                "{} needs to be reconnected before repositories can be loaded.",
+                provider_display_name("bitbucket")
+            )));
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RemoteFetchError::Other(format!(
+                "{} workspaces API error ({status}): {body}",
+                provider_display_name("bitbucket")
+            )));
+        }
+        // Pull the body as text first so we can log a snippet if the shape
+        // surprises us — Bitbucket's user-scoped endpoints have varied between
+        // returning workspace objects directly and wrapping them in a
+        // `workspace_membership` envelope, and we want diagnostics either way.
+        let body = resp.text().await.map_err(|e| {
+            RemoteFetchError::Other(format!("Failed to read workspaces body: {e}"))
+        })?;
+        let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+            error!(
+                "[bitbucket] workspaces JSON parse failed: {e}; body[..200]={}",
+                body.chars().take(200).collect::<String>()
+            );
+            RemoteFetchError::Other(format!("Failed to parse workspaces: {e}"))
+        })?;
+        let values = value.get("values").and_then(|v| v.as_array());
+        let Some(values) = values else {
+            error!(
+                "[bitbucket] workspaces response missing `values` array; body[..200]={}",
+                body.chars().take(200).collect::<String>()
+            );
+            return Err(RemoteFetchError::Other(
+                "Bitbucket workspaces response did not contain a values array".to_string(),
+            ));
+        };
+        let mut found_in_page = 0usize;
+        for entry in values {
+            // Direct workspace object: { "slug": "..." }
+            // Wrapped membership: { "workspace": { "slug": "..." } }
+            let slug = entry
+                .get("slug")
+                .and_then(|s| s.as_str())
+                .or_else(|| {
+                    entry
+                        .get("workspace")
+                        .and_then(|w| w.get("slug"))
+                        .and_then(|s| s.as_str())
+                });
+            if let Some(slug) = slug {
+                workspace_slugs.push(slug.to_string());
+                found_in_page += 1;
+            }
+        }
+        if found_in_page == 0 && !values.is_empty() {
+            // Couldn't find slugs in either shape — log so we can adapt.
+            let sample = values
+                .first()
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            error!(
+                "[bitbucket] workspaces: no slug field found in entries (sample[..300]={})",
+                sample.chars().take(300).collect::<String>()
+            );
+        }
+        info!(
+            "[bitbucket] workspaces page={pages}: parsed {} entries, kept {found_in_page}",
+            values.len()
+        );
+        next_url = value
+            .get("next")
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string());
+    }
+
+    let mut all_repos: Vec<RemoteRepo> = Vec::new();
+    for slug in &workspace_slugs {
+        let mut next_url: Option<String> = Some(format!(
+            "https://api.bitbucket.org/2.0/repositories/{slug}?sort=-updated_on&pagelen=100"
+        ));
+        let mut pages = 0usize;
+        while let Some(url) = next_url.take() {
+            if pages >= REMOTE_REPO_MAX_PAGES {
+                error!("[bitbucket] workspace {slug} pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping");
+                break;
+            }
+            pages += 1;
+            info!("[bitbucket] listing repos for workspace={slug} page={pages}");
+            let resp = apply_bitbucket_auth(client.get(&url), conn, token)
+                .send()
+                .await
+                .map_err(|e| {
+                    RemoteFetchError::Other(format!(
+                        "Failed to reach Bitbucket workspace {slug}: {e}"
+                    ))
+                })?;
+            let status = resp.status();
+            info!("[bitbucket] workspace {slug} response: {status}");
+            if status == reqwest::StatusCode::UNAUTHORIZED
+                || status == reqwest::StatusCode::FORBIDDEN
+            {
+                let body = resp.text().await.unwrap_or_default();
+                error!("[bitbucket] workspace {slug} auth failed ({status}): {body}");
+                return Err(RemoteFetchError::Auth(format!(
+                    "{} needs to be reconnected before repositories can be loaded.",
+                    provider_display_name("bitbucket")
+                )));
+            }
+            if !status.is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(RemoteFetchError::Other(format!(
+                    "{} repositories API error ({status}) for workspace {slug}: {body}",
+                    provider_display_name("bitbucket")
+                )));
+            }
+            let parsed: BitbucketResponse = resp.json().await.map_err(|e| {
+                RemoteFetchError::Other(format!(
+                    "Failed to parse repositories for workspace {slug}: {e}"
+                ))
+            })?;
+            for repo in parsed.values {
+                let clone_url = repo
+                    .links
+                    .clone
+                    .iter()
+                    .find(|l| l.name == "https")
+                    .map(|l| l.href.clone())
+                    .unwrap_or_default();
+                all_repos.push(RemoteRepo {
+                    full_name: repo.full_name,
+                    clone_url,
+                    description: repo.description,
+                    default_branch: repo
+                        .mainbranch
+                        .map(|b| b.name)
+                        .unwrap_or_else(|| "main".to_string()),
+                    language: repo.language,
+                    private: repo.is_private,
+                });
+            }
+            next_url = parsed.next;
+        }
+    }
+    Ok(all_repos)
+}
+
+async fn fetch_github_repos(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
+    let mut next_url: Option<String> = Some(
+        "https://api.github.com/user/repos?sort=updated&per_page=100".to_string(),
+    );
+    let mut all = Vec::new();
+    let mut pages = 0usize;
+    while let Some(url) = next_url.take() {
+        if pages >= REMOTE_REPO_MAX_PAGES {
+            error!("[github] pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping");
+            break;
+        }
+        pages += 1;
+        info!("[github] listing repos page={pages}");
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {token}"))
+            .header("User-Agent", "Heimdall")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await
+            .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitHub: {e}")))?;
+        let status = resp.status();
+        info!("[github] repos API response: {status}");
+        if status == reqwest::StatusCode::UNAUTHORIZED
+            || status == reqwest::StatusCode::FORBIDDEN
+        {
+            let body = resp.text().await.unwrap_or_default();
+            error!("[github] auth failed ({status}): {body}");
+            return Err(RemoteFetchError::Auth(format!(
+                "{} needs to be reconnected before repositories can be loaded.",
+                provider_display_name("github")
+            )));
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RemoteFetchError::Other(format!(
+                "{} API error ({status}): {body}",
+                provider_display_name("github")
+            )));
+        }
+        let next = resp
+            .headers()
+            .get(reqwest::header::LINK)
+            .and_then(|h| h.to_str().ok())
+            .and_then(parse_next_link);
+        let parsed: Vec<GitHubRepo> = resp
+            .json()
+            .await
+            .map_err(|e| RemoteFetchError::Other(format!("Failed to parse repositories: {e}")))?;
+        for repo in parsed {
+            all.push(RemoteRepo {
+                full_name: repo.full_name,
+                clone_url: repo.clone_url,
+                description: repo.description,
+                default_branch: repo.default_branch.unwrap_or_else(|| "main".to_string()),
+                language: repo.language,
+                private: repo.private,
+            });
+        }
+        next_url = next;
+    }
+    Ok(all)
+}
+
+async fn fetch_gitlab_repos(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
+    let mut next_url: Option<String> = Some(
+        "https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=100"
+            .to_string(),
+    );
+    let mut all = Vec::new();
+    let mut pages = 0usize;
+    while let Some(url) = next_url.take() {
+        if pages >= REMOTE_REPO_MAX_PAGES {
+            error!("[gitlab] pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping");
+            break;
+        }
+        pages += 1;
+        info!("[gitlab] listing projects page={pages}");
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitLab: {e}")))?;
+        let status = resp.status();
+        info!("[gitlab] projects API response: {status}");
+        if status == reqwest::StatusCode::UNAUTHORIZED
+            || status == reqwest::StatusCode::FORBIDDEN
+        {
+            let body = resp.text().await.unwrap_or_default();
+            error!("[gitlab] auth failed ({status}): {body}");
+            return Err(RemoteFetchError::Auth(format!(
+                "{} needs to be reconnected before repositories can be loaded.",
+                provider_display_name("gitlab")
+            )));
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RemoteFetchError::Other(format!(
+                "{} API error ({status}): {body}",
+                provider_display_name("gitlab")
+            )));
+        }
+        let next = resp
+            .headers()
+            .get(reqwest::header::LINK)
+            .and_then(|h| h.to_str().ok())
+            .and_then(parse_next_link);
+        let parsed: Vec<GitLabProject> = resp
+            .json()
+            .await
+            .map_err(|e| RemoteFetchError::Other(format!("Failed to parse projects: {e}")))?;
+        for project in parsed {
+            all.push(RemoteRepo {
+                full_name: project.path_with_namespace,
+                clone_url: project.http_url_to_repo,
+                description: project.description,
+                default_branch: project.default_branch.unwrap_or_else(|| "main".to_string()),
+                language: project.language,
+                private: project.visibility != "public",
+            });
+        }
+        next_url = next;
+    }
+    Ok(all)
 }
 
 fn extract_user_id(req: &HttpRequest) -> Uuid {
@@ -1058,160 +1412,19 @@ async fn list_remote_repos(
         }
     }
 
-    let response = match provider {
-        "github" => client
-            .get("https://api.github.com/user/repos?sort=updated&per_page=100")
-            .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "Heimdall")
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await,
-        "gitlab" => client
-            .get("https://gitlab.com/api/v4/projects?membership=true&order_by=updated_at&per_page=100")
-            .header("Authorization", format!("Bearer {token}"))
-            .send()
-            .await,
-        "bitbucket" => {
-            let mut req = client
-                .get("https://api.bitbucket.org/2.0/repositories?role=member&sort=-updated_on&pagelen=100");
-            if conn.token_source == "pat" {
-                let username = &conn.provider_user_id;
-                info!("[bitbucket] listing repos with Basic auth, username={username}");
-                req = req.basic_auth(username, Some(&token));
-            } else {
-                info!("[bitbucket] listing repos with Bearer auth");
-                req = req.header("Authorization", format!("Bearer {token}"));
-            }
-            req.send().await
-        },
+    // Each provider helper handles its own pagination (Link headers for
+    // GitHub/GitLab, cursor URL in body for Bitbucket). Bitbucket additionally
+    // iterates per workspace because cross-workspace `/2.0/repositories` was
+    // sunset (CHANGE-2770).
+    let result = match provider {
+        "github" => fetch_github_repos(&client, &token).await,
+        "gitlab" => fetch_gitlab_repos(&client, &token).await,
+        "bitbucket" => fetch_bitbucket_repos(&client, &conn, &token).await,
         _ => unreachable!(),
     };
 
-    match response {
-        Ok(resp) => {
-            let status = resp.status();
-            info!("[{provider}] repos API response: {status}");
-            if status == reqwest::StatusCode::UNAUTHORIZED
-                || status == reqwest::StatusCode::FORBIDDEN
-            {
-                let body = resp.text().await.unwrap_or_default();
-                error!("[{provider}] auth failed ({status}): {body}");
-                return render_remote_repo_list(
-                    &state,
-                    &theme,
-                    provider,
-                    &[],
-                    Some(&connected_urls),
-                    Some(&format!(
-                        "{} needs to be reconnected before repositories can be loaded.",
-                        provider_display_name(provider)
-                    )),
-                );
-            }
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return render_remote_repo_list(
-                    &state,
-                    &theme,
-                    provider,
-                    &[],
-                    Some(&connected_urls),
-                    Some(&format!(
-                        "{} API error ({status}): {body}",
-                        provider_display_name(provider)
-                    )),
-                );
-            }
-            let repos = match provider {
-                "github" => match resp.json::<Vec<GitHubRepo>>().await {
-                    Ok(repos) => repos
-                        .into_iter()
-                        .map(|repo| RemoteRepo {
-                            full_name: repo.full_name,
-                            clone_url: repo.clone_url,
-                            description: repo.description,
-                            default_branch: repo
-                                .default_branch
-                                .unwrap_or_else(|| "main".to_string()),
-                            language: repo.language,
-                            private: repo.private,
-                        })
-                        .collect(),
-                    Err(e) => {
-                        return render_remote_repo_list(
-                            &state,
-                            &theme,
-                            provider,
-                            &[],
-                            Some(&connected_urls),
-                            Some(&format!("Failed to parse repositories: {e}")),
-                        );
-                    }
-                },
-                "gitlab" => match resp.json::<Vec<GitLabProject>>().await {
-                    Ok(projects) => projects
-                        .into_iter()
-                        .map(|project| RemoteRepo {
-                            full_name: project.path_with_namespace,
-                            clone_url: project.http_url_to_repo,
-                            description: project.description,
-                            default_branch: project
-                                .default_branch
-                                .unwrap_or_else(|| "main".to_string()),
-                            language: project.language,
-                            private: project.visibility != "public",
-                        })
-                        .collect(),
-                    Err(e) => {
-                        return render_remote_repo_list(
-                            &state,
-                            &theme,
-                            provider,
-                            &[],
-                            Some(&connected_urls),
-                            Some(&format!("Failed to parse projects: {e}")),
-                        );
-                    }
-                },
-                "bitbucket" => match resp.json::<BitbucketResponse>().await {
-                    Ok(response) => response
-                        .values
-                        .into_iter()
-                        .map(|repo| {
-                            let clone_url = repo
-                                .links
-                                .clone
-                                .iter()
-                                .find(|l| l.name == "https")
-                                .map(|l| l.href.clone())
-                                .unwrap_or_default();
-                            RemoteRepo {
-                                full_name: repo.full_name,
-                                clone_url,
-                                description: repo.description,
-                                default_branch: repo
-                                    .mainbranch
-                                    .map(|b| b.name)
-                                    .unwrap_or_else(|| "main".to_string()),
-                                language: repo.language,
-                                private: repo.is_private,
-                            }
-                        })
-                        .collect(),
-                    Err(e) => {
-                        return render_remote_repo_list(
-                            &state,
-                            &theme,
-                            provider,
-                            &[],
-                            Some(&connected_urls),
-                            Some(&format!("Failed to parse repositories: {e}")),
-                        );
-                    }
-                },
-                _ => unreachable!(),
-            };
-
+    match result {
+        Ok(repos) => {
             let filtered = filter_remote_repos(repos, query.q.as_deref());
             render_remote_repo_list(
                 &state,
@@ -1222,20 +1435,15 @@ async fn list_remote_repos(
                 None,
             )
         }
-        Err(e) => {
-            error!("[{provider}] network error: {e}");
-            render_remote_repo_list(
-                &state,
-                &theme,
-                provider,
-                &[],
-                Some(&connected_urls),
-                Some(&format!(
-                    "Failed to reach {}: {e}",
-                    provider_display_name(provider)
-                )),
-            )
-        }
+        Err(RemoteFetchError::Auth(message))
+        | Err(RemoteFetchError::Other(message)) => render_remote_repo_list(
+            &state,
+            &theme,
+            provider,
+            &[],
+            Some(&connected_urls),
+            Some(&message),
+        ),
     }
 }
 
@@ -1435,4 +1643,38 @@ fn repo_created_response(req: &HttpRequest, repo: &crate::models::db_models::Rep
     }
 
     HttpResponse::Created().json(ApiResponse::ok(repo))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_next_link;
+
+    #[test]
+    fn parses_github_style_link_header() {
+        let header = r#"<https://api.github.com/user/repos?page=2>; rel="next", <https://api.github.com/user/repos?page=10>; rel="last""#;
+        assert_eq!(
+            parse_next_link(header),
+            Some("https://api.github.com/user/repos?page=2".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_when_no_next_rel() {
+        let header = r#"<https://api.github.com/user/repos?page=10>; rel="last""#;
+        assert_eq!(parse_next_link(header), None);
+    }
+
+    #[test]
+    fn handles_extra_params_after_url() {
+        let header = r#"<https://gitlab.com/api/v4/projects?page=2>; rel="next"; foo="bar""#;
+        assert_eq!(
+            parse_next_link(header),
+            Some("https://gitlab.com/api/v4/projects?page=2".to_string())
+        );
+    }
+
+    #[test]
+    fn empty_header_yields_none() {
+        assert_eq!(parse_next_link(""), None);
+    }
 }

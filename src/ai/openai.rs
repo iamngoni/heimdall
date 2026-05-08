@@ -34,14 +34,37 @@ impl OpenAiProvider {
     }
 }
 
+/// Returns true when the model accepts a non-default `temperature`. The
+/// o-series reasoning models and the gpt-5 family reject any value other than
+/// the default (1) with a 400. Match by name prefix so unreleased variants in
+/// those families (gpt-5-something, o4-mini-yyyy-mm-dd, ...) are caught too.
+fn model_supports_custom_temperature(model: &str) -> bool {
+    let m = model.trim().to_ascii_lowercase();
+    // Strip a leading provider prefix like "openai/".
+    let m = m.split('/').next_back().unwrap_or(&m);
+    if m.starts_with("gpt-5") {
+        return false;
+    }
+    // Match `o1`, `o3`, `o4`, `o5`, ... and their suffixed variants
+    // (`o1-mini`, `o3-2026-01-01`). Plain `o<digit>` at start of the name.
+    let bytes = m.as_bytes();
+    if bytes.len() >= 2 && bytes[0] == b'o' && bytes[1].is_ascii_digit() {
+        return false;
+    }
+    true
+}
+
 // --- OpenAI API request/response types ---
 
 #[derive(Serialize)]
 struct OpenAiRequest {
     model: String,
     messages: Vec<OpenAiMessage>,
+    // `max_tokens` is rejected by o-series and newer reasoning models;
+    // `max_completion_tokens` is accepted by both legacy chat models and the
+    // new ones, so always send the new name.
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
+    max_completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -144,11 +167,21 @@ impl ModelProvider for OpenAiProvider {
                 .collect()
         });
 
+        // o-series reasoning models (o1, o3, o4-mini, ...) and gpt-5 family
+        // only support the default temperature (1). Sending any other value
+        // returns a 400. Strip it for those models; legacy chat models still
+        // get the caller's chosen value for deterministic output.
+        let temperature = if model_supports_custom_temperature(&request.model) {
+            request.temperature
+        } else {
+            None
+        };
+
         let body = OpenAiRequest {
             model: request.model.clone(),
             messages,
-            max_tokens: request.max_tokens,
-            temperature: request.temperature,
+            max_completion_tokens: request.max_tokens,
+            temperature,
             tools,
         };
 
@@ -229,5 +262,41 @@ impl ModelProvider for OpenAiProvider {
 
     fn provider_name(&self) -> &str {
         "openai"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::model_supports_custom_temperature;
+
+    #[test]
+    fn legacy_chat_models_allow_custom_temperature() {
+        for m in ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-3.5-turbo", "chatgpt-4o-latest"] {
+            assert!(
+                model_supports_custom_temperature(m),
+                "{m} should allow custom temperature"
+            );
+        }
+    }
+
+    #[test]
+    fn reasoning_and_gpt5_models_disallow_custom_temperature() {
+        for m in [
+            "o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini",
+            "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-chat",
+            "gpt-5-2026-01-01", "o3-2026-01-01",
+        ] {
+            assert!(
+                !model_supports_custom_temperature(m),
+                "{m} should reject custom temperature"
+            );
+        }
+    }
+
+    #[test]
+    fn handles_provider_prefix_and_casing() {
+        assert!(!model_supports_custom_temperature("openai/gpt-5"));
+        assert!(!model_supports_custom_temperature("OpenAI/o3-mini"));
+        assert!(model_supports_custom_temperature("OpenAI/gpt-4o"));
     }
 }

@@ -201,9 +201,9 @@
 
                             <div class="overflow-hidden rounded-2xl border" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
                                 {% set providers = [
-                                    {"id": "github", "label": "GitHub", "state": integrations.github},
-                                    {"id": "gitlab", "label": "GitLab", "state": integrations.gitlab},
-                                    {"id": "bitbucket", "label": "Bitbucket", "state": integrations.bitbucket}
+                                    {"id": "github", "label": "GitHub", "state": integrations.github, "scope": "repo", "placeholder": "ghp_..."},
+                                    {"id": "gitlab", "label": "GitLab", "state": integrations.gitlab, "scope": "read_user, read_repository", "placeholder": "glpat-..."},
+                                    {"id": "bitbucket", "label": "Bitbucket", "state": integrations.bitbucket, "scope": "Repositories: Read, Account: Read", "placeholder": "App password"}
                                 ] %}
                                 {% for provider in providers %}
                                 <details class="group border-b last:border-b-0" style="border-color:var(--hm-border)">
@@ -217,7 +217,7 @@
                                                 <p class="font-display text-[15px] font-semibold" style="color:var(--hm-text-900)">{{ provider.label }}</p>
                                                 <p class="text-[12px]" style="color:var(--hm-text-500)">
                                                     {% if provider.state.connected %}
-                                                        Connected as {{ provider.state.account | default('your account') }}
+                                                        Connected via {{ provider.state.token_source|upper }}{% if provider.state.updated_at %} · updated {{ provider.state.updated_at }}{% endif %}
                                                     {% else %}
                                                         Not connected
                                                     {% endif %}
@@ -237,20 +237,55 @@
                                             </svg>
                                         </div>
                                     </summary>
-                                    <div class="border-t px-5 py-5" style="border-color:var(--hm-border);background:var(--hm-surface-muted)">
+                                    <div class="space-y-5 border-t px-5 py-5" style="border-color:var(--hm-border);background:var(--hm-surface-muted)">
+                                        {% if provider.state.connected %}
                                         <div class="flex flex-wrap items-center gap-3">
-                                            {% if provider.state.connected %}
                                             <button type="button"
                                                     hx-delete="/api/settings/integrations/{{ provider.id }}"
                                                     hx-confirm="Disconnect {{ provider.label }}?"
                                                     hx-swap="none"
                                                     hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('{{ provider.label }} disconnected'); setTimeout(function(){ window.location.reload(); }, 400); }"
                                                     class="hm-oatmeal-action-soft px-4 py-1.5 text-xs">Disconnect</button>
-                                            {% else %}
-                                            <a href="/api/auth/{{ provider.id }}/authorize?next=%2Fsettings"
-                                               class="hm-oatmeal-action px-4 py-1.5 text-xs">Connect {{ provider.label }}</a>
+                                            {% if provider.state.scopes %}
+                                            <span class="text-[11px]" style="color:var(--hm-text-500)">Scopes: {{ provider.state.scopes }}</span>
                                             {% endif %}
                                         </div>
+                                        {% else %}
+                                        <form hx-post="/api/settings/integrations/{{ provider.id }}/pat"
+                                              hx-ext="json-enc"
+                                              hx-target="#{{ provider.id }}-pat-feedback"
+                                              hx-swap="innerHTML"
+                                              class="space-y-3">
+                                            <div>
+                                                <label class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide" style="color:var(--hm-text-500)">
+                                                    {% if provider.id == "bitbucket" %}Username & app password{% else %}Personal access token{% endif %}
+                                                </label>
+                                                {% if provider.id == "bitbucket" %}
+                                                <input type="email" name="username" required autocomplete="off"
+                                                       placeholder="Bitbucket account email"
+                                                       class="mb-2 w-full rounded-xl border px-3 py-2 text-sm outline-none"
+                                                       style="background:var(--hm-surface);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                                {% endif %}
+                                                <div class="flex items-center gap-2">
+                                                    <input type="password" name="token" {% if provider.id == "bitbucket" %}required{% endif %} autocomplete="off"
+                                                           placeholder="{{ provider.placeholder }}"
+                                                           class="flex-1 rounded-xl border px-3 py-2 font-mono text-sm outline-none"
+                                                           style="background:var(--hm-surface);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                                    <button type="submit" class="hm-oatmeal-action px-4 py-2 text-xs">Save</button>
+                                                </div>
+                                                <p class="mt-1.5 text-[11px]" style="color:var(--hm-text-500)">Required scope: <code class="font-mono" style="color:var(--hm-text-700)">{{ provider.scope }}</code></p>
+                                            </div>
+                                            <div id="{{ provider.id }}-pat-feedback"></div>
+                                        </form>
+                                        <div class="flex items-center gap-2 border-t pt-4" style="border-color:var(--hm-border)">
+                                            <span class="text-[11px]" style="color:var(--hm-text-500)">or</span>
+                                            <a href="/api/auth/{{ provider.id }}/authorize?next=%2Fsettings"
+                                               hx-boost="false"
+                                               class="hm-oatmeal-action-soft px-4 py-1.5 text-xs">
+                                                {% if provider.state.token_source == "oauth" %}Reconnect via OAuth{% else %}Connect via OAuth{% endif %}
+                                            </a>
+                                        </div>
+                                        {% endif %}
                                     </div>
                                 </details>
                                 {% endfor %}
