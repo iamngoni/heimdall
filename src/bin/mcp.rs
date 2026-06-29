@@ -92,6 +92,9 @@ async fn main() -> anyhow::Result<()> {
         ScanBroadcaster::new(),
         templates::init_themes("templates"),
         worker_enabled,
+        // The MCP binary does not host the Codex OAuth callback; use the
+        // default Codex callback port as a placeholder for AppState.
+        heimdall::ai::codex::CODEX_CALLBACK_PORTS[0],
     ));
 
     if worker_enabled {

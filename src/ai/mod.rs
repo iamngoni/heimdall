@@ -8,6 +8,7 @@
 //
 
 pub mod claude;
+pub mod claude_code;
 pub mod codex;
 pub mod fallback;
 pub mod ollama;
@@ -23,6 +24,7 @@ use types::{CompletionRequest, CompletionResponse};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProviderKind {
     Anthropic,
+    ClaudeCode,
     Codex,
     OpenAi,
     Ollama,
@@ -32,6 +34,7 @@ impl ProviderKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Anthropic => "anthropic",
+            Self::ClaudeCode => "claude_code",
             Self::Codex => "codex",
             Self::OpenAi => "openai",
             Self::Ollama => "ollama",
@@ -41,6 +44,7 @@ impl ProviderKind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Anthropic => "Anthropic",
+            Self::ClaudeCode => "Claude Code",
             Self::Codex => "Codex",
             Self::OpenAi => "OpenAI",
             Self::Ollama => "Ollama",
@@ -50,6 +54,7 @@ impl ProviderKind {
     pub fn fallback_model(self) -> &'static str {
         match self {
             Self::Anthropic => "claude-sonnet-4-20250514",
+            Self::ClaudeCode => "claude-sonnet-4-20250514",
             Self::Codex => "gpt-5.4",
             Self::OpenAi => "gpt-4o",
             Self::Ollama => "llama3.3",
@@ -60,6 +65,7 @@ impl ProviderKind {
         let model = model.to_ascii_lowercase();
         match self {
             Self::Anthropic => model.contains("claude"),
+            Self::ClaudeCode => model.contains("claude"),
             Self::Codex => {
                 model.contains("codex")
                     || model.starts_with("gpt")
@@ -93,6 +99,7 @@ impl ProviderKind {
 pub fn provider_kind_from_name(name: &str) -> Option<ProviderKind> {
     match name.trim().to_ascii_lowercase().as_str() {
         "anthropic" | "claude" => Some(ProviderKind::Anthropic),
+        "claude_code" | "claude-code" | "claudecode" => Some(ProviderKind::ClaudeCode),
         "codex" | "chatgpt" => Some(ProviderKind::Codex),
         "openai" => Some(ProviderKind::OpenAi),
         "ollama" | "local" => Some(ProviderKind::Ollama),
@@ -102,9 +109,10 @@ pub fn provider_kind_from_name(name: &str) -> Option<ProviderKind> {
 
 pub fn default_provider_order() -> Vec<ProviderKind> {
     vec![
+        ProviderKind::ClaudeCode,
         ProviderKind::Codex,
-        ProviderKind::OpenAi,
         ProviderKind::Anthropic,
+        ProviderKind::OpenAi,
         ProviderKind::Ollama,
     ]
 }
@@ -237,6 +245,10 @@ pub fn build_provider_for_kind(
 ) -> Box<dyn ModelProvider> {
     match provider {
         ProviderKind::Anthropic => Box::new(claude::ClaudeProvider::new(credential)),
+        ProviderKind::ClaudeCode => Box::new(
+            claude_code::ClaudeCodeProvider::from_secret(credential)
+                .expect("Claude Code provider requires stored OAuth tokens"),
+        ),
         ProviderKind::Codex => Box::new(
             codex::CodexProvider::from_secret(credential)
                 .expect("Codex provider requires stored ChatGPT auth tokens"),
@@ -247,8 +259,14 @@ pub fn build_provider_for_kind(
 }
 
 impl ProviderKind {
-    pub fn ordered() -> [ProviderKind; 4] {
-        [Self::Anthropic, Self::Codex, Self::OpenAi, Self::Ollama]
+    pub fn ordered() -> [ProviderKind; 5] {
+        [
+            Self::Anthropic,
+            Self::ClaudeCode,
+            Self::Codex,
+            Self::OpenAi,
+            Self::Ollama,
+        ]
     }
 }
 
@@ -286,7 +304,7 @@ pub fn build_provider(config: &AiConfig) -> Option<Box<dyn ModelProvider>> {
             ProviderKind::Anthropic => config.anthropic_api_key.clone(),
             ProviderKind::OpenAi => config.openai_api_key.clone(),
             ProviderKind::Ollama => config.ollama_url.clone(),
-            ProviderKind::Codex => None,
+            ProviderKind::Codex | ProviderKind::ClaudeCode => None,
         };
 
         if let Some(credential) = credential {
@@ -419,9 +437,26 @@ mod tests {
             vec![
                 ProviderKind::OpenAi,
                 ProviderKind::Anthropic,
+                ProviderKind::ClaudeCode,
                 ProviderKind::Codex,
                 ProviderKind::Ollama,
             ]
+        );
+    }
+
+    #[test]
+    fn provider_kind_from_name_recognizes_claude_code_aliases() {
+        assert_eq!(
+            provider_kind_from_name("claude_code"),
+            Some(ProviderKind::ClaudeCode)
+        );
+        assert_eq!(
+            provider_kind_from_name("claude-code"),
+            Some(ProviderKind::ClaudeCode)
+        );
+        assert_eq!(
+            provider_kind_from_name("ClaudeCode"),
+            Some(ProviderKind::ClaudeCode)
         );
     }
 }

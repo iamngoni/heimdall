@@ -16,6 +16,10 @@ path = "src/bin/schema_gen.rs"
 name = "heimdall-mcp"
 path = "src/bin/mcp.rs"
 
+[[bin]]
+name = "render_report"
+path = "src/bin/render_report.rs"
+
 [dependencies]
 # Web
 actix-web = "4"

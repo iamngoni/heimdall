@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 
 use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -19,7 +20,15 @@ use crate::ai::ProviderKind;
 use crate::ai::types::{CompletionRequest, Message};
 use crate::middleware::auth::AuthenticatedUser;
 use crate::models::{ApiKey, ApiResponse, User};
-use crate::state::AppState;
+use crate::state::{AppState, ClaudeCodePendingLogin, CodexPendingLogin};
+
+/// Pending Codex logins are dropped after this many minutes regardless of
+/// whether the user completed the OAuth flow.
+const CODEX_LOGIN_TTL_MINUTES: i64 = 5;
+/// Pending Claude Code logins follow the same TTL as Codex — the user has to
+/// approve the OAuth grant on claude.ai and paste the code back within this
+/// window.
+const CLAUDE_CODE_LOGIN_TTL_MINUTES: i64 = 10;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -35,6 +44,14 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
             .route("/codex/authorize", web::get().to(codex_authorize))
+            .route(
+                "/claude-code/authorize",
+                web::get().to(claude_code_authorize),
+            )
+            .route(
+                "/claude-code/exchange",
+                web::post().to(claude_code_exchange),
+            )
             .route("/ai-routing", web::patch().to(update_ai_routing))
             .route("/theme", web::patch().to(update_theme))
             .route("/test-connection", web::post().to(test_connection))
@@ -82,6 +99,7 @@ struct UpdateAiRoutingForm {
     /// CSV of provider ids in priority order, e.g. "codex,openai,anthropic,ollama".
     fallback_order: Option<String>,
     model_anthropic: Option<String>,
+    model_claude_code: Option<String>,
     model_codex: Option<String>,
     model_openai: Option<String>,
     model_ollama: Option<String>,
@@ -96,6 +114,7 @@ struct ChangePasswordRequest {
 #[derive(Serialize)]
 struct SettingsResponse {
     has_anthropic: bool,
+    has_claude_code: bool,
     has_codex: bool,
     has_openai: bool,
     has_ollama: bool,
@@ -128,6 +147,7 @@ struct AiStatusResponse {
     env_openai: bool,
     env_ollama: bool,
     stored_anthropic: bool,
+    stored_claude_code: bool,
     stored_codex: bool,
     stored_openai: bool,
     stored_ollama: bool,
@@ -291,7 +311,7 @@ fn provider_configured(
 
     match provider {
         ProviderKind::Anthropic => ai_cfg.anthropic_api_key.is_some(),
-        ProviderKind::Codex => false,
+        ProviderKind::ClaudeCode | ProviderKind::Codex => false,
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
@@ -390,6 +410,7 @@ fn provider_models_from_form(body: &UpdateAiRoutingForm) -> BTreeMap<ProviderKin
     let mut models = BTreeMap::new();
     let pairs = [
         (ProviderKind::Anthropic, body.model_anthropic.as_deref()),
+        (ProviderKind::ClaudeCode, body.model_claude_code.as_deref()),
         (ProviderKind::Codex, body.model_codex.as_deref()),
         (ProviderKind::OpenAi, body.model_openai.as_deref()),
         (ProviderKind::Ollama, body.model_ollama.as_deref()),
@@ -429,6 +450,7 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
         effective_fallback_order(db_user.as_ref(), ai_cfg, &api_keys, preferred_provider);
 
     let has_anthropic = provider_configured(ai_cfg, &api_keys, ProviderKind::Anthropic);
+    let has_claude_code = provider_configured(ai_cfg, &api_keys, ProviderKind::ClaudeCode);
     let has_codex = provider_configured(ai_cfg, &api_keys, ProviderKind::Codex);
     let has_openai = provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
     let has_ollama = provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
@@ -440,6 +462,7 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
 
     let resp = SettingsResponse {
         has_anthropic,
+        has_claude_code,
         has_codex,
         has_openai,
         has_ollama,
@@ -601,23 +624,294 @@ async fn codex_authorize(state: web::Data<AppState>, req: HttpRequest) -> HttpRe
         .cloned()
         .expect("auth middleware ensures user exists");
 
-    match ai::codex::start_login_flow(
+    let return_url = settings_return_url(&req);
+
+    let request = match ai::codex::prepare_codex_authorization(state.codex_callback_port) {
+        Ok(request) => request,
+        Err(error) => {
+            log::error!("Failed to start Codex authorization: {error:#}");
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to start Codex authorization: {error:#}"),
+            ));
+        }
+    };
+
+    let pending = CodexPendingLogin {
+        user_id: user.id,
+        code_verifier: request.code_verifier,
+        return_url,
+        expires_at: Utc::now() + chrono::Duration::minutes(CODEX_LOGIN_TTL_MINUTES),
+    };
+
+    {
+        let mut logins = state.codex_logins.lock().await;
+        let now = Utc::now();
+        logins.retain(|_, entry| entry.expires_at > now);
+        logins.insert(request.state.clone(), pending);
+    }
+
+    HttpResponse::Found()
+        .insert_header(("Location", request.authorize_url))
+        .finish()
+}
+
+#[derive(Deserialize)]
+pub struct CodexCallbackQuery {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+    pub error_description: Option<String>,
+}
+
+/// GET /auth/callback — completes the Codex OAuth flow. The redirect URI is
+/// fixed by the OpenAI OAuth client to `http://localhost:1455/auth/callback`
+/// (or 1457). Anonymous; the OAuth `state` parameter authenticates the
+/// request by matching back to a pending login stored at /authorize time.
+pub async fn codex_callback(
+    state: web::Data<AppState>,
+    query: web::Query<CodexCallbackQuery>,
+) -> HttpResponse {
+    let fallback_return = "/settings#settings-providers";
+
+    if let Some(error) = query.error.as_deref() {
+        let description = query
+            .error_description
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(error);
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::codex::login_error_html(
+                &format!("OpenAI authorization failed: {description}"),
+                fallback_return,
+            ));
+    }
+
+    let Some(state_param) = query.state.as_deref().filter(|s| !s.is_empty()) else {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::codex::login_error_html(
+                "Codex callback was missing the OAuth state parameter.",
+                fallback_return,
+            ));
+    };
+
+    let Some(code) = query.code.as_deref().filter(|s| !s.is_empty()) else {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::codex::login_error_html(
+                "Codex callback did not include an authorization code.",
+                fallback_return,
+            ));
+    };
+
+    let pending = {
+        let mut logins = state.codex_logins.lock().await;
+        let now = Utc::now();
+        logins.retain(|_, entry| entry.expires_at > now);
+        logins.remove(state_param)
+    };
+
+    let Some(pending) = pending else {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::codex::login_error_html(
+                "Codex login session expired or was not initiated by this server. \
+                 Please retry the connect flow from Settings.",
+                fallback_return,
+            ));
+    };
+
+    match ai::codex::complete_codex_login(
         state.db.clone(),
-        user.id,
         state.encryption_key,
-        settings_return_url(&req),
+        pending.user_id,
+        &pending.code_verifier,
+        state.codex_callback_port,
+        code,
     )
     .await
     {
-        Ok(authorize_url) => HttpResponse::Found()
-            .insert_header(("Location", authorize_url))
-            .finish(),
+        Ok(tokens) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::codex::login_success_html(&tokens, &pending.return_url)),
         Err(error) => {
-            log::error!("Failed to start Codex authorization: {error:#}");
-            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            log::error!("Codex OAuth callback failed: {error:#}");
+            HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(ai::codex::login_error_html(
+                    &format!("{error:#}"),
+                    &pending.return_url,
+                ))
+        }
+    }
+}
+
+/// GET /settings/claude-code/authorize — start the Claude.ai OAuth flow for
+/// subscription-backed Claude Code access. Stores a pending login keyed by
+/// the OAuth `state` and redirects the user to claude.ai. The user approves
+/// the grant, then pastes the resulting `code#state` blob back into the
+/// settings page (handled by `claude_code_exchange`).
+async fn claude_code_authorize(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let return_url = settings_return_url(&req);
+
+    let request = match ai::claude_code::prepare_claude_code_authorization() {
+        Ok(request) => request,
+        Err(error) => {
+            log::error!("Failed to start Claude Code authorization: {error:#}");
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
                 500,
-                format!("Failed to start Codex authorization: {error:#}"),
-            ))
+                format!("Failed to start Claude Code authorization: {error:#}"),
+            ));
+        }
+    };
+
+    let pending = ClaudeCodePendingLogin {
+        user_id: user.id,
+        code_verifier: request.code_verifier,
+        return_url,
+        expires_at: Utc::now() + chrono::Duration::minutes(CLAUDE_CODE_LOGIN_TTL_MINUTES),
+    };
+
+    {
+        let mut logins = state.claude_code_logins.lock().await;
+        let now = Utc::now();
+        logins.retain(|_, entry| entry.expires_at > now);
+        logins.insert(request.state.clone(), pending);
+    }
+
+    HttpResponse::Found()
+        .insert_header(("Location", request.authorize_url))
+        .finish()
+}
+
+#[derive(Deserialize)]
+pub struct ClaudeCodeExchangeForm {
+    /// The `code#state` blob (or bare code, or full callback URL) the user
+    /// pasted from the Anthropic console redirect page.
+    code: String,
+    /// Explicit `state` value, when the user pasted only the code without
+    /// the trailing `#state`. Optional — overrides the value parsed out of
+    /// `code` when present.
+    #[serde(default)]
+    state: Option<String>,
+}
+
+/// POST /settings/claude-code/exchange — accept the pasted authorization
+/// code from the Anthropic console redirect page and exchange it for tokens.
+async fn claude_code_exchange(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Form<ClaudeCodeExchangeForm>,
+) -> HttpResponse {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let (parsed_code, parsed_state) = ai::claude_code::split_pasted_code(&body.code);
+    let supplied_state = body
+        .state
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let state_value = supplied_state.or(parsed_state);
+
+    let Some(state_param) = state_value.as_deref().filter(|s| !s.is_empty()) else {
+        let message = "Paste the entire `code#state` string from the Anthropic console.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, message));
+    };
+
+    if parsed_code.is_empty() {
+        let message = "The pasted authorization code is empty.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, message));
+    }
+
+    let pending = {
+        let mut logins = state.claude_code_logins.lock().await;
+        let now = Utc::now();
+        logins.retain(|_, entry| entry.expires_at > now);
+        logins.remove(state_param)
+    };
+
+    let Some(pending) = pending else {
+        let message = "Claude Code login session expired or was not initiated by this server. \
+             Please click Connect again from Settings.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, message));
+    };
+
+    if pending.user_id != user.id {
+        let message = "This Claude Code login belongs to a different account.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(403, message));
+    }
+
+    match ai::claude_code::complete_claude_code_login(
+        state.db.clone(),
+        state.encryption_key,
+        pending.user_id,
+        &pending.code_verifier,
+        state_param,
+        &parsed_code,
+    )
+    .await
+    {
+        Ok(tokens) => {
+            if is_hx_request(&req) {
+                let account = tokens
+                    .email()
+                    .or(tokens.account_uuid())
+                    .unwrap_or("your Claude.ai account");
+                let body = format!(
+                    "<div class=\"rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700\" \
+                     hx-get=\"/settings\" hx-trigger=\"load delay:1.25s\" hx-target=\"body\" hx-push-url=\"true\">\
+                     Connected to {} via Claude.ai. Refreshing settings…\
+                     </div>",
+                    escape_html(account)
+                );
+                return HttpResponse::Ok()
+                    .content_type("text/html; charset=utf-8")
+                    .body(body);
+            }
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(ai::claude_code::login_success_html(
+                    &tokens,
+                    &pending.return_url,
+                ))
+        }
+        Err(error) => {
+            log::error!("Claude Code OAuth exchange failed: {error:#}");
+            let message = format!("Claude Code connection failed: {error:#}");
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, &message);
+            }
+            HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(ai::claude_code::login_error_html(
+                    &message,
+                    &pending.return_url,
+                ))
         }
     }
 }
@@ -816,6 +1110,7 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
         effective_fallback_order(db_user.as_ref(), ai_cfg, &api_keys, preferred_provider);
 
     let stored_anthropic = stored_provider_configured(&api_keys, ProviderKind::Anthropic);
+    let stored_claude_code = stored_provider_configured(&api_keys, ProviderKind::ClaudeCode);
     let stored_codex = stored_provider_configured(&api_keys, ProviderKind::Codex);
     let stored_openai = stored_provider_configured(&api_keys, ProviderKind::OpenAi);
     let stored_ollama = stored_provider_configured(&api_keys, ProviderKind::Ollama);
@@ -830,6 +1125,7 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
         env_openai: ai_cfg.openai_api_key.is_some(),
         env_ollama: ai_cfg.ollama_url.is_some(),
         stored_anthropic,
+        stored_claude_code,
         stored_codex,
         stored_openai,
         stored_ollama,

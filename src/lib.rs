@@ -19,6 +19,7 @@ pub mod mcp;
 pub mod middleware;
 pub mod models;
 pub mod pipeline;
+pub mod reports;
 pub mod routes;
 pub mod sse;
 pub mod state;

@@ -36,6 +36,7 @@ pub fn init_protected(cfg: &mut web::ServiceConfig) {
         .route("/scans/{id}", web::get().to(scan_detail_page))
         .route("/scans/{id}/findings", web::get().to(scan_findings_page))
         .route("/scans/{id}/threat-model", web::get().to(threat_model_page))
+        .route("/scans/{id}/report", web::get().to(scan_report_page))
         .route("/findings/{id}", web::get().to(finding_detail_page))
         .route("/settings", web::get().to(settings_page));
 }
@@ -711,6 +712,41 @@ async fn scan_detail_page(
     render_html(&state, "pages/scan.html", &user_theme(&req), ctx)
 }
 
+/// `GET /scans/{id}/report` — print-ready HTML report (one click → save as PDF).
+///
+/// The report template is theme-independent (print-styled, fixed typography),
+/// so we always render through the `oatmeal` engine regardless of the
+/// viewer's theme preference. This avoids triplicating the template across
+/// `themes/*/pages/scan_report.html`.
+async fn scan_report_page(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let scan_id = path.into_inner();
+    let user = get_user(&req).expect("auth middleware ensures user exists");
+
+    let ctx = match crate::reports::build_context(&state.db, scan_id, user.id).await {
+        Ok(Some(ctx)) => ctx,
+        Ok(None) => return not_found_html(&state),
+        Err(e) => {
+            error!("Failed to build scan report for {scan_id}: {e:#}");
+            return server_error_html(&state, &user_theme(&req));
+        }
+    };
+
+    let engine = state.themes.get("oatmeal");
+    match engine.render("pages/scan_report.html", &ctx) {
+        Ok(html) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(html),
+        Err(e) => {
+            error!("Template render error for scan_report.html: {e:#}");
+            server_error_html(&state, &user_theme(&req))
+        }
+    }
+}
+
 async fn scan_findings_page(
     state: web::Data<AppState>,
     path: web::Path<Uuid>,
@@ -1046,10 +1082,12 @@ async fn settings_page(
         .unwrap_or_default();
     let db_user = state.db.get_user_by_id(user.id).await.unwrap_or(None);
     let has_anthropic = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Anthropic);
+    let has_claude_code = page_provider_configured(ai_cfg, &api_keys, ProviderKind::ClaudeCode);
     let has_codex = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Codex);
     let has_openai = page_provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
     let has_ollama = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
-    let has_any_provider = has_anthropic || has_codex || has_openai || has_ollama;
+    let has_any_provider =
+        has_anthropic || has_claude_code || has_codex || has_openai || has_ollama;
     let preferred_provider =
         page_effective_preferred_ai_provider(db_user.as_ref(), ai_cfg, &api_keys);
     let fallback_order =
@@ -1089,6 +1127,7 @@ async fn settings_page(
         integrations => oauth_connections_ctx(&state, user.id).await,
         ai_config => minijinja::Value::from_serialize(&serde_json::json!({
             "has_anthropic": has_anthropic,
+            "has_claude_code": has_claude_code,
             "has_codex": has_codex,
             "has_openai": has_openai,
             "has_ollama": has_ollama,
@@ -1126,7 +1165,7 @@ fn page_provider_configured(
 
     match provider {
         ProviderKind::Anthropic => ai_cfg.anthropic_api_key.is_some(),
-        ProviderKind::Codex => false,
+        ProviderKind::ClaudeCode | ProviderKind::Codex => false,
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }

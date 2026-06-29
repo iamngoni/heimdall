@@ -987,13 +987,14 @@ async fn fetch_bitbucket_repos(
     // shared base path of the documented replacement
     // /2.0/user/workspaces/{workspace}/permissions/repositories, so it's the
     // live discovery route.
-    let mut next_url: Option<String> = Some(
-        "https://api.bitbucket.org/2.0/user/workspaces?pagelen=100".to_string(),
-    );
+    let mut next_url: Option<String> =
+        Some("https://api.bitbucket.org/2.0/user/workspaces?pagelen=100".to_string());
     let mut pages = 0usize;
     while let Some(url) = next_url.take() {
         if pages >= REMOTE_REPO_MAX_PAGES {
-            error!("[bitbucket] workspaces pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping");
+            error!(
+                "[bitbucket] workspaces pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping"
+            );
             break;
         }
         pages += 1;
@@ -1004,9 +1005,7 @@ async fn fetch_bitbucket_repos(
             .map_err(|e| RemoteFetchError::Other(format!("Failed to reach Bitbucket: {e}")))?;
         let status = resp.status();
         info!("[bitbucket] workspaces API response: {status}");
-        if status == reqwest::StatusCode::UNAUTHORIZED
-            || status == reqwest::StatusCode::FORBIDDEN
-        {
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             let body = resp.text().await.unwrap_or_default();
             error!("[bitbucket] workspaces auth failed ({status}): {body}");
             return Err(RemoteFetchError::Auth(format!(
@@ -1025,9 +1024,10 @@ async fn fetch_bitbucket_repos(
         // surprises us — Bitbucket's user-scoped endpoints have varied between
         // returning workspace objects directly and wrapping them in a
         // `workspace_membership` envelope, and we want diagnostics either way.
-        let body = resp.text().await.map_err(|e| {
-            RemoteFetchError::Other(format!("Failed to read workspaces body: {e}"))
-        })?;
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| RemoteFetchError::Other(format!("Failed to read workspaces body: {e}")))?;
         let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
             error!(
                 "[bitbucket] workspaces JSON parse failed: {e}; body[..200]={}",
@@ -1049,15 +1049,12 @@ async fn fetch_bitbucket_repos(
         for entry in values {
             // Direct workspace object: { "slug": "..." }
             // Wrapped membership: { "workspace": { "slug": "..." } }
-            let slug = entry
-                .get("slug")
-                .and_then(|s| s.as_str())
-                .or_else(|| {
-                    entry
-                        .get("workspace")
-                        .and_then(|w| w.get("slug"))
-                        .and_then(|s| s.as_str())
-                });
+            let slug = entry.get("slug").and_then(|s| s.as_str()).or_else(|| {
+                entry
+                    .get("workspace")
+                    .and_then(|w| w.get("slug"))
+                    .and_then(|s| s.as_str())
+            });
             if let Some(slug) = slug {
                 workspace_slugs.push(slug.to_string());
                 found_in_page += 1;
@@ -1065,10 +1062,7 @@ async fn fetch_bitbucket_repos(
         }
         if found_in_page == 0 && !values.is_empty() {
             // Couldn't find slugs in either shape — log so we can adapt.
-            let sample = values
-                .first()
-                .map(|v| v.to_string())
-                .unwrap_or_default();
+            let sample = values.first().map(|v| v.to_string()).unwrap_or_default();
             error!(
                 "[bitbucket] workspaces: no slug field found in entries (sample[..300]={})",
                 sample.chars().take(300).collect::<String>()
@@ -1092,7 +1086,9 @@ async fn fetch_bitbucket_repos(
         let mut pages = 0usize;
         while let Some(url) = next_url.take() {
             if pages >= REMOTE_REPO_MAX_PAGES {
-                error!("[bitbucket] workspace {slug} pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping");
+                error!(
+                    "[bitbucket] workspace {slug} pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping"
+                );
                 break;
             }
             pages += 1;
@@ -1159,9 +1155,8 @@ async fn fetch_github_repos(
     client: &reqwest::Client,
     token: &str,
 ) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
-    let mut next_url: Option<String> = Some(
-        "https://api.github.com/user/repos?sort=updated&per_page=100".to_string(),
-    );
+    let mut next_url: Option<String> =
+        Some("https://api.github.com/user/repos?sort=updated&per_page=100".to_string());
     let mut all = Vec::new();
     let mut pages = 0usize;
     while let Some(url) = next_url.take() {
@@ -1181,9 +1176,7 @@ async fn fetch_github_repos(
             .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitHub: {e}")))?;
         let status = resp.status();
         info!("[github] repos API response: {status}");
-        if status == reqwest::StatusCode::UNAUTHORIZED
-            || status == reqwest::StatusCode::FORBIDDEN
-        {
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             let body = resp.text().await.unwrap_or_default();
             error!("[github] auth failed ({status}): {body}");
             return Err(RemoteFetchError::Auth(format!(
@@ -1247,9 +1240,7 @@ async fn fetch_gitlab_repos(
             .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitLab: {e}")))?;
         let status = resp.status();
         info!("[gitlab] projects API response: {status}");
-        if status == reqwest::StatusCode::UNAUTHORIZED
-            || status == reqwest::StatusCode::FORBIDDEN
-        {
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             let body = resp.text().await.unwrap_or_default();
             error!("[gitlab] auth failed ({status}): {body}");
             return Err(RemoteFetchError::Auth(format!(
@@ -1435,15 +1426,16 @@ async fn list_remote_repos(
                 None,
             )
         }
-        Err(RemoteFetchError::Auth(message))
-        | Err(RemoteFetchError::Other(message)) => render_remote_repo_list(
-            &state,
-            &theme,
-            provider,
-            &[],
-            Some(&connected_urls),
-            Some(&message),
-        ),
+        Err(RemoteFetchError::Auth(message)) | Err(RemoteFetchError::Other(message)) => {
+            render_remote_repo_list(
+                &state,
+                &theme,
+                provider,
+                &[],
+                Some(&connected_urls),
+                Some(&message),
+            )
+        }
     }
 }
 

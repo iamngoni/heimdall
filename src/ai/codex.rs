@@ -8,7 +8,6 @@
 //
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Context;
 use base64::Engine;
@@ -19,8 +18,6 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -35,11 +32,13 @@ const CODEX_ISSUER: &str = "https://auth.openai.com";
 const CODEX_AUTH_SCOPE: &str =
     "openid profile email offline_access api.connectors.read api.connectors.invoke";
 const CODEX_ORIGINATOR: &str = "codex_cli_rs";
-const CODEX_CALLBACK_PORTS: [u16; 2] = [1455, 1457];
-const CODEX_CALLBACK_PATH: &str = "/auth/callback";
+/// Ports the OpenAI Codex OAuth client accepts as redirect URIs. The first
+/// available port is bound at startup; the second is used as a fallback if
+/// another process (e.g. the Codex CLI) already holds the primary port.
+pub const CODEX_CALLBACK_PORTS: [u16; 2] = [1455, 1457];
+pub const CODEX_CALLBACK_PATH: &str = "/auth/callback";
 const CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const TOKEN_REFRESH_WINDOW_MINUTES: i64 = 5;
-const LOGIN_TIMEOUT_SECONDS: u64 = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodexAuthTokens {
@@ -364,167 +363,52 @@ struct PkceCodes {
     code_challenge: String,
 }
 
-pub async fn start_login_flow(
-    db: Arc<DatabaseOperations>,
-    user_id: Uuid,
-    encryption_key: Option<[u8; 32]>,
-    return_url: String,
-) -> HeimdallResult<String> {
+/// Result of preparing a Codex OAuth login: the URL to redirect the user to,
+/// plus the OAuth `state` and PKCE `code_verifier` the caller must persist
+/// until the redirect callback returns with the same state.
+pub struct CodexAuthorizationRequest {
+    pub authorize_url: String,
+    pub state: String,
+    pub code_verifier: String,
+}
+
+/// Build an OpenAI authorize URL for the Codex OAuth flow. The caller is
+/// responsible for storing `state` → `code_verifier` and matching them up when
+/// the redirect callback fires on `http://localhost:{callback_port}/auth/callback`.
+pub fn prepare_codex_authorization(
+    callback_port: u16,
+) -> HeimdallResult<CodexAuthorizationRequest> {
     let pkce = generate_pkce();
     let state = generate_login_state();
-
-    let mut bound_listener = None;
-    for port in CODEX_CALLBACK_PORTS {
-        match TcpListener::bind(("127.0.0.1", port)).await {
-            Ok(listener) => {
-                bound_listener = Some((listener, port));
-                break;
-            }
-            Err(error) => {
-                log::debug!("Codex login callback port {port} unavailable: {error}");
-            }
-        }
-    }
-
-    let Some((listener, port)) = bound_listener else {
-        anyhow::bail!(
-            "Could not start the Codex login callback server on localhost ports 1455 or 1457."
-        );
-    };
-
-    let redirect_uri = format!("http://localhost:{port}{CODEX_CALLBACK_PATH}");
+    let redirect_uri = format!("http://localhost:{callback_port}{CODEX_CALLBACK_PATH}");
     let authorize_url = build_authorize_url(&redirect_uri, &pkce, &state)?;
-    tokio::spawn(async move {
-        if let Err(error) = run_login_callback(
-            listener,
-            redirect_uri,
-            pkce,
-            state,
-            db,
-            user_id,
-            encryption_key,
-            return_url,
-        )
-        .await
-        {
-            log::error!("Codex login callback failed: {error:#}");
-        }
-    });
-
-    Ok(authorize_url)
+    Ok(CodexAuthorizationRequest {
+        authorize_url,
+        state,
+        code_verifier: pkce.code_verifier,
+    })
 }
 
-async fn run_login_callback(
-    listener: TcpListener,
-    redirect_uri: String,
-    pkce: PkceCodes,
-    state: String,
+/// Exchange the OAuth authorization `code` for tokens and persist them
+/// against the user. The `code_verifier` and `callback_port` must match the
+/// values handed to [`prepare_codex_authorization`] for this login attempt.
+pub async fn complete_codex_login(
     db: Arc<DatabaseOperations>,
-    user_id: Uuid,
     encryption_key: Option<[u8; 32]>,
-    return_url: String,
-) -> HeimdallResult<()> {
-    let (mut stream, _) = tokio::time::timeout(
-        Duration::from_secs(LOGIN_TIMEOUT_SECONDS),
-        listener.accept(),
-    )
-    .await
-    .context("Timed out waiting for Codex login callback")?
-    .context("Failed to accept Codex login callback")?;
-
-    let callback_result = handle_login_callback(
-        &mut stream,
-        &redirect_uri,
-        &pkce,
-        &state,
-        db,
-        user_id,
-        encryption_key,
-        &return_url,
-    )
-    .await;
-
-    if let Err(error) = callback_result {
-        let _ = write_login_response(
-            &mut stream,
-            400,
-            &login_error_html(&format!("{error:#}"), &return_url),
-        )
-        .await;
-        return Err(error);
-    }
-
-    Ok(())
-}
-
-async fn handle_login_callback(
-    stream: &mut TcpStream,
-    redirect_uri: &str,
-    pkce: &PkceCodes,
-    expected_state: &str,
-    db: Arc<DatabaseOperations>,
     user_id: Uuid,
-    encryption_key: Option<[u8; 32]>,
-    return_url: &str,
-) -> HeimdallResult<()> {
-    let path = read_request_path(stream).await?;
-    let url = reqwest::Url::parse(&format!("http://localhost{path}"))
-        .context("Failed to parse Codex login callback URL")?;
-
-    if url.path() != CODEX_CALLBACK_PATH {
-        anyhow::bail!("Unexpected Codex login callback path: {}", url.path());
-    }
-
-    let params = url
-        .query_pairs()
-        .into_owned()
-        .collect::<std::collections::HashMap<String, String>>();
-
-    if let Some(error) = params.get("error") {
-        let description = params
-            .get("error_description")
-            .map(String::as_str)
-            .unwrap_or(error);
-        anyhow::bail!("OpenAI authorization failed: {description}");
-    }
-
-    if params.get("state").map(String::as_str) != Some(expected_state) {
-        anyhow::bail!("Codex login state did not match. Please try again.");
-    }
-
-    let code = params
-        .get("code")
-        .map(String::as_str)
-        .filter(|value| !value.is_empty())
-        .context("Codex login callback did not include an authorization code")?;
-
-    let tokens = exchange_code_for_tokens(redirect_uri, pkce, code).await?;
+    code_verifier: &str,
+    callback_port: u16,
+    code: &str,
+) -> HeimdallResult<CodexAuthTokens> {
+    let redirect_uri = format!("http://localhost:{callback_port}{CODEX_CALLBACK_PATH}");
+    let tokens = exchange_code_for_tokens(&redirect_uri, code_verifier, code).await?;
     store_codex_tokens(db, user_id, encryption_key, tokens.clone()).await?;
-    write_login_response(stream, 200, &login_success_html(&tokens, return_url)).await?;
-    Ok(())
-}
-
-async fn read_request_path(stream: &mut TcpStream) -> HeimdallResult<String> {
-    let mut buffer = vec![0_u8; 8192];
-    let n = stream
-        .read(&mut buffer)
-        .await
-        .context("Failed to read Codex login callback request")?;
-    let request = String::from_utf8_lossy(&buffer[..n]);
-    let request_line = request
-        .lines()
-        .next()
-        .context("Codex login callback request was empty")?;
-    let path = request_line
-        .split_whitespace()
-        .nth(1)
-        .context("Codex login callback request line was malformed")?;
-    Ok(path.to_string())
+    Ok(tokens)
 }
 
 async fn exchange_code_for_tokens(
     redirect_uri: &str,
-    pkce: &PkceCodes,
+    code_verifier: &str,
     code: &str,
 ) -> HeimdallResult<CodexAuthTokens> {
     let client = reqwest::Client::new();
@@ -537,7 +421,7 @@ async fn exchange_code_for_tokens(
             ("code", code),
             ("redirect_uri", redirect_uri),
             ("client_id", CODEX_CLIENT_ID),
-            ("code_verifier", pkce.code_verifier.as_str()),
+            ("code_verifier", code_verifier),
         ])
         .send()
         .await
@@ -910,23 +794,7 @@ fn encrypt_secret(secret: &str, encryption_key: Option<&[u8; 32]>) -> String {
     }
 }
 
-async fn write_login_response(
-    stream: &mut TcpStream,
-    status: u16,
-    body: &str,
-) -> HeimdallResult<()> {
-    let reason = if status == 200 { "OK" } else { "Bad Request" };
-    let response = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-    stream
-        .write_all(response.as_bytes())
-        .await
-        .context("Failed to write Codex login response")
-}
-
-fn login_success_html(tokens: &CodexAuthTokens, return_url: &str) -> String {
+pub fn login_success_html(tokens: &CodexAuthTokens, return_url: &str) -> String {
     let account = tokens
         .email
         .as_deref()
@@ -946,7 +814,7 @@ fn login_success_html(tokens: &CodexAuthTokens, return_url: &str) -> String {
     )
 }
 
-fn login_error_html(message: &str, return_url: &str) -> String {
+pub fn login_error_html(message: &str, return_url: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><title>Codex connection failed</title></head>\
          <body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;color:#0f172a\">\

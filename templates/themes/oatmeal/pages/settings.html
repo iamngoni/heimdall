@@ -7,7 +7,7 @@
 {% set breadcrumb_parent = "Settings" %}
 {% set breadcrumb_current = none %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
-{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
 <div class="min-h-screen" style="color:var(--hm-text-900)">
@@ -301,6 +301,7 @@
 
                             {% set ai_provider_catalog = [
                                 {"id": "anthropic", "label": "Anthropic", "blurb": "Claude models for threat modeling and report generation.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_anthropic, "model": ai_config.provider_models.anthropic},
+                                {"id": "claude_code", "label": "Claude Code", "blurb": "Claude models billed against your Claude.ai Pro/Max subscription.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_claude_code, "model": ai_config.provider_models.claude_code},
                                 {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
                                 {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
                                 {"id": "ollama", "label": "Ollama", "blurb": "Local models for self-hosted, private deployments.", "placeholder": "llama3.3", "enabled": ai_config.has_ollama, "model": ai_config.provider_models.ollama}
@@ -334,6 +335,38 @@
                                                 <a href="/api/settings/codex/authorize"
                                                    hx-boost="false"
                                                    class="hm-oatmeal-action-soft mt-2 inline-flex px-3 py-1 text-[11px]">{{ 'Reconnect ChatGPT' if provider.enabled else 'Connect ChatGPT' }}</a>
+                                                {% elif provider.id == 'claude_code' %}
+                                                <div class="mt-2 flex flex-wrap items-center gap-2">
+                                                    <a href="/api/settings/claude-code/authorize"
+                                                       target="_blank"
+                                                       rel="noopener"
+                                                       hx-boost="false"
+                                                       class="hm-oatmeal-action-soft inline-flex px-3 py-1 text-[11px]">{{ 'Reconnect Claude.ai' if provider.enabled else 'Connect Claude.ai' }}</a>
+                                                    <details class="group/cc inline-block">
+                                                        <summary class="hm-oatmeal-action-soft inline-flex cursor-pointer list-none px-3 py-1 text-[11px]">Paste code</summary>
+                                                        <form hx-post="/api/settings/claude-code/exchange"
+                                                              hx-target="#claude-code-feedback"
+                                                              hx-swap="innerHTML"
+                                                              class="mt-2 flex flex-col gap-2 rounded-xl border px-3 py-3"
+                                                              style="background:var(--hm-surface);border-color:var(--hm-border);min-width:280px">
+                                                            <label class="text-[11px] font-semibold uppercase tracking-wide" style="color:var(--hm-text-500)">
+                                                                Authorization code
+                                                                <input type="text"
+                                                                       name="code"
+                                                                       autocomplete="off"
+                                                                       spellcheck="false"
+                                                                       placeholder="code#state"
+                                                                       required
+                                                                       class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-[12px] outline-none"
+                                                                       style="background:var(--hm-surface-strong);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                                            </label>
+                                                            <button type="submit"
+                                                                    class="hm-oatmeal-action self-start px-3 py-1.5 text-[11px]">Exchange code</button>
+                                                            <p class="text-[11px]" style="color:var(--hm-text-500)">After approving on claude.ai you'll land on console.anthropic.com — copy the full <code class="font-mono">code#state</code> string shown there and paste it above.</p>
+                                                        </form>
+                                                    </details>
+                                                </div>
+                                                <div id="claude-code-feedback" class="mt-2"></div>
                                                 {% endif %}
                                             </div>
                                         </div>

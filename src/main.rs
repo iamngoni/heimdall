@@ -11,6 +11,7 @@ use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware as actix_middleware, web};
 use log::{info, warn};
 use sqlx::postgres::PgPoolOptions;
+use std::net::TcpListener;
 use std::sync::Arc;
 
 use heimdall::ai;
@@ -21,6 +22,28 @@ use heimdall::routes;
 use heimdall::sse;
 use heimdall::state;
 use heimdall::templates;
+
+/// Bind the Codex OAuth callback listener. The OpenAI Codex OAuth client only
+/// accepts `http://localhost:1455/auth/callback` and `http://localhost:1457/auth/callback`
+/// as redirect URIs; we try them in order and use whichever is available.
+fn bind_codex_callback_listener() -> std::io::Result<TcpListener> {
+    let mut last_err: Option<std::io::Error> = None;
+    for port in ai::codex::CODEX_CALLBACK_PORTS {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(listener) => return Ok(listener),
+            Err(error) => {
+                warn!("Codex callback port {port} unavailable: {error}");
+                last_err = Some(error);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            "No Codex OAuth callback ports available (tried 1455 and 1457)",
+        )
+    }))
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -91,6 +114,14 @@ async fn main() -> std::io::Result<()> {
         .unwrap_or_else(|_| "true".to_string())
         .parse::<bool>()
         .unwrap_or(true);
+
+    let codex_callback_listener = bind_codex_callback_listener()?;
+    let codex_callback_port = codex_callback_listener.local_addr()?.port();
+    info!(
+        "Codex OAuth callback bound on 127.0.0.1:{}",
+        codex_callback_port
+    );
+
     let app_state = web::Data::new(state::AppState::init(
         config.clone(),
         db_ops,
@@ -98,6 +129,7 @@ async fn main() -> std::io::Result<()> {
         broadcaster,
         theme_registry,
         worker_enabled,
+        codex_callback_port,
     ));
 
     let port = config.app.port;
@@ -168,6 +200,7 @@ async fn main() -> std::io::Result<()> {
             .service(actix_files::Files::new("/static", "static"))
             .configure(routes::init)
     })
+    .listen(codex_callback_listener)?
     .bind((host.as_str(), port))?
     .run()
     .await

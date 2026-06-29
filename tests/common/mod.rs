@@ -50,6 +50,7 @@ pub async fn test_app_state_with_options(
         broadcaster,
         template_engine,
         worker_enabled,
+        heimdall::ai::codex::CODEX_CALLBACK_PORTS[0],
     ))
 }
 

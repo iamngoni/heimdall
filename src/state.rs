@@ -7,10 +7,12 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use log::warn;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::ai::{self, ModelProvider, ProviderKind};
@@ -20,6 +22,28 @@ use crate::db::DatabaseOperations;
 use crate::models::{ApiKey, User};
 use crate::sse::ScanBroadcaster;
 use crate::templates::ThemeRegistry;
+
+/// In-flight Codex OAuth login awaiting the redirect callback. Keyed by the
+/// OAuth `state` parameter so a callback can be matched back to its initiator.
+#[derive(Clone, Debug)]
+pub struct CodexPendingLogin {
+    pub user_id: Uuid,
+    pub code_verifier: String,
+    pub return_url: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// In-flight Claude Code (Claude.ai subscription) OAuth login awaiting the
+/// user to paste back the authorization code from
+/// `console.anthropic.com/oauth/code/callback`. Keyed by the OAuth `state`
+/// parameter so the paste-back form can be matched to its initiator.
+#[derive(Clone, Debug)]
+pub struct ClaudeCodePendingLogin {
+    pub user_id: Uuid,
+    pub code_verifier: String,
+    pub return_url: String,
+    pub expires_at: DateTime<Utc>,
+}
 
 #[derive(Clone)]
 pub struct ResolvedAiRuntime {
@@ -85,6 +109,16 @@ pub struct AppState {
     pub themes: Arc<ThemeRegistry>,
     pub encryption_key: Option<[u8; 32]>,
     pub worker_enabled: bool,
+    /// Local TCP port serving the Codex OAuth callback. The OpenAI OAuth
+    /// client only accepts `http://localhost:1455/auth/callback` or
+    /// `http://localhost:1457/auth/callback` as redirect URIs, so this value
+    /// is bound at startup and used when constructing the authorize URL.
+    pub codex_callback_port: u16,
+    /// Pending Codex OAuth logins awaiting their redirect callback.
+    pub codex_logins: Arc<Mutex<HashMap<String, CodexPendingLogin>>>,
+    /// Pending Claude Code OAuth logins awaiting the user to paste back the
+    /// `code#state` blob from the Anthropic console redirect page.
+    pub claude_code_logins: Arc<Mutex<HashMap<String, ClaudeCodePendingLogin>>>,
 }
 
 impl AppState {
@@ -95,6 +129,7 @@ impl AppState {
         sse: ScanBroadcaster,
         themes: Arc<ThemeRegistry>,
         worker_enabled: bool,
+        codex_callback_port: u16,
     ) -> Self {
         let encryption_key =
             config.security.encryption_key.as_deref().and_then(
@@ -118,6 +153,9 @@ impl AppState {
             themes,
             encryption_key,
             worker_enabled,
+            codex_callback_port,
+            codex_logins: Arc::new(Mutex::new(HashMap::new())),
+            claude_code_logins: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -125,7 +163,7 @@ impl AppState {
     pub fn require_ai(&self) -> anyhow::Result<&dyn ModelProvider> {
         self.ai.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
-                "No AI provider configured. Configure Codex in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL."
+                "No AI provider configured. Connect Claude Code or Codex in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL."
             )
         })
     }
@@ -138,7 +176,7 @@ impl AppState {
 
         if candidates.is_empty() {
             anyhow::bail!(
-                "No AI provider configured. Configure Codex or add an Anthropic, OpenAI, or Ollama provider in Settings, or configure server env vars."
+                "No AI provider configured. Connect Claude Code, Codex, or add an Anthropic, OpenAI, or Ollama provider in Settings, or configure server env vars."
             );
         }
 
@@ -220,17 +258,26 @@ impl AppState {
     ) -> anyhow::Result<ResolvedProviderCandidate> {
         let secret =
             crypto::decode_stored_secret(&api_key.encrypted_key, self.encryption_key.as_ref())?;
-        let provider: Box<dyn ModelProvider> = if provider_kind == ProviderKind::Codex {
-            Box::new(ai::codex::CodexProvider::with_persistence(
+        let provider: Box<dyn ModelProvider> = match provider_kind {
+            ProviderKind::Codex => Box::new(ai::codex::CodexProvider::with_persistence(
                 secret,
                 ai::codex::CodexTokenPersistence {
                     db: Arc::clone(&self.db),
                     api_key_id: api_key.id,
                     encryption_key: self.encryption_key,
                 },
-            )?)
-        } else {
-            ai::build_provider_for_kind(provider_kind, secret)
+            )?),
+            ProviderKind::ClaudeCode => {
+                Box::new(ai::claude_code::ClaudeCodeProvider::with_persistence(
+                    secret,
+                    ai::claude_code::ClaudeCodeTokenPersistence {
+                        db: Arc::clone(&self.db),
+                        api_key_id: api_key.id,
+                        encryption_key: self.encryption_key,
+                    },
+                )?)
+            }
+            _ => ai::build_provider_for_kind(provider_kind, secret),
         };
         Ok(ResolvedProviderCandidate {
             model: model_for_provider_with_preferences(
@@ -352,7 +399,7 @@ fn runtime_source_for_provider(
 fn env_credential_for_provider(config: &AiConfig, provider_kind: ProviderKind) -> Option<String> {
     match provider_kind {
         ProviderKind::Anthropic => config.anthropic_api_key.clone(),
-        ProviderKind::Codex => None,
+        ProviderKind::Codex | ProviderKind::ClaudeCode => None,
         ProviderKind::OpenAi => config.openai_api_key.clone(),
         ProviderKind::Ollama => config.ollama_url.clone(),
     }

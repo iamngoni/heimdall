@@ -34,6 +34,39 @@ impl ClaudeProvider {
     }
 }
 
+/// Returns true when the Claude model still accepts a `temperature` parameter.
+/// Anthropic deprecated `temperature` on the newer generation (`claude-opus-4-7`
+/// is the first one where it returns 400). Older models still accept it.
+///
+/// Heuristic: parse the trailing `<major>-<minor>` version from the model id
+/// (e.g. `claude-opus-4-7` → `(4, 7)`). If we can extract a version and it's
+/// `>= (4, 7)`, the model rejects custom temperatures.
+fn model_supports_custom_temperature(model: &str) -> bool {
+    let m = model.trim().to_ascii_lowercase();
+    let m = m.split('/').next_back().unwrap_or(&m);
+    // Walk segments right-to-left, looking for the most-recent
+    // "<major>-<minor>" pair. A trailing segment may be a date suffix
+    // (e.g. `claude-haiku-4-5-20251001`); skip non-version digit chunks.
+    let segments: Vec<&str> = m.split('-').collect();
+    let mut major: Option<u32> = None;
+    let mut minor: Option<u32> = None;
+    for window in segments.windows(2).rev() {
+        let (a, b) = (window[0], window[1]);
+        // Ignore long numeric suffixes (date stamps); versions are 1-2 digits.
+        if a.len() <= 2 && b.len() <= 2 {
+            if let (Ok(maj), Ok(min)) = (a.parse::<u32>(), b.parse::<u32>()) {
+                major = Some(maj);
+                minor = Some(min);
+                break;
+            }
+        }
+    }
+    match (major, minor) {
+        (Some(maj), Some(min)) => (maj, min) < (4, 7),
+        _ => true,
+    }
+}
+
 // --- Anthropic API request/response types ---
 
 #[derive(Serialize)]
@@ -154,12 +187,18 @@ impl ModelProvider for ClaudeProvider {
                 .collect()
         });
 
+        let temperature = if model_supports_custom_temperature(&request.model) {
+            request.temperature
+        } else {
+            None
+        };
+
         let body = AnthropicRequest {
             model: request.model.clone(),
             max_tokens: request.max_tokens.unwrap_or(4096),
             messages,
             system: system_prompt,
-            temperature: request.temperature,
+            temperature,
             tools,
         };
 
@@ -239,5 +278,54 @@ impl ModelProvider for ClaudeProvider {
 
     fn provider_name(&self) -> &str {
         "claude"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::model_supports_custom_temperature;
+
+    #[test]
+    fn old_models_allow_custom_temperature() {
+        for m in [
+            "claude-3-opus-20240229",
+            "claude-3-5-sonnet-20240620",
+            "claude-3-5-haiku-20241022",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-4-6",
+        ] {
+            assert!(
+                model_supports_custom_temperature(m),
+                "{m} should allow custom temperature"
+            );
+        }
+    }
+
+    #[test]
+    fn new_models_disallow_custom_temperature() {
+        for m in [
+            "claude-opus-4-7",
+            "claude-opus-4-7-20260101",
+            "claude-sonnet-4-7",
+            "claude-haiku-4-7",
+            "claude-opus-5-0",
+            "claude-sonnet-5-2",
+        ] {
+            assert!(
+                !model_supports_custom_temperature(m),
+                "{m} should reject custom temperature"
+            );
+        }
+    }
+
+    #[test]
+    fn handles_namespacing_and_unknown_names() {
+        assert!(!model_supports_custom_temperature(
+            "anthropic/claude-opus-4-7"
+        ));
+        assert!(model_supports_custom_temperature("anthropic/claude-3-opus"));
+        // No extractable version → assume legacy behavior (allow).
+        assert!(model_supports_custom_temperature("claude-some-future-name"));
     }
 }

@@ -271,7 +271,13 @@ mod tests {
 
     #[test]
     fn legacy_chat_models_allow_custom_temperature() {
-        for m in ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-3.5-turbo", "chatgpt-4o-latest"] {
+        for m in [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4.1",
+            "gpt-3.5-turbo",
+            "chatgpt-4o-latest",
+        ] {
             assert!(
                 model_supports_custom_temperature(m),
                 "{m} should allow custom temperature"
@@ -282,9 +288,18 @@ mod tests {
     #[test]
     fn reasoning_and_gpt5_models_disallow_custom_temperature() {
         for m in [
-            "o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o4-mini",
-            "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-chat",
-            "gpt-5-2026-01-01", "o3-2026-01-01",
+            "o1",
+            "o1-mini",
+            "o1-preview",
+            "o3",
+            "o3-mini",
+            "o4-mini",
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-nano",
+            "gpt-5-chat",
+            "gpt-5-2026-01-01",
+            "o3-2026-01-01",
         ] {
             assert!(
                 !model_supports_custom_temperature(m),

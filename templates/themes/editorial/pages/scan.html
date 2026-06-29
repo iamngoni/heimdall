@@ -72,6 +72,13 @@
                                 Retry
                             </button>
                             {% endif %}
+                            {% if not scan.is_live %}
+                            <a href="/scans/{{ scan.id }}/report"
+                               target="_blank" rel="noopener"
+                               class="border-b border-transparent pb-1 text-ink-700 transition hover:border-ink-900 hover:text-ink-900">
+                                Report
+                            </a>
+                            {% endif %}
                             <a href="/scans/{{ scan.id }}/threat-model"
                                class="border-b border-transparent pb-1 text-ink-700 transition hover:border-ink-900 hover:text-ink-900">
                                 Threat Model

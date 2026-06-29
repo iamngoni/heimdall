@@ -7,7 +7,7 @@
 {% set breadcrumb_parent = "Settings" %}
 {% set breadcrumb_current = none %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
-{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
 <div class="min-h-screen bg-slate-100 text-slate-900">
@@ -504,6 +504,7 @@
 
                                 {% set ai_provider_catalog = [
                                     {"id": "anthropic", "label": "Anthropic", "blurb": "Claude models for threat modeling and report generation.", "placeholder": "claude-sonnet-4-20250514", "swatch": "bg-slate-900", "initial": "A", "enabled": ai_config.has_anthropic, "model": ai_config.provider_models.anthropic},
+                                    {"id": "claude_code", "label": "Claude Code", "blurb": "Claude billed via your Claude.ai Pro/Max subscription.", "placeholder": "claude-sonnet-4-20250514", "swatch": "bg-orange-600", "initial": "C", "enabled": ai_config.has_claude_code, "model": ai_config.provider_models.claude_code},
                                     {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "swatch": "bg-emerald-600", "initial": "O", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
                                     {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "swatch": "bg-blue-600", "initial": "C", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
                                     {"id": "ollama", "label": "Ollama", "blurb": "Local models for self-hosted, private deployments.", "placeholder": "llama3.3", "swatch": "bg-violet-600", "initial": "L", "enabled": ai_config.has_ollama, "model": ai_config.provider_models.ollama}
@@ -542,6 +543,35 @@
                                                        class="mt-2 inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50">
                                                         {{ 'Reconnect ChatGPT' if ai_config.has_codex else 'Connect ChatGPT' }}
                                                     </a>
+                                                    {% elif provider.id == "claude_code" %}
+                                                    <div class="mt-2 flex flex-wrap items-start gap-2">
+                                                        <a href="/api/settings/claude-code/authorize"
+                                                           target="_blank"
+                                                           rel="noopener"
+                                                           hx-boost="false"
+                                                           class="inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50">
+                                                            {{ 'Reconnect Claude.ai' if ai_config.has_claude_code else 'Connect Claude.ai' }}
+                                                        </a>
+                                                        <details class="text-[11px]">
+                                                            <summary class="cursor-pointer rounded-md border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 transition hover:bg-slate-50">Paste code</summary>
+                                                            <form hx-post="/api/settings/claude-code/exchange"
+                                                                  hx-target="#claude-code-feedback"
+                                                                  hx-swap="innerHTML"
+                                                                  class="mt-2 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3"
+                                                                  style="min-width:260px">
+                                                                <input type="text"
+                                                                       name="code"
+                                                                       autocomplete="off"
+                                                                       spellcheck="false"
+                                                                       placeholder="code#state"
+                                                                       required
+                                                                       class="w-full rounded border border-slate-200 px-2 py-1.5 font-mono text-[12px] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+                                                                <button type="submit"
+                                                                        class="self-start rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-slate-800">Exchange code</button>
+                                                            </form>
+                                                        </details>
+                                                    </div>
+                                                    <div id="claude-code-feedback" class="mt-2"></div>
                                                     {% endif %}
                                                 </div>
                                             </div>

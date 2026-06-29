@@ -28,6 +28,12 @@ pub fn init(cfg: &mut ServiceConfig) {
     health::init(cfg);
     pages::init_public(cfg);
 
+    // Codex OAuth redirect target. The OpenAI client only allows
+    // http://localhost:1455/auth/callback (or 1457), so the path is fixed.
+    // Anonymous: the OAuth `state` param matches the request back to a
+    // pending login stored at /api/settings/codex/authorize time.
+    cfg.route("/auth/callback", web::get().to(settings::codex_callback));
+
     // Rate limiter for auth endpoints: ~10 requests per 60 seconds per IP
     // replenish_interval_ms = 60_000 / 10 = 6_000ms (one token every 6 seconds)
     let auth_rate_limit = GovernorConfigBuilder::default()
