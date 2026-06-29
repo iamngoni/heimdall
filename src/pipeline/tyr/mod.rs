@@ -478,7 +478,7 @@ impl TyrStage {
             }
         }
         let mut langs: Vec<_> = lang_counts.into_iter().collect();
-        langs.sort_by(|a, b| b.1.cmp(&a.1));
+        langs.sort_by_key(|lang| std::cmp::Reverse(lang.1));
         for (lang, count) in langs.iter().take(5) {
             stack.push(format!("{lang} ({count} files)"));
         }
@@ -911,7 +911,7 @@ impl TyrStage {
 
         // Sort files by number of exports (most exposed first)
         let mut file_list: Vec<_> = by_file.into_iter().collect();
-        file_list.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        file_list.sort_by_key(|file| std::cmp::Reverse(file.1.len()));
 
         for (file, syms) in file_list.iter().take(30) {
             let sym_list: Vec<String> = syms

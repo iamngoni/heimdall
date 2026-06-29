@@ -276,7 +276,7 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
             }
         }
     }
-    recent_scan_rows.sort_by(|left, right| right.0.cmp(&left.0));
+    recent_scan_rows.sort_by_key(|scan| std::cmp::Reverse(scan.0));
     let recent_scans: Vec<minijinja::Value> = recent_scan_rows
         .into_iter()
         .take(6)

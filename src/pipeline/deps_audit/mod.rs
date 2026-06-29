@@ -306,8 +306,8 @@ impl DepsAuditStage {
 
         code_index
             .files
-            .iter()
-            .filter_map(|(_key, f)| {
+            .values()
+            .filter_map(|f| {
                 let filename = std::path::Path::new(&f.relative_path)
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())?;
