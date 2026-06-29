@@ -1,0 +1,8 @@
+[advisories]
+# RUSTSEC-2023-0071 is pulled into Cargo.lock through sqlx's derive macro
+# dependency metadata for optional MySQL support. Heimdall runs PostgreSQL only:
+# Cargo.toml disables sqlx default features and enables only postgres/json/derive,
+# and `cargo tree -i sqlx-mysql` / `cargo tree -i rsa` show no active path.
+# There is no fixed rsa release for this advisory, so we keep it ignored until
+# sqlx can derive FromRow/Type without locking optional MySQL dependencies.
+ignore = ["RUSTSEC-2023-0071"]

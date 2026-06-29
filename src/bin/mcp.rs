@@ -138,6 +138,10 @@ async fn main() -> anyhow::Result<()> {
         let auth_token = Arc::new(auth_token);
 
         let ct = CancellationToken::new();
+        let mut server_config = StreamableHttpServerConfig::default();
+        server_config.stateful_mode = true;
+        server_config.cancellation_token = ct.child_token();
+
         let service: StreamableHttpService<HeimdallMcp, LocalSessionManager> =
             StreamableHttpService::new(
                 {
@@ -145,11 +149,7 @@ async fn main() -> anyhow::Result<()> {
                     move || Ok(HeimdallMcp::new(Arc::clone(&state)))
                 },
                 Default::default(),
-                StreamableHttpServerConfig {
-                    stateful_mode: true,
-                    cancellation_token: ct.child_token(),
-                    ..Default::default()
-                },
+                server_config,
             );
 
         let router = axum::Router::new().nest_service("/mcp", service).layer(

@@ -78,6 +78,10 @@
                                class="border-b border-transparent pb-1 text-ink-700 transition hover:border-ink-900 hover:text-ink-900">
                                 Report
                             </a>
+                            <a href="/api/scans/{{ scan.id }}/sarif"
+                               class="border-b border-transparent pb-1 text-ink-700 transition hover:border-ink-900 hover:text-ink-900">
+                                SARIF
+                            </a>
                             {% endif %}
                             <a href="/scans/{{ scan.id }}/threat-model"
                                class="border-b border-transparent pb-1 text-ink-700 transition hover:border-ink-900 hover:text-ink-900">

@@ -76,6 +76,10 @@
                                 </svg>
                                 Report
                             </a>
+                            <a href="/api/scans/{{ scan.id }}/sarif"
+                               class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50">
+                                SARIF
+                            </a>
                             {% endif %}
                             <a href="/scans/{{ scan.id }}/threat-model"
                                class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50">

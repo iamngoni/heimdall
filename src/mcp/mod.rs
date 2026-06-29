@@ -30,6 +30,7 @@ use crate::state::AppState;
 #[derive(Clone)]
 pub struct HeimdallMcp {
     state: Arc<AppState>,
+    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 

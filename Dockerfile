@@ -26,8 +26,8 @@ COPY . .
 # Copy built CSS from css-builder stage
 COPY --from=css-builder /app/static/css/app.css /app/static/css/app.css
 
-# Build schema_gen first, then generate PostgreSQL migrations before building heimdall
-# (sqlx::migrate! is a compile-time macro — migrations must exist before build)
+# Build schema_gen first, then generate PostgreSQL migration artifacts before
+# building Heimdall. The app also applies generated PostgreSQL DDL at runtime.
 RUN cargo build --release --bin schema_gen
 RUN ./target/release/schema_gen postgres
 RUN cargo build --release --bin heimdall --bin heimdall-mcp

@@ -40,17 +40,19 @@ pub struct DatabaseOperations {
     pool: PgPool,
 }
 
+pub fn runtime_schema_updates_sql() -> &'static str {
+    "ALTER TABLE users \
+         ADD COLUMN IF NOT EXISTS preferred_ai_provider TEXT, \
+         ADD COLUMN IF NOT EXISTS ai_fallbacks_enabled BOOLEAN NOT NULL DEFAULT FALSE, \
+         ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama', \
+         ADD COLUMN IF NOT EXISTS ai_provider_models TEXT NOT NULL DEFAULT '{}'"
+}
+
 pub async fn apply_runtime_schema_updates(pool: &PgPool) -> HeimdallResult<()> {
-    sqlx::raw_sql(
-        "ALTER TABLE users \
-             ADD COLUMN IF NOT EXISTS preferred_ai_provider TEXT, \
-             ADD COLUMN IF NOT EXISTS ai_fallbacks_enabled BOOLEAN NOT NULL DEFAULT FALSE, \
-             ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama', \
-             ADD COLUMN IF NOT EXISTS ai_provider_models TEXT NOT NULL DEFAULT '{}'",
-    )
-    .execute(pool)
-    .await
-    .context("Failed to apply runtime schema updates")?;
+    sqlx::raw_sql(runtime_schema_updates_sql())
+        .execute(pool)
+        .await
+        .context("Failed to apply runtime schema updates")?;
 
     Ok(())
 }

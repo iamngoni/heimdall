@@ -25,10 +25,7 @@ async fn test_health_check() {
     let pool = sqlx::PgPool::connect(&db_url)
         .await
         .expect("Failed to connect to database");
-    sqlx::migrate!("./migrations/active")
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
+    common::apply_test_schema(&pool).await;
 
     let app_state = common::test_app_state(pool).await;
 

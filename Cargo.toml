@@ -32,7 +32,7 @@ actix-governor = "0.8"
 minijinja = { version = "2", features = ["loader", "json"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "uuid"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "chrono", "uuid", "json", "derive"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -109,7 +109,7 @@ hex = "0.4"
 glob = "0.3"
 
 # MCP (Model Context Protocol)
-rmcp = { version = "1.2", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
+rmcp = { version = "1.4", features = ["server", "macros", "transport-io", "transport-streamable-http-server"] }
 axum = "0.8"
 
 # Streams (for SSE)
@@ -118,8 +118,6 @@ futures = "0.3"
 # Random (for session tokens)
 rand = "0.9"
 
-# OAuth
-oauth2 = "4.4"
 
 [dev-dependencies]
 actix-rt = "2"

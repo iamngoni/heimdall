@@ -10,7 +10,7 @@ use chrono::{Duration, Utc};
 
 use heimdall::auth;
 use heimdall::config::Config;
-use heimdall::db::DatabaseOperations;
+use heimdall::db::{self, DatabaseOperations};
 use heimdall::models::db_models::User;
 use heimdall::sse::ScanBroadcaster;
 use heimdall::state::AppState;
@@ -67,11 +67,41 @@ pub async fn test_pool() -> Option<sqlx::PgPool> {
     let pool = sqlx::PgPool::connect(&db_url)
         .await
         .expect("Failed to connect to database");
-    sqlx::migrate!("./migrations/active")
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
+    apply_test_schema(&pool).await;
     Some(pool)
+}
+
+#[allow(dead_code)]
+pub async fn apply_test_schema(pool: &sqlx::PgPool) {
+    const SCHEMA_LOCK_ID: i64 = 0x4845_494d_4441_4c4c;
+
+    let ddl = db::schema::generate_ddl(db::schema::DbDriver::Postgres);
+    let mut conn = pool
+        .acquire()
+        .await
+        .expect("Failed to acquire connection for test schema setup");
+    sqlx::query("SELECT pg_advisory_lock($1)")
+        .bind(SCHEMA_LOCK_ID)
+        .execute(&mut *conn)
+        .await
+        .expect("Failed to acquire test schema lock");
+
+    let schema_result: Result<(), sqlx::Error> = async {
+        sqlx::raw_sql(&ddl).execute(&mut *conn).await?;
+        sqlx::raw_sql(db::runtime_schema_updates_sql())
+            .execute(&mut *conn)
+            .await?;
+        Ok(())
+    }
+    .await;
+
+    let unlock_result = sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(SCHEMA_LOCK_ID)
+        .execute(&mut *conn)
+        .await;
+
+    schema_result.expect("Failed to apply generated test schema");
+    unlock_result.expect("Failed to release test schema lock");
 }
 
 #[allow(dead_code)]

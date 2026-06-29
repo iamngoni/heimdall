@@ -54,12 +54,23 @@ Run these before opening a PR:
 cargo fmt --check
 cargo clippy -- -D warnings
 cargo test
+cargo audit
+npm ci
+npm audit --audit-level=high
 ```
 
 If you touched templates, Tailwind classes, or frontend styling, also run:
 
 ```bash
 npm run build:css
+git diff --exit-code -- static/css/app.css
+```
+
+For browser-level workflow coverage, run the Playwright smoke against a test
+database:
+
+```bash
+npm run test:e2e
 ```
 
 If you want a faster sanity pass while working:
@@ -114,8 +125,9 @@ Current constraints that contributors should preserve or document honestly:
 
 - Repository access is currently GitHub/GitLab OAuth user-token based
 - GitHub App / installation-token flow is not implemented yet
-- Stored user API keys can take precedence over environment-configured providers
+- Stored user API keys and OAuth-backed Claude Code/Codex connections can take precedence over environment-configured providers
 - `ENCRYPTION_KEY` should be treated as required for real deployments
+- `cargo audit` may include documented ignores only when the advisory is inactive in `cargo tree` or has no fixed release; include the rationale in `.cargo/audit.toml`
 
 If you improve finding quality:
 

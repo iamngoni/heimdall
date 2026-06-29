@@ -133,7 +133,7 @@ async fn test_dashboard_repos_and_finding_detail_regressions_stay_fixed() {
     assert_eq!(finding_resp.status(), StatusCode::OK);
     let finding_body = String::from_utf8(test::read_body(finding_resp).await.to_vec())
         .expect("Finding detail page should render utf-8");
-    assert!(finding_body.contains("Suggested Diff"));
+    assert!(finding_body.contains("Suggested Fix"));
     assert!(finding_body.contains("no repository write-back recorded"));
-    assert!(finding_body.contains("manually marked applied"));
+    assert!(finding_body.contains("Marked applied in Heimdall"));
 }

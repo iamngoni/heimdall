@@ -3,10 +3,14 @@
   "private": true,
   "scripts": {
     "build:css": "BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./assets/css/app.css -o ./static/css/app.css --minify",
-    "watch:css": "BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./assets/css/app.css -o ./static/css/app.css --watch"
+    "watch:css": "BROWSERSLIST_IGNORE_OLD_DATA=1 tailwindcss -i ./assets/css/app.css -o ./static/css/app.css --watch",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/pg": "^8.20.0",
+    "pg": "^8.22.0",
     "tailwindcss": "^3.4.17"
   },
-  "packageManager": "pnpm@10.27.0+sha512.72d699da16b1179c14ba9e64dc71c9a40988cbdc65c264cb0e489db7de917f20dcf4d64d8723625f2969ba52d4b7e2a1170682d9ac2a5dcaeaab732b7e16f04a"
+  "packageManager": "npm@11.16.0"
 }

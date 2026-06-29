@@ -63,7 +63,7 @@ docker compose -f docker-compose.dev.yml up -d
 
 # 3. Configure environment
 cp .env.example .env
-# Edit .env — set at least one AI provider key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL)
+# Edit .env for server-level BYOK, or connect Claude Code/Codex from Settings after registration.
 
 # 4. Run the server (schema is applied automatically on startup)
 cargo run --bin heimdall
@@ -81,16 +81,19 @@ What Heimdall does today:
 - Live scan progress via SSE, plus persisted execution and tool-call logs in the database
 - Finding review with explain, verify, patch, and repository issue creation/linking
 - Optional per-repo automatic issue creation for supported GitHub/GitLab/Bitbucket repositories
-- BYOK via environment variables or user-scoped keys stored in Settings
-- AI provider fallback chain (Anthropic > OpenAI > Ollama) with automatic retry on transient errors
+- Print-ready per-scan HTML reports at `/scans/{id}/report`
+- SARIF export for active scan findings at `/api/scans/{id}/sarif`
+- BYOK via environment variables or user-scoped keys stored in Settings, plus subscription-backed Claude Code and Codex connections from Settings
+- AI provider fallback chain (Claude Code > Codex > Anthropic > OpenAI > Ollama) with automatic retry on transient errors
 
 What is still missing or intentionally not done yet:
 
 - GitHub App / installation-token repository access is not implemented yet
 - GitLab and Bitbucket use the same OAuth user-token model; there is no install-style app flow yet
 - OSV-based dependency audit runs inside Static Analysis rather than as a separate pipeline stage
-- End-to-end integration tests for the full `repo import -> scan -> findings -> issue sync` loop are still limited
+- Browser-level E2E now covers registration plus completed-scan report, findings, and SARIF artifact review; the full `repo import -> scan worker -> issue sync` loop is still limited
 - Stage-specific artifact views are still spread across scan, findings, threat model, and patch surfaces rather than one dedicated “stage outputs” screen
+- Scheduled rescans and baseline/diff comparisons are planned but not implemented yet
 
 ## Contributing
 
@@ -167,7 +170,7 @@ Edit `.env` with your settings:
 # Host-run Heimdall talking to local or Dockerized Postgres
 DATABASE_URL=postgres://heimdall:heimdall@localhost:5432/heimdall
 
-# At least one AI provider (BYOK)
+# Server-level AI provider fallback (optional if you connect Claude Code/Codex from Settings)
 ANTHROPIC_API_KEY=sk-ant-...          # Claude (recommended)
 # OPENAI_API_KEY=sk-...               # GPT-4o
 # OLLAMA_URL=http://localhost:11434    # Local models
@@ -239,7 +242,7 @@ Full Docker Compose example: `postgres://heimdall:heimdall@postgres:5432/heimdal
 
 ### AI Providers (BYOK)
 
-Set **at least one**. When multiple providers are configured, Heimdall chains them in a **fallback provider** — if the primary fails with a retryable error (429 rate limit, 500/502/503 server errors, billing/quota exhaustion, or connection failures), requests automatically fall through to the next configured provider. Priority order: Anthropic > OpenAI > Ollama.
+Set **at least one** environment provider, or connect Claude Code/Codex from Settings after registration. When multiple providers are configured, Heimdall chains them in a **fallback provider** — if the primary fails with a retryable error (429 rate limit, 500/502/503 server errors, billing/quota exhaustion, or connection failures), requests automatically fall through to the next configured provider. Default priority order: Claude Code > Codex > Anthropic > OpenAI > Ollama.
 
 | Variable | Provider | Description |
 |----------|----------|-------------|
@@ -250,7 +253,7 @@ Set **at least one**. When multiple providers are configured, Heimdall chains th
 
 Every LLM call records which provider and model was actually used (visible in `agent_tool_calls`), so you always know which provider served each request — especially useful when fallback kicks in.
 
-Users can also add API keys through the Settings UI after registration.
+Users can also add API keys through the Settings UI after registration. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`.
 
 Runtime precedence is:
 
@@ -573,6 +576,7 @@ Each finding includes:
 | `GET` | `/api/scans/{id}` | Get scan metadata |
 | `POST` | `/api/scans/{id}/cancel` | Cancel a running scan |
 | `GET` | `/api/scans/{id}/findings` | List findings (supports `?severity=high&status=open&page=1&per_page=25`) |
+| `GET` | `/api/scans/{id}/sarif` | Download SARIF 2.1.0 for active findings |
 | `GET` | `/api/scans/{id}/threat-model` | Get threat model |
 | `GET` | `/api/scans/{id}/patches` | Get generated patches |
 | `GET` | `/api/scans/{id}/progress/stream` | SSE stream for real-time progress |
@@ -775,6 +779,18 @@ cargo test --lib auth
 
 # Run integration tests (requires DATABASE_URL)
 cargo test --test '*'
+
+# Security/dependency audit
+cargo audit
+
+# Frontend dependency and bundle check
+npm ci
+npm audit --audit-level=high
+npm run build:css
+git diff --exit-code -- static/css/app.css
+
+# Browser E2E smoke (requires DATABASE_URL and Chromium)
+npm run test:e2e
 ```
 
 The unit tests cover symbol extraction (all 6 languages), static analysis rules, taint analysis, call graph construction, dependency resolution, full-text search, password hashing, AES-256-GCM encryption, SSE broadcasting, pagination, and API response formatting.
@@ -862,8 +878,10 @@ pub trait ModelProvider: Send + Sync {
 ```
 
 **Supported providers:**
-- **Claude** (Anthropic) — native tool_use format, recommended
-- **OpenAI** — function calling format (GPT-4o)
+- **Claude Code** — Claude.ai subscription OAuth tokens, default first choice when connected in Settings
+- **Codex** — ChatGPT/OpenAI subscription OAuth tokens, second in the default fallback order
+- **Claude** (Anthropic) — native tool_use format through an Anthropic API key
+- **OpenAI** — function calling/Responses API format
 - **Ollama** — local inference, no API key required (Llama 3.3, Mistral, etc.)
 
 **Automatic fallback:** When multiple providers are configured, Heimdall chains them via `FallbackProvider`. If the primary provider fails with a retryable error (HTTP 429/500/502/503/529, billing/quota errors, or connection failures), the request is automatically retried with the next provider. Non-retryable errors (401, invalid request) propagate immediately.

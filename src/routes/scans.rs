@@ -7,20 +7,21 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
-use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
+use actix_web::{HttpMessage, HttpRequest, HttpResponse, http::header, web};
 use log::warn;
 use serde::Deserialize;
+use serde_json::{Map, Value, json};
 use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use crate::db::DatabaseOperations;
 use crate::integrations::issues;
 use crate::middleware::auth::AuthenticatedUser;
-use crate::models::ScanStage;
 use crate::models::{ApiResponse, PaginatedResponse, PaginationParams};
+use crate::models::{Finding, Repo, Scan, ScanStage};
 use crate::sse::{ScanBroadcaster, ScanEvent, ScanEventType};
 use crate::state::AppState;
 use crate::util::sat_i32_i64;
@@ -40,6 +41,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/{id}/live", web::get().to(get_scan_live))
             .route("/{id}/cancel", web::post().to(cancel_scan))
             .route("/{id}/findings", web::get().to(get_scan_findings))
+            .route("/{id}/sarif", web::get().to(get_scan_sarif))
             .route("/{id}/threat-model", web::get().to(get_scan_threat_model))
             .route("/{id}/patches", web::get().to(get_scan_patches))
             .route("/{id}/progress/stream", web::get().to(scan_progress_stream))
@@ -254,6 +256,283 @@ async fn get_scan_patches(
             500,
             format!("Failed to list patches: {e}"),
         )),
+    }
+}
+
+async fn get_scan_sarif(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let scan_id = path.into_inner();
+    let user_id = extract_user_id(&req);
+    let scan = match load_owned_scan(&state, scan_id, user_id).await {
+        Ok(scan) => scan,
+        Err(response) => return response,
+    };
+    let repo = match state
+        .db
+        .get_repo_by_id_for_user(scan.repo_id, user_id)
+        .await
+    {
+        Ok(Some(repo)) => repo,
+        Ok(None) => {
+            return HttpResponse::NotFound()
+                .json(ApiResponse::<()>::error(404, "Repository not found"));
+        }
+        Err(error) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to fetch repository: {error}"),
+            ));
+        }
+    };
+    let findings = match state.db.list_findings_by_scan(scan_id, None, None).await {
+        Ok(findings) => findings,
+        Err(error) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to list findings: {error}"),
+            ));
+        }
+    };
+
+    let sarif = build_scan_sarif(&repo, &scan, &findings);
+    let body = match serde_json::to_string_pretty(&sarif) {
+        Ok(body) => body,
+        Err(error) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to serialize SARIF: {error}"),
+            ));
+        }
+    };
+
+    HttpResponse::Ok()
+        .content_type("application/sarif+json; charset=utf-8")
+        .insert_header((
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"heimdall-{}.sarif\"", scan.id),
+        ))
+        .body(body)
+}
+
+fn build_scan_sarif(repo: &Repo, scan: &Scan, findings: &[Finding]) -> Value {
+    let mut rules = BTreeMap::new();
+    let mut results = Vec::new();
+
+    for finding in findings
+        .iter()
+        .filter(|finding| sarif_exports_status(&finding.status))
+    {
+        let rule_id = sarif_rule_id(finding);
+        rules
+            .entry(rule_id.clone())
+            .or_insert_with(|| sarif_rule(&rule_id, finding));
+        results.push(sarif_result(&rule_id, finding));
+    }
+
+    let mut run = Map::new();
+    run.insert(
+        "tool".to_string(),
+        json!({
+            "driver": {
+                "name": "Heimdall",
+                "informationUri": "https://github.com/iamngoni/heimdall",
+                "rules": rules.into_values().collect::<Vec<_>>(),
+            },
+        }),
+    );
+    run.insert(
+        "automationDetails".to_string(),
+        json!({
+            "id": format!("scan/{}", scan.id),
+            "description": {
+                "text": format!("Heimdall {} scan for {}", scan.scan_type, repo.name),
+            },
+        }),
+    );
+    run.insert(
+        "versionControlProvenance".to_string(),
+        Value::Array(vec![sarif_version_control(repo, scan)]),
+    );
+    run.insert("results".to_string(), Value::Array(results));
+    run.insert(
+        "properties".to_string(),
+        json!({
+            "scanId": scan.id.to_string(),
+            "repoId": repo.id.to_string(),
+            "scanStatus": scan.status,
+            "findingCount": scan.finding_count,
+            "criticalCount": scan.critical_count,
+            "highCount": scan.high_count,
+            "mediumCount": scan.medium_count,
+            "lowCount": scan.low_count,
+        }),
+    );
+
+    json!({
+        "version": "2.1.0",
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "runs": [Value::Object(run)],
+    })
+}
+
+fn sarif_exports_status(status: &str) -> bool {
+    !matches!(status, "dismissed" | "false_positive" | "fixed")
+}
+
+fn sarif_version_control(repo: &Repo, scan: &Scan) -> Value {
+    let mut provenance = Map::new();
+    if let Some(remote_url) = &repo.remote_url {
+        provenance.insert(
+            "repositoryUri".to_string(),
+            Value::String(remote_url.clone()),
+        );
+    }
+    if let Some(branch) = &repo.default_branch {
+        provenance.insert("branch".to_string(), Value::String(branch.clone()));
+    }
+    if let Some(commit) = &scan.commit_sha {
+        provenance.insert("revisionId".to_string(), Value::String(commit.clone()));
+    }
+    Value::Object(provenance)
+}
+
+fn sarif_rule_id(finding: &Finding) -> String {
+    if let Some(cwe_id) = finding.cwe_id.as_deref().filter(|value| !value.is_empty()) {
+        return cwe_id.to_string();
+    }
+    if let Some(cve_id) = finding.cve_id.as_deref().filter(|value| !value.is_empty()) {
+        return cve_id.to_string();
+    }
+
+    let mut source = finding
+        .source
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if source.is_empty() {
+        source = "unknown".to_string();
+    }
+    let fingerprint = finding.fingerprint.chars().take(12).collect::<String>();
+    let suffix = if fingerprint.is_empty() {
+        finding.id.to_string()
+    } else {
+        fingerprint
+    };
+    format!("heimdall.{source}.{suffix}")
+}
+
+fn sarif_rule(rule_id: &str, finding: &Finding) -> Value {
+    let mut tags = vec![
+        format!("severity:{}", finding.severity),
+        format!("source:{}", finding.source),
+    ];
+    if let Some(cwe_id) = &finding.cwe_id {
+        tags.push(cwe_id.clone());
+    }
+    if let Some(cve_id) = &finding.cve_id {
+        tags.push(cve_id.clone());
+    }
+
+    json!({
+        "id": rule_id,
+        "name": finding.title,
+        "shortDescription": {
+            "text": finding.title,
+        },
+        "fullDescription": {
+            "text": finding.description.as_deref().unwrap_or(&finding.title),
+        },
+        "help": {
+            "text": finding.fix_summary.as_deref()
+                .or(finding.description.as_deref())
+                .unwrap_or("Review the Heimdall finding for remediation guidance."),
+        },
+        "properties": {
+            "tags": tags,
+            "security-severity": sarif_security_severity(&finding.severity),
+            "precision": finding.confidence,
+            "problem.severity": finding.severity,
+        },
+    })
+}
+
+fn sarif_result(rule_id: &str, finding: &Finding) -> Value {
+    let start_line = finding.line_start.max(1);
+    let end_line = finding.line_end.unwrap_or(start_line).max(start_line);
+
+    json!({
+        "ruleId": rule_id,
+        "level": sarif_level(&finding.severity),
+        "message": {
+            "text": sarif_message(finding),
+        },
+        "locations": [{
+            "physicalLocation": {
+                "artifactLocation": {
+                    "uri": finding.file_path,
+                },
+                "region": {
+                    "startLine": start_line,
+                    "endLine": end_line,
+                },
+            },
+        }],
+        "partialFingerprints": {
+            "heimdallFingerprint": finding.fingerprint,
+        },
+        "properties": {
+            "findingId": finding.id.to_string(),
+            "status": finding.status,
+            "severity": finding.severity,
+            "confidence": finding.confidence,
+            "source": finding.source,
+            "cwe": finding.cwe_id,
+            "cve": finding.cve_id,
+            "fixType": finding.fix_type,
+            "fixSummary": finding.fix_summary,
+            "references": finding.references_json,
+            "manifestCoordinates": finding.manifest_coordinates_json,
+            "pocValidated": finding.poc_validated,
+        },
+    })
+}
+
+fn sarif_message(finding: &Finding) -> String {
+    match finding.description.as_deref() {
+        Some(description) if !description.is_empty() => {
+            format!("{}: {}", finding.title, description)
+        }
+        _ => finding.title.clone(),
+    }
+}
+
+fn sarif_level(severity: &str) -> &'static str {
+    match severity {
+        "critical" | "high" => "error",
+        "medium" => "warning",
+        "low" => "note",
+        _ => "warning",
+    }
+}
+
+fn sarif_security_severity(severity: &str) -> &'static str {
+    match severity {
+        "critical" => "9.5",
+        "high" => "8.0",
+        "medium" => "5.0",
+        "low" => "2.0",
+        _ => "5.0",
     }
 }
 

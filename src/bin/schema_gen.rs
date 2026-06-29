@@ -198,7 +198,7 @@ fn run_generation(
     }
 }
 
-/// Copy a SQL migration to migrations/active/ for sqlx::migrate!
+/// Copy a SQL migration to migrations/active/ for external migration tooling.
 /// Accumulates — does not replace existing files.
 fn copy_to_active(source: &str, driver: DbDriver, driver_name: &str) {
     if driver == DbDriver::Mongo {
