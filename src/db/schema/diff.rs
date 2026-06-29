@@ -132,14 +132,14 @@ fn diff_table(old: &TableDef, new: &TableDef, changes: &mut Vec<SchemaChange>) {
 
     // Altered columns
     for new_col in &new.columns {
-        if let Some(old_col) = old_cols.get(new_col.name.as_str()) {
-            if *old_col != new_col {
-                changes.push(SchemaChange::AlterColumn {
-                    table: new.name.clone(),
-                    old: (*old_col).clone(),
-                    new: new_col.clone(),
-                });
-            }
+        if let Some(old_col) = old_cols.get(new_col.name.as_str())
+            && *old_col != new_col
+        {
+            changes.push(SchemaChange::AlterColumn {
+                table: new.name.clone(),
+                old: (*old_col).clone(),
+                new: new_col.clone(),
+            });
         }
     }
 
@@ -187,7 +187,7 @@ fn diff_standalone_indexes(old: &SchemaDef, new: &SchemaDef, changes: &mut Vec<S
         .collect();
 
     // Dropped indexes
-    for (name, _) in &old_idx {
+    for name in old_idx.keys() {
         if !new_idx.contains_key(name) {
             changes.push(SchemaChange::DropIndex {
                 index_name: name.to_string(),
@@ -204,13 +204,13 @@ fn diff_standalone_indexes(old: &SchemaDef, new: &SchemaDef, changes: &mut Vec<S
 
     // Changed indexes (same name, different definition) — drop + re-add
     for (name, new_index) in &new_idx {
-        if let Some(old_index) = old_idx.get(name) {
-            if *old_index != *new_index {
-                changes.push(SchemaChange::DropIndex {
-                    index_name: name.to_string(),
-                });
-                changes.push(SchemaChange::AddIndex((*new_index).clone()));
-            }
+        if let Some(old_index) = old_idx.get(name)
+            && *old_index != *new_index
+        {
+            changes.push(SchemaChange::DropIndex {
+                index_name: name.to_string(),
+            });
+            changes.push(SchemaChange::AddIndex((*new_index).clone()));
         }
     }
 }

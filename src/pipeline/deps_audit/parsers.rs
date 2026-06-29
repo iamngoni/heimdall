@@ -235,10 +235,10 @@ fn parse_package_lock_json(content: &str) -> Vec<Dependency> {
 fn extract_inline_version(table: &str) -> String {
     for part in table.split(',') {
         let part = part.trim().trim_matches(|c| c == '{' || c == '}');
-        if let Some((key, val)) = part.split_once('=') {
-            if key.trim() == "version" {
-                return val.trim().trim_matches('"').to_string();
-            }
+        if let Some((key, val)) = part.split_once('=')
+            && key.trim() == "version"
+        {
+            return val.trim().trim_matches('"').to_string();
         }
     }
     String::new()
@@ -450,11 +450,11 @@ fn parse_pom_xml(content: &str) -> Vec<Dependency> {
 fn extract_xml_value(line: &str, tag: &str) -> Option<String> {
     let open = format!("<{}>", tag);
     let close = format!("</{}>", tag);
-    if let Some(start) = line.find(&open) {
-        if let Some(end) = line.find(&close) {
-            let val = &line[start + open.len()..end];
-            return Some(val.to_string());
-        }
+    if let Some(start) = line.find(&open)
+        && let Some(end) = line.find(&close)
+    {
+        let val = &line[start + open.len()..end];
+        return Some(val.to_string());
     }
     None
 }

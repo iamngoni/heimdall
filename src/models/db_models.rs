@@ -361,6 +361,7 @@ pub struct Finding {
 /// [`FindingFixType::ManualReview`] is the honest choice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FindingFixType {
     /// Edit the vulnerable code in place (e.g., replace `md5(x)` with `sha256(x)`,
     /// swap string interpolation for parameterized query binding).
@@ -375,13 +376,8 @@ pub enum FindingFixType {
     /// No mechanical fix available — human judgement required. Used for
     /// architectural concerns, TOCTOU races, low-confidence matches, or
     /// findings where the "right" answer depends on business logic.
+    #[default]
     ManualReview,
-}
-
-impl Default for FindingFixType {
-    fn default() -> Self {
-        Self::ManualReview
-    }
 }
 
 impl FindingFixType {
@@ -400,8 +396,8 @@ impl FindingFixType {
 /// This exists to enforce the invariant that a finding without evidence is
 /// meaningless. `code_snippet` shows WHERE the problem is. `suggested_patch`
 /// + `fix_summary` show HOW to fix it. `references` point to AUTHORITY for the
-/// remediation. `manifest_coordinates` carries structured upgrade data for
-/// dependency findings that UI and automation can consume directly.
+///   remediation. `manifest_coordinates` carries structured upgrade data for
+///   dependency findings that UI and automation can consume directly.
 ///
 /// Stages should construct this inline when creating findings — the fields
 /// are deliberately ergonomic (`Option<String>` / `Vec<String>`) so there is

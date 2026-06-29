@@ -51,10 +51,10 @@ pub fn decrypt(encoded: &str, key: &[u8; 32]) -> Result<Vec<u8>> {
 /// - hex-encoded plaintext as a compatibility fallback
 /// - raw plaintext in older/local development setups
 pub fn decode_stored_secret(encoded: &str, key: Option<&[u8; 32]>) -> Result<String> {
-    if let Some(key) = key {
-        if let Ok(bytes) = decrypt(encoded, key) {
-            return String::from_utf8(bytes).context("Stored secret was not valid UTF-8");
-        }
+    if let Some(key) = key
+        && let Ok(bytes) = decrypt(encoded, key)
+    {
+        return String::from_utf8(bytes).context("Stored secret was not valid UTF-8");
     }
 
     if let Ok(bytes) = hex::decode(encoded) {

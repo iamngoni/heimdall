@@ -107,45 +107,41 @@ async fn update_threat_model(
         return response;
     }
 
-    if let Some(ref summary) = body.summary {
-        if let Err(e) = state
+    if let Some(ref summary) = body.summary
+        && let Err(e) = state
             .db
             .update_threat_model_field(id, "summary", &serde_json::json!(summary))
             .await
-        {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
     }
-    if let Some(ref boundaries) = body.boundaries {
-        if let Err(e) = state
+    if let Some(ref boundaries) = body.boundaries
+        && let Err(e) = state
             .db
             .update_threat_model_field(id, "boundaries_json", boundaries)
             .await
-        {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
     }
-    if let Some(ref surfaces) = body.surfaces {
-        if let Err(e) = state
+    if let Some(ref surfaces) = body.surfaces
+        && let Err(e) = state
             .db
             .update_threat_model_field(id, "surfaces_json", surfaces)
             .await
-        {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
     }
-    if let Some(ref data_flows) = body.data_flows {
-        if let Err(e) = state
+    if let Some(ref data_flows) = body.data_flows
+        && let Err(e) = state
             .db
             .update_threat_model_field(id, "data_flows_json", data_flows)
             .await
-        {
-            return HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, format!("{e}")));
-        }
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
     }
 
     // Return updated model

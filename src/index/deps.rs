@@ -19,6 +19,12 @@ pub struct DependencyGraph {
     dependents: HashMap<String, HashSet<String>>,
 }
 
+impl Default for DependencyGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DependencyGraph {
     pub fn new() -> Self {
         Self {
@@ -68,7 +74,7 @@ impl DependencyGraph {
             }
         }
 
-        out.push_str(&format!("\nDepended on by:\n"));
+        out.push_str("\nDepended on by:\n");
         if dependents.is_empty() {
             out.push_str("  (none)\n");
         } else {

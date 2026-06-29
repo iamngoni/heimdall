@@ -30,7 +30,7 @@ fn requires_csrf_check(method: &Method) -> bool {
 
 /// Check if the path starts with any exempt prefix.
 fn is_exempt_path(path: &str) -> bool {
-    CSRF_EXEMPT_PATHS.iter().any(|exempt| path == *exempt) || path.starts_with("/api/webhooks/")
+    CSRF_EXEMPT_PATHS.contains(&path) || path.starts_with("/api/webhooks/")
 }
 
 /// Check if the request has a valid Bearer token (API clients skip CSRF).

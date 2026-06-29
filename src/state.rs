@@ -356,16 +356,16 @@ fn selected_primary_provider(
     stored_keys: &[ApiKey],
     preferences: &AiRoutingPreferences,
 ) -> Option<ProviderKind> {
-    if let Some(provider) = preferences.preferred_provider {
-        if provider_is_configured(config, stored_keys, provider) {
-            return Some(provider);
-        }
+    if let Some(provider) = preferences.preferred_provider
+        && provider_is_configured(config, stored_keys, provider)
+    {
+        return Some(provider);
     }
 
-    if let Some(provider) = ai::provider_kind_from_model(&config.default_model) {
-        if provider_is_configured(config, stored_keys, provider) {
-            return Some(provider);
-        }
+    if let Some(provider) = ai::provider_kind_from_model(&config.default_model)
+        && provider_is_configured(config, stored_keys, provider)
+    {
+        return Some(provider);
     }
 
     ai::default_provider_order()

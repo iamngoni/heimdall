@@ -364,10 +364,10 @@ fn extract_patch_hunks(patch: &str) -> Vec<PatchHunk> {
 
     for line in patch.lines() {
         if line.starts_with("@@") {
-            if let Some(existing) = current_hunk.take() {
-                if !existing.lines.is_empty() {
-                    hunks.push(existing);
-                }
+            if let Some(existing) = current_hunk.take()
+                && !existing.lines.is_empty()
+            {
+                hunks.push(existing);
             }
             let Some((old_start, old_count)) = parse_hunk_header(line) else {
                 current_hunk = None;
@@ -394,10 +394,10 @@ fn extract_patch_hunks(patch: &str) -> Vec<PatchHunk> {
         }
     }
 
-    if let Some(existing) = current_hunk {
-        if !existing.lines.is_empty() {
-            hunks.push(existing);
-        }
+    if let Some(existing) = current_hunk
+        && !existing.lines.is_empty()
+    {
+        hunks.push(existing);
     }
 
     hunks

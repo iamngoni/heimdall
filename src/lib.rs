@@ -7,6 +7,9 @@
 //  SPDX-License-Identifier: LicenseRef-Heimdall-FSL
 //
 
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::vec_init_then_push)]
+
 pub mod ai;
 pub mod auth;
 pub mod config;

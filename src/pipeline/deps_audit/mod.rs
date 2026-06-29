@@ -325,16 +325,15 @@ fn resolve_report_occurrence<'a>(
     occurrences: &'a [ParsedDependencyOccurrence],
     query: &'a ParsedDependencyOccurrence,
 ) -> &'a ParsedDependencyOccurrence {
-    if supports_lockfile_query(&query.manifest_path) {
-        if let Some(companion_path) = companion_manifest_path(&query.manifest_path) {
-            if let Some(manifest_occurrence) = occurrences.iter().find(|occurrence| {
-                occurrence.manifest_path == companion_path
-                    && occurrence.dep.name == query.dep.name
-                    && occurrence.dep.ecosystem == query.dep.ecosystem
-            }) {
-                return manifest_occurrence;
-            }
-        }
+    if supports_lockfile_query(&query.manifest_path)
+        && let Some(companion_path) = companion_manifest_path(&query.manifest_path)
+        && let Some(manifest_occurrence) = occurrences.iter().find(|occurrence| {
+            occurrence.manifest_path == companion_path
+                && occurrence.dep.name == query.dep.name
+                && occurrence.dep.ecosystem == query.dep.ecosystem
+        })
+    {
+        return manifest_occurrence;
     }
 
     query
@@ -384,10 +383,10 @@ fn fixed_versions_for(vuln: &osv::OsvVulnerability, dep: &Dependency) -> Vec<Str
 
             for range in &package.ranges {
                 for event in &range.events {
-                    if let Some(fixed) = &event.fixed {
-                        if !fixed_versions.contains(fixed) {
-                            fixed_versions.push(fixed.clone());
-                        }
+                    if let Some(fixed) = &event.fixed
+                        && !fixed_versions.contains(fixed)
+                    {
+                        fixed_versions.push(fixed.clone());
                     }
                 }
             }
@@ -415,10 +414,10 @@ fn reference_urls_for(vuln: &osv::OsvVulnerability) -> Vec<String> {
             None
         };
 
-        if let Some(url) = alias_url {
-            if !urls.contains(&url) {
-                urls.push(url);
-            }
+        if let Some(url) = alias_url
+            && !urls.contains(&url)
+        {
+            urls.push(url);
         }
     }
 

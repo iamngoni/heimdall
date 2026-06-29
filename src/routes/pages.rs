@@ -115,7 +115,7 @@ fn user_theme(req: &HttpRequest) -> String {
 /// Build the user context for templates (nav, etc.).
 fn user_ctx(req: &HttpRequest) -> minijinja::Value {
     match get_user(req) {
-        Some(user) => minijinja::Value::from_serialize(&serde_json::json!({
+        Some(user) => minijinja::Value::from_serialize(serde_json::json!({
             "id": user.id,
             "email": user.email,
             "display_name": user.display_name,
@@ -189,7 +189,7 @@ async fn oauth_connections_ctx(state: &AppState, user_id: Uuid) -> minijinja::Va
         .iter()
         .find(|conn| conn.provider == "bitbucket");
 
-    minijinja::Value::from_serialize(&serde_json::json!({
+    minijinja::Value::from_serialize(serde_json::json!({
         "github": {
             "connected": github.is_some(),
             "token_source": github.map(|conn| conn.token_source.as_str()).unwrap_or("none"),
@@ -237,7 +237,7 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
         if let Ok(scans) = state.db.list_scans_by_repo(repo.id).await {
             let latest_scan = scans.first();
 
-            repo_summaries.push(minijinja::Value::from_serialize(&serde_json::json!({
+            repo_summaries.push(minijinja::Value::from_serialize(serde_json::json!({
                 "id": repo.id,
                 "name": repo.name,
                 "host": match repo.source_type.as_str() {
@@ -264,7 +264,7 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
             for scan in scans {
                 recent_scan_rows.push((
                     scan.created_at.timestamp(),
-                    minijinja::Value::from_serialize(&serde_json::json!({
+                    minijinja::Value::from_serialize(serde_json::json!({
                         "id": scan.id,
                         "repo_name": repo.name,
                         "status": scan.status,
@@ -297,7 +297,7 @@ async fn dashboard_page(state: web::Data<AppState>, req: HttpRequest) -> HttpRes
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
-        stats => minijinja::Value::from_serialize(&serde_json::json!({
+        stats => minijinja::Value::from_serialize(serde_json::json!({
             "total_repos": total_repos,
             "recent_scans": recent_scans.len(),
             "open_findings": open_findings,
@@ -318,10 +318,10 @@ struct ThemeQuery {
 
 /// Resolve theme for pre-auth pages: query param > cookie > default.
 fn resolve_public_theme(req: &HttpRequest, query_theme: Option<&str>) -> String {
-    if let Some(t) = query_theme {
-        if crate::templates::KNOWN_THEMES.contains(&t) {
-            return t.to_string();
-        }
+    if let Some(t) = query_theme
+        && crate::templates::KNOWN_THEMES.contains(&t)
+    {
+        return t.to_string();
     }
     if let Some(cookie) = req.cookie("heimdall_theme") {
         let v = cookie.value().to_string();
@@ -391,7 +391,7 @@ async fn repos_page(
             .into_iter()
             .next();
 
-        repo_values.push(minijinja::Value::from_serialize(&serde_json::json!({
+        repo_values.push(minijinja::Value::from_serialize(serde_json::json!({
             "id": repo.id,
             "name": repo.name,
             "source_type": repo.source_type,
@@ -493,7 +493,7 @@ async fn repo_detail_page(
     let scan_values: Vec<minijinja::Value> = scans
         .iter()
         .map(|s| {
-            minijinja::Value::from_serialize(&serde_json::json!({
+            minijinja::Value::from_serialize(serde_json::json!({
                 "id": s.id,
                 "short_id": s.id.to_string().chars().take(8).collect::<String>(),
                 "scan_type": s.scan_type,
@@ -526,25 +526,22 @@ async fn repo_detail_page(
 
     // For Bitbucket repos, check whether the issue tracker is actually enabled.
     let mut bb_issue_tracker_disabled = false;
-    if base_supported && repo.source_type == "bitbucket" {
-        if let Some(conn_id) = repo.oauth_connection_id {
-            if let Ok(Some(conn)) = state.db.get_oauth_connection_by_id(conn_id).await {
-                if let Ok(token) = crate::crypto::decode_stored_secret(
-                    conn.access_token_enc.as_deref().unwrap_or(""),
-                    state.encryption_key.as_ref(),
-                ) {
-                    if let Ok(false) = issues::check_bitbucket_issue_tracker(
-                        repo.remote_url.as_deref().unwrap_or(""),
-                        &token,
-                        &conn,
-                    )
-                    .await
-                    {
-                        bb_issue_tracker_disabled = true;
-                    }
-                }
-            }
-        }
+    if base_supported
+        && repo.source_type == "bitbucket"
+        && let Some(conn_id) = repo.oauth_connection_id
+        && let Ok(Some(conn)) = state.db.get_oauth_connection_by_id(conn_id).await
+        && let Ok(token) = crate::crypto::decode_stored_secret(
+            conn.access_token_enc.as_deref().unwrap_or(""),
+            state.encryption_key.as_ref(),
+        )
+        && let Ok(false) = issues::check_bitbucket_issue_tracker(
+            repo.remote_url.as_deref().unwrap_or(""),
+            &token,
+            &conn,
+        )
+        .await
+    {
+        bb_issue_tracker_disabled = true;
     }
 
     let effective_supported = base_supported && !bb_issue_tracker_disabled;
@@ -570,7 +567,7 @@ async fn repo_detail_page(
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
-        repo => minijinja::Value::from_serialize(&serde_json::json!({
+        repo => minijinja::Value::from_serialize(serde_json::json!({
             "id": repo.id,
             "name": repo.name,
             "source_type": repo.source_type,
@@ -593,7 +590,7 @@ async fn repo_detail_page(
             },
         })),
         scans => scan_values,
-        latest_scan => minijinja::Value::from_serialize(&serde_json::json!({
+        latest_scan => minijinja::Value::from_serialize(serde_json::json!({
             "status": latest_scan.as_ref().map(|scan| scan.status.clone()),
             "created_at": latest_scan
                 .as_ref()
@@ -680,13 +677,13 @@ async fn scan_detail_page(
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
-        repo => minijinja::Value::from_serialize(&serde_json::json!({
+        repo => minijinja::Value::from_serialize(serde_json::json!({
             "id": repo.id,
             "name": repo.name,
             "issue_auto_create_enabled": repo.issue_auto_create_enabled,
             "issue_auto_create_min_severity": repo.issue_auto_create_min_severity,
         })),
-        scan => minijinja::Value::from_serialize(&serde_json::json!({
+        scan => minijinja::Value::from_serialize(serde_json::json!({
             "id": scan.id,
             "short_id": scan.id.to_string().chars().take(8).collect::<String>(),
             "repo_id": scan.repo_id,
@@ -815,7 +812,7 @@ async fn scan_findings_page(
     let finding_values: Vec<minijinja::Value> = findings
         .iter()
         .map(|f| {
-            minijinja::Value::from_serialize(&serde_json::json!({
+            minijinja::Value::from_serialize(serde_json::json!({
                 "id": f.id,
                 "title": f.title,
                 "source": f.source,
@@ -837,11 +834,11 @@ async fn scan_findings_page(
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
-        repo => minijinja::Value::from_serialize(&serde_json::json!({
+        repo => minijinja::Value::from_serialize(serde_json::json!({
             "id": repo.id,
             "name": repo.name,
         })),
-        scan => minijinja::Value::from_serialize(&serde_json::json!({
+        scan => minijinja::Value::from_serialize(serde_json::json!({
             "id": scan.id,
             "status": scan.status,
             "finding_count": scan.finding_count,
@@ -929,13 +926,13 @@ async fn finding_detail_page(
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
-        repo => minijinja::Value::from_serialize(&serde_json::json!({
+        repo => minijinja::Value::from_serialize(serde_json::json!({
             "id": repo.id,
             "name": repo.name,
             "remote_url": repo.remote_url,
             "source_type": repo.source_type,
         })),
-        finding => minijinja::Value::from_serialize(&serde_json::json!({
+        finding => minijinja::Value::from_serialize(serde_json::json!({
             "id": finding.id,
             "scan_id": finding.scan_id,
             "repo_id": finding.repo_id,
@@ -956,7 +953,7 @@ async fn finding_detail_page(
             "poc_validated": finding.poc_validated,
             "agent_reasoning": finding.agent_reasoning,
         })),
-        patch => minijinja::Value::from_serialize(&serde_json::json!({
+        patch => minijinja::Value::from_serialize(serde_json::json!({
             "id": patch.as_ref().map(|patch| patch.id),
             "applied": patch.as_ref().map(|patch| patch.applied).unwrap_or(false),
             "created_at": patch
@@ -966,7 +963,7 @@ async fn finding_detail_page(
         events => event_values,
         explain_review => explain_review,
         verify_review => verify_review,
-        issue => minijinja::Value::from_serialize(&serde_json::json!({
+        issue => minijinja::Value::from_serialize(serde_json::json!({
             "supported": issues::supports_issue_creation(&repo),
             "provider": issue_provider,
             "url": repo_issue.as_ref().map(|issue| issue.issue_url.clone()),
@@ -1043,17 +1040,17 @@ async fn threat_model_page(
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
-        repo => minijinja::Value::from_serialize(&serde_json::json!({
+        repo => minijinja::Value::from_serialize(serde_json::json!({
             "id": repo.id,
             "name": repo.name,
         })),
-        scan => minijinja::Value::from_serialize(&serde_json::json!({
+        scan => minijinja::Value::from_serialize(serde_json::json!({
             "id": scan.id,
             "status": scan.status,
             "finding_count": scan.finding_count,
         })),
         scan_id => scan_id.to_string(),
-        threat_model => minijinja::Value::from_serialize(&serde_json::json!({
+        threat_model => minijinja::Value::from_serialize(serde_json::json!({
             "id": threat_model.id,
             "summary": threat_model.summary,
             "model_version": threat_model.model_version,
@@ -1100,7 +1097,7 @@ async fn settings_page(
     let key_values: Vec<minijinja::Value> = api_keys
         .iter()
         .map(|k| {
-            minijinja::Value::from_serialize(&serde_json::json!({
+            minijinja::Value::from_serialize(serde_json::json!({
                 "id": k.id,
                 "provider": k.provider,
                 "label": k.label,
@@ -1125,7 +1122,7 @@ async fn settings_page(
         user => user_ctx(&req),
         user_initial => user_initial(&req),
         integrations => oauth_connections_ctx(&state, user.id).await,
-        ai_config => minijinja::Value::from_serialize(&serde_json::json!({
+        ai_config => minijinja::Value::from_serialize(serde_json::json!({
             "has_anthropic": has_anthropic,
             "has_claude_code": has_claude_code,
             "has_codex": has_codex,
@@ -1186,16 +1183,15 @@ fn page_effective_preferred_ai_provider(
     if let Some(provider) = user
         .and_then(|user| user.preferred_ai_provider.as_deref())
         .and_then(ai::provider_kind_from_name)
+        && page_provider_configured(ai_cfg, api_keys, provider)
     {
-        if page_provider_configured(ai_cfg, api_keys, provider) {
-            return Some(provider);
-        }
+        return Some(provider);
     }
 
-    if let Some(provider) = ai::provider_kind_from_model(&ai_cfg.default_model) {
-        if page_provider_configured(ai_cfg, api_keys, provider) {
-            return Some(provider);
-        }
+    if let Some(provider) = ai::provider_kind_from_model(&ai_cfg.default_model)
+        && page_provider_configured(ai_cfg, api_keys, provider)
+    {
+        return Some(provider);
     }
 
     page_configured_ai_providers(ai_cfg, api_keys)
@@ -1212,10 +1208,10 @@ fn page_effective_fallback_order(
     let configured = page_configured_ai_providers(ai_cfg, api_keys);
     let mut order = Vec::new();
 
-    if let Some(provider) = preferred_provider {
-        if configured.contains(&provider) {
-            ai::push_provider_once(&mut order, provider);
-        }
+    if let Some(provider) = preferred_provider
+        && configured.contains(&provider)
+    {
+        ai::push_provider_once(&mut order, provider);
     }
 
     let saved_order = user
@@ -1267,7 +1263,7 @@ fn latest_finding_review_value(
         .rev()
         .find(|event| event.event_type == event_type)
         .map(|event| {
-            minijinja::Value::from_serialize(&serde_json::json!({
+            minijinja::Value::from_serialize(serde_json::json!({
                 "created_at": event.created_at.format("%Y-%m-%d %H:%M").to_string(),
                 "comment": event.comment,
                 "metadata": event.metadata,
@@ -1307,7 +1303,7 @@ fn serialize_finding_event(event: &crate::models::db_models::FindingEvent) -> mi
             metadata
                 .get("summary")
                 .and_then(|value| value.as_str())
-                .or_else(|| event.comment.as_deref())
+                .or(event.comment.as_deref())
                 .unwrap_or("Plain-language clarification is now available for this alert.")
                 .to_string(),
             "active",
@@ -1323,7 +1319,7 @@ fn serialize_finding_event(event: &crate::models::db_models::FindingEvent) -> mi
                 metadata
                     .get("rationale")
                     .and_then(|value| value.as_str())
-                    .or_else(|| event.comment.as_deref())
+                    .or(event.comment.as_deref())
                     .unwrap_or("A second-pass verification review was recorded.")
                     .to_string(),
                 match metadata.get("verdict").and_then(|value| value.as_str()) {
@@ -1402,7 +1398,7 @@ fn serialize_finding_event(event: &crate::models::db_models::FindingEvent) -> mi
         ),
     };
 
-    minijinja::Value::from_serialize(&serde_json::json!({
+    minijinja::Value::from_serialize(serde_json::json!({
         "title": title,
         "detail": detail,
         "tone": tone,

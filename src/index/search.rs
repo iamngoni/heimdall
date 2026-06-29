@@ -25,6 +25,12 @@ pub struct SearchIndex {
     files: HashMap<String, Vec<String>>,
 }
 
+impl Default for SearchIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SearchIndex {
     pub fn new() -> Self {
         Self {
@@ -46,10 +52,10 @@ impl SearchIndex {
         let mut results = Vec::new();
 
         for (file, lines) in &self.files {
-            if let Some(ref pat) = glob_pattern {
-                if !pat.matches(file) {
-                    continue;
-                }
+            if let Some(ref pat) = glob_pattern
+                && !pat.matches(file)
+            {
+                continue;
             }
 
             for (i, line) in lines.iter().enumerate() {
@@ -60,8 +66,7 @@ impl SearchIndex {
                 };
 
                 if matched {
-                    let context_before: Vec<String> =
-                        lines[i.saturating_sub(2)..i].iter().cloned().collect();
+                    let context_before: Vec<String> = lines[i.saturating_sub(2)..i].to_vec();
                     let context_after: Vec<String> = lines
                         .get(i + 1..std::cmp::min(i + 3, lines.len()))
                         .unwrap_or_default()

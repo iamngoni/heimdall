@@ -432,7 +432,7 @@ async fn list_repo_branches(
         .into_iter()
         .filter(|branch| seen.insert(branch.clone()))
         .collect();
-    branches.sort_unstable_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    branches.sort_unstable_by_key(|a| a.to_lowercase());
 
     HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
         "branches": branches,
@@ -813,10 +813,10 @@ async fn upload_zip(
                 while let Some(Ok(chunk)) = field.next().await {
                     bytes.extend_from_slice(&chunk);
                 }
-                if let Ok(name) = String::from_utf8(bytes) {
-                    if !name.trim().is_empty() {
-                        repo_name = Some(name.trim().to_string());
-                    }
+                if let Ok(name) = String::from_utf8(bytes)
+                    && !name.trim().is_empty()
+                {
+                    repo_name = Some(name.trim().to_string());
                 }
             }
             _ => {}
@@ -1388,19 +1388,20 @@ async fn list_remote_repos(
     // Bitbucket App Passwords require Basic auth with the account email.
     // If the stored provider_user_id doesn't look like an email, the user
     // needs to re-save their credentials with the correct email.
-    if provider == "bitbucket" && conn.token_source == "pat" {
-        if conn.provider_user_id == "pat" || !conn.provider_user_id.contains('@') {
-            return render_remote_repo_list(
-                &state,
-                &theme,
-                provider,
-                &[],
-                Some(&connected_urls),
-                Some(
-                    "Bitbucket App Passwords require your account email for authentication. Please re-save your credentials in Settings with your Bitbucket account email.",
-                ),
-            );
-        }
+    if provider == "bitbucket"
+        && conn.token_source == "pat"
+        && (conn.provider_user_id == "pat" || !conn.provider_user_id.contains('@'))
+    {
+        return render_remote_repo_list(
+            &state,
+            &theme,
+            provider,
+            &[],
+            Some(&connected_urls),
+            Some(
+                "Bitbucket App Passwords require your account email for authentication. Please re-save your credentials in Settings with your Bitbucket account email.",
+            ),
+        );
     }
 
     // Each provider helper handles its own pagination (Link headers for
@@ -1518,7 +1519,7 @@ fn render_remote_repo_list(
     let repo_values: Vec<minijinja::Value> = repos
         .iter()
         .map(|repo| {
-            minijinja::Value::from_serialize(&serde_json::json!({
+            minijinja::Value::from_serialize(serde_json::json!({
                 "full_name": repo.full_name,
                 "clone_url": repo.clone_url,
                 "description": repo.description,

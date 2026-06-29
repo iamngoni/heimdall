@@ -20,6 +20,12 @@ pub struct RequestContext {
     pub request_id: String,
 }
 
+impl Default for RequestContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RequestContext {
     pub fn new() -> Self {
         Self {

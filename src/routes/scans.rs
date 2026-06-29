@@ -395,8 +395,7 @@ async fn build_initial_state(db: &DatabaseOperations, scan_id: Uuid) -> String {
 fn stage_event_timestamp(stage: &ScanStage) -> String {
     stage
         .completed_at
-        .clone()
-        .or(stage.started_at.clone())
+        .or(stage.started_at)
         .unwrap_or(stage.created_at)
         .to_rfc3339()
 }
@@ -636,10 +635,8 @@ async fn scan_progress_stream(
 
     tokio::spawn(async move {
         // 1) Send initial state snapshot
-        if !initial.is_empty() {
-            if tx.send(Ok(web::Bytes::from(initial))).await.is_err() {
-                return; // Client disconnected
-            }
+        if !initial.is_empty() && tx.send(Ok(web::Bytes::from(initial))).await.is_err() {
+            return; // Client disconnected
         }
 
         // 2) Stream live events + keepalive

@@ -55,6 +55,12 @@ pub struct ScanBroadcaster {
     cancellation_tokens: Mutex<HashMap<Uuid, CancellationToken>>,
 }
 
+impl Default for ScanBroadcaster {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScanBroadcaster {
     pub fn new() -> Self {
         Self {

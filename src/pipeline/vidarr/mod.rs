@@ -144,10 +144,10 @@ impl VidarrStage {
                                 .update_finding_confidence(finding.id, "high")
                                 .await
                                 .ok();
-                            if let Some(ref sev) = verdict.adjusted_severity {
-                                if sev != &finding.severity {
-                                    self.db.update_finding_severity(finding.id, sev).await.ok();
-                                }
+                            if let Some(ref sev) = verdict.adjusted_severity
+                                && sev != &finding.severity
+                            {
+                                self.db.update_finding_severity(finding.id, sev).await.ok();
                             }
                             info!(
                                 "[{}] Víðarr CONFIRMED finding {}: {}",

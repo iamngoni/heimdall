@@ -376,10 +376,8 @@ impl HuntAgent {
                             // Add tool result
                             self.messages.push(Message {
                                 role: "user".to_string(),
-                                content: format!(
-                                    "Finding recorded. Continue investigating for more vulnerabilities, \
-                                     or say \"INVESTIGATION COMPLETE\" if done."
-                                ),
+                                content: "Finding recorded. Continue investigating for more vulnerabilities, \
+                                     or say \"INVESTIGATION COMPLETE\" if done.".to_string(),
                             });
                         } else {
                             // Execute code analysis tool

@@ -52,8 +52,7 @@ async fn main() -> std::io::Result<()> {
 
     println!("*** Heimdall — The All-Seeing Guardian ***");
 
-    let config = config::Config::from_env()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{e:#}")))?;
+    let config = config::Config::from_env().map_err(|e| std::io::Error::other(format!("{e:#}")))?;
 
     info!("Configuration loaded");
 
@@ -61,32 +60,20 @@ async fn main() -> std::io::Result<()> {
         .max_connections(5)
         .connect(&config.database.url)
         .await
-        .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Database connection failed: {e}"),
-            )
-        })?;
+        .map_err(|e| std::io::Error::other(format!("Database connection failed: {e}")))?;
 
     info!("Database connected");
 
     // Apply schema idempotently from the DSL — no file-based migration tracking.
     // Every statement uses IF NOT EXISTS / IF NOT EXISTS so this is safe on every startup.
     let ddl = heimdall::db::schema::generate_ddl(heimdall::db::schema::DbDriver::Postgres);
-    sqlx::raw_sql(&ddl).execute(&db_pool).await.map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Schema apply failed: {e}"),
-        )
-    })?;
+    sqlx::raw_sql(&ddl)
+        .execute(&db_pool)
+        .await
+        .map_err(|e| std::io::Error::other(format!("Schema apply failed: {e}")))?;
     db::apply_runtime_schema_updates(&db_pool)
         .await
-        .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Runtime schema update failed: {e:#}"),
-            )
-        })?;
+        .map_err(|e| std::io::Error::other(format!("Runtime schema update failed: {e:#}")))?;
 
     info!("Schema applied");
 

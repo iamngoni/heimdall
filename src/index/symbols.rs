@@ -29,6 +29,12 @@ pub struct SymbolIndex {
     symbols: HashMap<String, Vec<Symbol>>,
 }
 
+impl Default for SymbolIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SymbolIndex {
     pub fn new() -> Self {
         Self {
@@ -100,10 +106,10 @@ fn get_ts_language(lang: &str) -> Option<Language> {
 /// Extract symbols from source code using tree-sitter AST parsing.
 /// Falls back to regex heuristics for unsupported languages.
 pub fn extract_symbols(content: &str, language: &str, file: &str) -> Vec<Symbol> {
-    if let Some(ts_lang) = get_ts_language(language) {
-        if let Some(syms) = extract_with_tree_sitter(content, ts_lang, language, file) {
-            return syms;
-        }
+    if let Some(ts_lang) = get_ts_language(language)
+        && let Some(syms) = extract_with_tree_sitter(content, ts_lang, language, file)
+    {
+        return syms;
     }
     // Fallback: regex extraction for languages without tree-sitter support
     extract_symbols_regex(content, language, file)
@@ -418,22 +424,20 @@ fn extract_js_ts(root: Node, source: &[u8], file: &str) -> Vec<Symbol> {
                             .child_by_field_name("value")
                             .map(|v| v.kind() == "arrow_function")
                             .unwrap_or(false);
-                        if has_arrow {
-                            if let Some(name) = child_text(child, "name", source) {
-                                let is_exported = node
-                                    .parent()
-                                    .map(|p| p.kind() == "export_statement")
-                                    .unwrap_or(false);
-                                symbols.push(Symbol {
-                                    name: name.to_string(),
-                                    kind: "function".to_string(),
-                                    file: file.to_string(),
-                                    line: node.start_position().row + 1,
-                                    is_public: is_exported,
-                                    is_entry_point: false,
-                                    calls: Vec::new(),
-                                });
-                            }
+                        if has_arrow && let Some(name) = child_text(child, "name", source) {
+                            let is_exported = node
+                                .parent()
+                                .map(|p| p.kind() == "export_statement")
+                                .unwrap_or(false);
+                            symbols.push(Symbol {
+                                name: name.to_string(),
+                                kind: "function".to_string(),
+                                file: file.to_string(),
+                                line: node.start_position().row + 1,
+                                is_public: is_exported,
+                                is_entry_point: false,
+                                calls: Vec::new(),
+                            });
                         }
                     }
                 }
@@ -512,25 +516,25 @@ fn extract_go_ts(root: Node, source: &[u8], file: &str) -> Vec<Symbol> {
             "type_declaration" => {
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    if child.kind() == "type_spec" {
-                        if let Some(name) = child_text(child, "name", source) {
-                            let type_node = child.child_by_field_name("type");
-                            let kind = match type_node.map(|n| n.kind()) {
-                                Some("struct_type") => "struct",
-                                Some("interface_type") => "interface",
-                                _ => "type",
-                            };
-                            let is_public = name.starts_with(char::is_uppercase);
-                            symbols.push(Symbol {
-                                name: name.to_string(),
-                                kind: kind.to_string(),
-                                file: file.to_string(),
-                                line: child.start_position().row + 1,
-                                is_public,
-                                is_entry_point: false,
-                                calls: Vec::new(),
-                            });
-                        }
+                    if child.kind() == "type_spec"
+                        && let Some(name) = child_text(child, "name", source)
+                    {
+                        let type_node = child.child_by_field_name("type");
+                        let kind = match type_node.map(|n| n.kind()) {
+                            Some("struct_type") => "struct",
+                            Some("interface_type") => "interface",
+                            _ => "type",
+                        };
+                        let is_public = name.starts_with(char::is_uppercase);
+                        symbols.push(Symbol {
+                            name: name.to_string(),
+                            kind: kind.to_string(),
+                            file: file.to_string(),
+                            line: child.start_position().row + 1,
+                            is_public,
+                            is_entry_point: false,
+                            calls: Vec::new(),
+                        });
                     }
                 }
             }
@@ -632,10 +636,10 @@ fn has_modifier(node: Node, source: &[u8], modifier: &str) -> bool {
         if child.kind() == "modifiers" {
             let mut mod_cursor = child.walk();
             for mod_child in child.children(&mut mod_cursor) {
-                if let Ok(text) = mod_child.utf8_text(source) {
-                    if text == modifier {
-                        return true;
-                    }
+                if let Ok(text) = mod_child.utf8_text(source)
+                    && text == modifier
+                {
+                    return true;
                 }
             }
         }
@@ -681,10 +685,10 @@ fn extract_call_identifiers(root: Node, source: &[u8], language: &str) -> Vec<St
             }
         };
 
-        if let Some(name) = name {
-            if !is_builtin_call(&name, language) {
-                calls.push(name);
-            }
+        if let Some(name) = name
+            && !is_builtin_call(&name, language)
+        {
+            calls.push(name);
         }
     }
 

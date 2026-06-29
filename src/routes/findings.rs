@@ -169,7 +169,7 @@ async fn update_finding_status(
 
     if req.headers().contains_key("HX-Request") {
         let ctx = minijinja::context! {
-            finding => minijinja::Value::from_serialize(&serde_json::json!({
+            finding => minijinja::Value::from_serialize(serde_json::json!({
                 "id": finding.id,
                 "status": finding.status,
             })),
@@ -745,7 +745,7 @@ async fn render_finding_issue_panel(
     };
     let ctx = minijinja::context! {
         finding_id => finding.id,
-        issue => minijinja::Value::from_serialize(&serde_json::json!({
+        issue => minijinja::Value::from_serialize(serde_json::json!({
             "supported": issues::supports_issue_creation(repo),
             "provider": provider,
             "url": repo_issue.as_ref().map(|issue| issue.issue_url.clone()),
@@ -753,7 +753,7 @@ async fn render_finding_issue_panel(
             "state": repo_issue.as_ref().map(|issue| issue.state.clone()),
             "auto_created": repo_issue.as_ref().map(|issue| issue.auto_created).unwrap_or(false),
         })),
-        repo => minijinja::Value::from_serialize(&serde_json::json!({
+        repo => minijinja::Value::from_serialize(serde_json::json!({
             "issue_auto_create_enabled": repo.issue_auto_create_enabled,
             "issue_auto_create_min_severity": repo.issue_auto_create_min_severity,
         })),
@@ -834,7 +834,7 @@ fn latest_review_value(
         .rev()
         .find(|event| event.event_type == event_type)
         .map(|event| {
-            minijinja::Value::from_serialize(&serde_json::json!({
+            minijinja::Value::from_serialize(serde_json::json!({
                 "created_at": event.created_at.format("%Y-%m-%d %H:%M").to_string(),
                 "comment": event.comment,
                 "metadata": event.metadata,
@@ -874,7 +874,7 @@ fn serialize_recent_activity_event(
             metadata
                 .get("summary")
                 .and_then(|value| value.as_str())
-                .or_else(|| event.comment.as_deref())
+                .or(event.comment.as_deref())
                 .unwrap_or("Plain-language clarification is now available for this alert.")
                 .to_string(),
             "active",
@@ -890,7 +890,7 @@ fn serialize_recent_activity_event(
                 metadata
                     .get("rationale")
                     .and_then(|value| value.as_str())
-                    .or_else(|| event.comment.as_deref())
+                    .or(event.comment.as_deref())
                     .unwrap_or("A second-pass verification review was recorded.")
                     .to_string(),
                 match metadata.get("verdict").and_then(|value| value.as_str()) {
@@ -938,7 +938,7 @@ fn serialize_recent_activity_event(
         ),
     };
 
-    minijinja::Value::from_serialize(&serde_json::json!({
+    minijinja::Value::from_serialize(serde_json::json!({
         "title": title,
         "detail": detail,
         "tone": tone,

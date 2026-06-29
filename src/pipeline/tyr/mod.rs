@@ -745,7 +745,7 @@ impl TyrStage {
 
         // Look for .env files, config files
         let config_files = ["config", ".env", "settings", "application.yml"];
-        for (path, _) in &index.files {
+        for path in index.files.keys() {
             let lower = path.to_ascii_lowercase();
             for cf in &config_files {
                 if lower.contains(cf) {
@@ -938,7 +938,7 @@ impl TyrStage {
         surface
     }
 
-    fn file_extension_to_lang<'a>(&self, path: &'a str) -> Option<&'static str> {
+    fn file_extension_to_lang(&self, path: &str) -> Option<&'static str> {
         let ext = path.rsplit('.').next()?;
         match ext {
             "rs" => Some("Rust"),
@@ -1153,22 +1153,21 @@ impl TyrStage {
 
         append_capped(
             &mut ctx,
-            &format!(
-                "\n## Output Requirements\n\
+            "\n## Output Requirements\n\
                  Respond with a JSON object matching this exact schema:\n\
-                 {{\n\
+                 {\n\
                    \"summary\": \"string — 2-3 paragraphs: what this application does, its architecture, \
                      overall security posture, and the most significant risks\",\n\
                    \"boundaries\": [\n\
-                     {{\n\
+                     {\n\
                        \"name\": \"string — descriptive name\",\n\
                        \"description\": \"string — what crosses this boundary and why it matters\",\n\
                        \"from_zone\": \"string — less trusted zone\",\n\
                        \"to_zone\": \"string — more trusted zone\"\n\
-                     }}\n\
+                     }\n\
                    ],\n\
                    \"surfaces\": [\n\
-                     {{\n\
+                     {\n\
                        \"name\": \"string — specific, actionable name\",\n\
                        \"description\": \"string — what the surface does, what threats apply (reference STRIDE), \
                          and what an attacker could target\",\n\
@@ -1176,18 +1175,18 @@ impl TyrStage {
                        \"file\": \"string or null — source file path\",\n\
                        \"line\": null,\n\
                        \"risk_level\": \"critical|high|medium|low\"\n\
-                     }}\n\
+                     }\n\
                    ],\n\
                    \"data_flows\": [\n\
-                     {{\n\
+                     {\n\
                        \"name\": \"string — descriptive name\",\n\
                        \"description\": \"string — how data moves and what transformations occur\",\n\
                        \"source\": \"string — where data originates\",\n\
                        \"sink\": \"string — where data is consumed or stored\",\n\
                        \"sensitive_data\": \"string — what sensitive data is in this flow\"\n\
-                     }}\n\
+                     }\n\
                    ]\n\
-                 }}\n\n\
+                 }\n\n\
                  Additional rules:\n\
                  - The top-level object MUST contain all 4 keys: summary, boundaries, surfaces, data_flows.\n\
                  - If you have no entries for boundaries, surfaces, or data_flows, use [] for that key.\n\
@@ -1197,8 +1196,7 @@ impl TyrStage {
                  - Do NOT emit markdown fences, headings, prose, or explanation.\n\
                  - line must be a number or null.\n\
                  - risk_level must be exactly one of: critical, high, medium, low.\n\n\
-                 Return ONLY the JSON object."
-            ),
+                 Return ONLY the JSON object.",
             budgets.total_chars,
         );
 
@@ -1267,12 +1265,12 @@ impl TyrStage {
                 || index
                     .files
                     .keys()
-                    .any(|k| source_lower.contains(k.split('/').last().unwrap_or("")));
+                    .any(|k| source_lower.contains(k.split('/').next_back().unwrap_or("")));
             let sink_valid = generic_terms.iter().any(|t| sink_lower.contains(t))
                 || index
                     .files
                     .keys()
-                    .any(|k| sink_lower.contains(k.split('/').last().unwrap_or("")));
+                    .any(|k| sink_lower.contains(k.split('/').next_back().unwrap_or("")));
 
             source_valid || sink_valid
         });
@@ -1331,12 +1329,12 @@ impl TyrStage {
         let mut chain_files: Vec<&str> = Vec::new();
         for chain in &recon.call_chains {
             // Extract file paths from chain strings like "fn_a → fn_b (src/foo.rs:42)"
-            if let Some(paren_start) = chain.rfind('(') {
-                if let Some(colon) = chain[paren_start..].find(':') {
-                    let file = &chain[paren_start + 1..paren_start + colon];
-                    if !chain_files.contains(&file) {
-                        chain_files.push(file);
-                    }
+            if let Some(paren_start) = chain.rfind('(')
+                && let Some(colon) = chain[paren_start..].find(':')
+            {
+                let file = &chain[paren_start + 1..paren_start + colon];
+                if !chain_files.contains(&file) {
+                    chain_files.push(file);
                 }
             }
         }
@@ -2100,16 +2098,18 @@ fn json_parse_candidates(raw: &str) -> Vec<String> {
         candidates.push(trimmed.to_string());
     }
 
-    if let Some(stripped) = strip_markdown_fences(trimmed) {
-        if !stripped.is_empty() && !candidates.iter().any(|candidate| candidate == stripped) {
-            candidates.push(stripped.to_string());
-        }
+    if let Some(stripped) = strip_markdown_fences(trimmed)
+        && !stripped.is_empty()
+        && !candidates.iter().any(|candidate| candidate == stripped)
+    {
+        candidates.push(stripped.to_string());
     }
 
-    if let Some(extracted) = extract_first_json_object(trimmed) {
-        if !extracted.is_empty() && !candidates.iter().any(|candidate| candidate == extracted) {
-            candidates.push(extracted.to_string());
-        }
+    if let Some(extracted) = extract_first_json_object(trimmed)
+        && !extracted.is_empty()
+        && !candidates.iter().any(|candidate| candidate == extracted)
+    {
+        candidates.push(extracted.to_string());
     }
 
     candidates

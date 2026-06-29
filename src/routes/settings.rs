@@ -216,7 +216,7 @@ fn render_api_key_row(
     created_at: chrono::DateTime<chrono::Utc>,
 ) -> HttpResponse {
     let ctx = minijinja::context! {
-        key => minijinja::Value::from_serialize(&serde_json::json!({
+        key => minijinja::Value::from_serialize(serde_json::json!({
             "id": id,
             "provider": provider,
             "label": label,
@@ -335,16 +335,15 @@ fn effective_preferred_ai_provider(
     if let Some(provider) = user
         .and_then(|user| user.preferred_ai_provider.as_deref())
         .and_then(ai::provider_kind_from_name)
+        && provider_configured(ai_cfg, api_keys, provider)
     {
-        if provider_configured(ai_cfg, api_keys, provider) {
-            return Some(provider);
-        }
+        return Some(provider);
     }
 
-    if let Some(provider) = ai::provider_kind_from_model(&ai_cfg.default_model) {
-        if provider_configured(ai_cfg, api_keys, provider) {
-            return Some(provider);
-        }
+    if let Some(provider) = ai::provider_kind_from_model(&ai_cfg.default_model)
+        && provider_configured(ai_cfg, api_keys, provider)
+    {
+        return Some(provider);
     }
 
     configured_ai_providers(ai_cfg, api_keys).into_iter().next()
@@ -359,10 +358,10 @@ fn effective_fallback_order(
     let configured = configured_ai_providers(ai_cfg, api_keys);
     let mut order = Vec::new();
 
-    if let Some(provider) = preferred_provider {
-        if configured.contains(&provider) {
-            ai::push_provider_once(&mut order, provider);
-        }
+    if let Some(provider) = preferred_provider
+        && configured.contains(&provider)
+    {
+        ai::push_provider_once(&mut order, provider);
     }
 
     let saved_order = user

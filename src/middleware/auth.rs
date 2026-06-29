@@ -75,14 +75,13 @@ pub struct RequireAuthMiddleware<S> {
 /// `heimdall_session` cookie.
 fn extract_token(req: &ServiceRequest) -> Option<String> {
     // Try Authorization header first
-    if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
-        if let Ok(value) = auth_header.to_str() {
-            if let Some(token) = value.strip_prefix("Bearer ") {
-                let token = token.trim();
-                if !token.is_empty() {
-                    return Some(token.to_string());
-                }
-            }
+    if let Some(auth_header) = req.headers().get(header::AUTHORIZATION)
+        && let Ok(value) = auth_header.to_str()
+        && let Some(token) = value.strip_prefix("Bearer ")
+    {
+        let token = token.trim();
+        if !token.is_empty() {
+            return Some(token.to_string());
         }
     }
 

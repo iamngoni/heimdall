@@ -431,8 +431,7 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
             if callers.is_empty() {
                 output.push_str(&format!("- `{func}` — no callers found\n"));
             } else {
-                let mut shown = 0usize;
-                for edge in &callers {
+                for (shown, edge) in callers.iter().enumerate() {
                     if total_edges >= MAX_TOTAL_EDGES {
                         output.push_str("\n_(output truncated: total edge limit reached)_\n");
                         break 'outer;
@@ -449,7 +448,6 @@ fn execute_find_data_flows(args: &serde_json::Value, index: &CodeIndex) -> ToolR
                         edge.caller, edge.file, edge.line
                     ));
                     total_edges += 1;
-                    shown += 1;
                     if !seen_functions.contains(&edge.caller) {
                         seen_functions.insert(edge.caller.clone());
                         next_functions.push(edge.caller.clone());

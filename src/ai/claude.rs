@@ -53,12 +53,13 @@ fn model_supports_custom_temperature(model: &str) -> bool {
     for window in segments.windows(2).rev() {
         let (a, b) = (window[0], window[1]);
         // Ignore long numeric suffixes (date stamps); versions are 1-2 digits.
-        if a.len() <= 2 && b.len() <= 2 {
-            if let (Ok(maj), Ok(min)) = (a.parse::<u32>(), b.parse::<u32>()) {
-                major = Some(maj);
-                minor = Some(min);
-                break;
-            }
+        if a.len() <= 2
+            && b.len() <= 2
+            && let (Ok(maj), Ok(min)) = (a.parse::<u32>(), b.parse::<u32>())
+        {
+            major = Some(maj);
+            minor = Some(min);
+            break;
         }
     }
     match (major, minor) {

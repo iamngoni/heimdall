@@ -41,6 +41,12 @@ pub struct AstSearchIndex {
     files: HashMap<String, IndexedAstFile>,
 }
 
+impl Default for AstSearchIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AstSearchIndex {
     pub fn new() -> Self {
         Self {
@@ -105,10 +111,10 @@ impl AstSearchIndex {
             }
 
             // Filter by glob
-            if let Some(ref pat) = glob_pattern {
-                if !pat.matches(path) {
-                    continue;
-                }
+            if let Some(ref pat) = glob_pattern
+                && !pat.matches(path)
+            {
+                continue;
             }
 
             let source = entry.content.as_bytes();

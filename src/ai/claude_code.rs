@@ -164,10 +164,10 @@ impl ClaudeCodeAuthTokens {
                 self.account_uuid = Some(uuid);
             }
         }
-        if let Some(organization) = response.organization {
-            if let Some(uuid) = organization.uuid {
-                self.organization_uuid = Some(uuid);
-            }
+        if let Some(organization) = response.organization
+            && let Some(uuid) = organization.uuid
+        {
+            self.organization_uuid = Some(uuid);
         }
         self.last_refresh = Some(now);
     }
@@ -541,12 +541,13 @@ fn model_supports_custom_temperature(model: &str) -> bool {
     let mut minor: Option<u32> = None;
     for window in segments.windows(2).rev() {
         let (a, b) = (window[0], window[1]);
-        if a.len() <= 2 && b.len() <= 2 {
-            if let (Ok(maj), Ok(min)) = (a.parse::<u32>(), b.parse::<u32>()) {
-                major = Some(maj);
-                minor = Some(min);
-                break;
-            }
+        if a.len() <= 2
+            && b.len() <= 2
+            && let (Ok(maj), Ok(min)) = (a.parse::<u32>(), b.parse::<u32>())
+        {
+            major = Some(maj);
+            minor = Some(min);
+            break;
         }
     }
     match (major, minor) {
@@ -594,10 +595,10 @@ fn build_messages_body(request: &CompletionRequest) -> Value {
         "messages": messages,
     });
 
-    if model_supports_custom_temperature(&request.model) {
-        if let Some(temperature) = request.temperature {
-            body["temperature"] = json!(temperature);
-        }
+    if model_supports_custom_temperature(&request.model)
+        && let Some(temperature) = request.temperature
+    {
+        body["temperature"] = json!(temperature);
     }
 
     if let Some(tools) = request.tools.as_ref() {

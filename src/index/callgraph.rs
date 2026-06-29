@@ -26,6 +26,12 @@ pub struct CallGraph {
     callees: HashMap<String, Vec<CallEdge>>,
 }
 
+impl Default for CallGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CallGraph {
     pub fn new() -> Self {
         Self {

@@ -199,7 +199,7 @@ impl MigrationGenerator for PostgresGenerator {
         for table in &schema.tables {
             for col in &table.columns {
                 let col_type = self.col_type(&col.col_type);
-                let mut def = format!("{col_type}");
+                let mut def = col_type.to_string();
                 if !col.nullable {
                     def.push_str(" NOT NULL");
                 }
@@ -272,10 +272,10 @@ impl SqliteGenerator {
             parts.push("UNIQUE".to_string());
         }
 
-        if let Some(ref dv) = col.default {
-            if let Some(val) = self.default_value(dv) {
-                parts.push(format!("DEFAULT {val}"));
-            }
+        if let Some(ref dv) = col.default
+            && let Some(val) = self.default_value(dv)
+        {
+            parts.push(format!("DEFAULT {val}"));
         }
 
         if let Some(ref fk) = col.references {
@@ -406,10 +406,10 @@ impl MysqlGenerator {
             parts.push("UNIQUE".to_string());
         }
 
-        if let Some(ref dv) = col.default {
-            if let Some(val) = self.default_value(dv) {
-                parts.push(format!("DEFAULT {val}"));
-            }
+        if let Some(ref dv) = col.default
+            && let Some(val) = self.default_value(dv)
+        {
+            parts.push(format!("DEFAULT {val}"));
         }
 
         parts.join(" ")
@@ -559,9 +559,7 @@ impl MongoGenerator {
         for col in &table.columns {
             if col.primary_key {
                 // MongoDB uses _id — map the PK
-                properties.push(format!(
-                    "        _id: {{\n            bsonType: \"string\",\n            description: \"UUIDv7 primary key\"\n        }}"
-                ));
+                properties.push("        _id: {\n            bsonType: \"string\",\n            description: \"UUIDv7 primary key\"\n        }".to_string());
                 required.push("\"_id\"".to_string());
                 continue;
             }

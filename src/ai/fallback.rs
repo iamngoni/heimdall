@@ -27,6 +27,12 @@ pub struct FallbackProvider {
     providers: Vec<ProviderEntry>,
 }
 
+impl Default for FallbackProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FallbackProvider {
     pub fn new() -> Self {
         Self {

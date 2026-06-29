@@ -314,12 +314,12 @@ fn dasharray_for(score: u8) -> String {
 /// Heimdall sometimes prefixes finding titles with `[CWE-XX] `. Strip that to
 /// avoid double-rendering when the CWE is also shown in the metadata strip.
 fn clean_title(title: &str) -> String {
-    if let Some(rest) = title.strip_prefix('[') {
-        if let Some(close_idx) = rest.find(']') {
-            let bracket = &rest[..close_idx];
-            if bracket.starts_with("CWE-") {
-                return rest[close_idx + 1..].trim_start().to_string();
-            }
+    if let Some(rest) = title.strip_prefix('[')
+        && let Some(close_idx) = rest.find(']')
+    {
+        let bracket = &rest[..close_idx];
+        if bracket.starts_with("CWE-") {
+            return rest[close_idx + 1..].trim_start().to_string();
         }
     }
     title.to_string()

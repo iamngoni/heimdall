@@ -325,6 +325,12 @@ const SINKS: &[TaintSink] = &[
 
 pub struct TaintAnalyzer;
 
+impl Default for TaintAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaintAnalyzer {
     pub fn new() -> Self {
         Self
@@ -517,7 +523,7 @@ impl TaintAnalysisStage {
         let analyzer = TaintAnalyzer::new();
         let mut all_flows = Vec::new();
 
-        for (_key, file) in &code_index.files {
+        for file in code_index.files.values() {
             let language = match file.language.as_deref() {
                 Some(lang) => lang,
                 None => continue,
