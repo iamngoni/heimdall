@@ -40,6 +40,7 @@ services:
     profiles: ["mcp"]
     entrypoint: ["/app/heimdall-mcp"]
     environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:-heimdall}:${POSTGRES_PASSWORD:-heimdall}@postgres:5432/${POSTGRES_DB:-heimdall}"
       MCP_TRANSPORT: http
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "45637"
