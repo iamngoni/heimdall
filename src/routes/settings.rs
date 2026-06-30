@@ -29,8 +29,8 @@ const CODEX_LOGIN_TTL_MINUTES: i64 = 5;
 /// approve the OAuth grant on claude.ai and paste the code back within this
 /// window.
 const CLAUDE_CODE_LOGIN_TTL_MINUTES: i64 = 10;
-/// Pending Grok Subscription logins use the fixed xAI loopback callback and
-/// should be completed promptly after the browser approval.
+/// Pending Grok Subscription logins should be completed promptly after the
+/// browser approval, whether local loopback or hosted callback mode is used.
 const XAI_OAUTH_LOGIN_TTL_MINUTES: i64 = 10;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
@@ -840,8 +840,9 @@ pub struct XaiOAuthCallbackQuery {
     pub error_description: Option<String>,
 }
 
-/// GET /callback — completes the Grok Subscription OAuth flow. The xAI/Grok
-/// OAuth client currently uses `http://127.0.0.1:56121/callback`.
+/// Completes the Grok Subscription OAuth flow for both local loopback and
+/// hosted callbacks. The OAuth `state` maps the request to the user who
+/// initiated the Settings connection.
 pub async fn xai_oauth_callback(
     state: web::Data<AppState>,
     query: web::Query<XaiOAuthCallbackQuery>,

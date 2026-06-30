@@ -33,8 +33,8 @@ pub struct CodexPendingLogin {
     pub expires_at: DateTime<Utc>,
 }
 
-/// In-flight Grok Subscription OAuth login awaiting the fixed loopback
-/// callback on `http://127.0.0.1:56121/callback`.
+/// In-flight Grok Subscription OAuth login awaiting either the local loopback
+/// callback or the configured hosted callback.
 #[derive(Clone, Debug)]
 pub struct XaiOAuthPendingLogin {
     pub user_id: Uuid,
@@ -128,7 +128,7 @@ pub struct AppState {
     pub codex_callback_port: u16,
     /// Pending Codex OAuth logins awaiting their redirect callback.
     pub codex_logins: Arc<Mutex<HashMap<String, CodexPendingLogin>>>,
-    /// Pending Grok Subscription OAuth logins awaiting their loopback callback.
+    /// Pending Grok Subscription OAuth logins awaiting callback completion.
     pub xai_oauth_logins: Arc<Mutex<HashMap<String, XaiOAuthPendingLogin>>>,
     /// Pending Claude Code OAuth logins awaiting the user to paste back the
     /// `code#state` blob from the Anthropic console redirect page.

@@ -215,6 +215,50 @@ pub struct ApiKey {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct McpOAuthClient {
+    pub id: Uuid,
+    pub client_id: String,
+    pub client_name: Option<String>,
+    pub redirect_uris_json: serde_json::Value,
+    pub grant_types: String,
+    pub response_types: String,
+    pub scope: String,
+    pub token_endpoint_auth_method: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct McpOAuthAuthorizationCode {
+    pub id: Uuid,
+    pub code_hash: String,
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub redirect_uri: String,
+    pub scope: String,
+    pub code_challenge: String,
+    pub code_challenge_method: String,
+    pub resource: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub consumed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct McpOAuthAccessToken {
+    pub id: Uuid,
+    pub token_hash: String,
+    pub client_id: String,
+    pub user_id: Uuid,
+    pub scope: String,
+    pub resource: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Repo {
     pub id: Uuid,
     pub org_id: Option<Uuid>,

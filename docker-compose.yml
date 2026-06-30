@@ -28,8 +28,8 @@ services:
 
   # --------------------------------------------------------------------------
   # MCP Server — activate with: docker compose --profile mcp up
-  # Provides authenticated Streamable HTTP access for MCP clients that cannot
-  # launch the binary directly over stdio. Set MCP_HTTP_AUTH_TOKEN in .env.
+  # Provides OAuth-protected Streamable HTTP access for MCP clients that cannot
+  # launch the binary directly over stdio.
   # --------------------------------------------------------------------------
 
   heimdall-mcp:
@@ -43,7 +43,6 @@ services:
       MCP_TRANSPORT: http
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "45637"
-      MCP_HTTP_AUTH_TOKEN: "${MCP_HTTP_AUTH_TOKEN:-}"
     ports:
       - "${MCP_PORT:-45637}:45637"
     env_file:
@@ -56,7 +55,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "code=$$(curl -s -o /dev/null -w '%{http_code}' -H 'accept: application/json, text/event-stream' http://localhost:45637/mcp || true); [ \"$$code\" = \"400\" ]",
+          "code=$$(curl -s -o /dev/null -w '%{http_code}' -H 'accept: application/json, text/event-stream' http://localhost:45637/mcp || true); [ \"$$code\" = \"401\" ]",
         ]
       interval: 30s
       timeout: 10s

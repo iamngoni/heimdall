@@ -1806,6 +1806,146 @@ impl DatabaseOperations {
     }
 
     // -----------------------------------------------------------------------
+    // MCP OAuth
+    // -----------------------------------------------------------------------
+
+    pub async fn create_mcp_oauth_client(
+        &self,
+        client_id: &str,
+        client_name: Option<&str>,
+        redirect_uris_json: &serde_json::Value,
+        grant_types: &str,
+        response_types: &str,
+        scope: &str,
+        token_endpoint_auth_method: &str,
+    ) -> HeimdallResult<McpOAuthClient> {
+        sqlx::query_as::<_, McpOAuthClient>(
+            "INSERT INTO mcp_oauth_clients \
+             (client_id, client_name, redirect_uris_json, grant_types, response_types, scope, token_endpoint_auth_method) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             RETURNING *",
+        )
+        .bind(client_id)
+        .bind(client_name)
+        .bind(redirect_uris_json)
+        .bind(grant_types)
+        .bind(response_types)
+        .bind(scope)
+        .bind(token_endpoint_auth_method)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to create MCP OAuth client")
+    }
+
+    pub async fn get_mcp_oauth_client(
+        &self,
+        client_id: &str,
+    ) -> HeimdallResult<Option<McpOAuthClient>> {
+        sqlx::query_as::<_, McpOAuthClient>("SELECT * FROM mcp_oauth_clients WHERE client_id = $1")
+            .bind(client_id)
+            .fetch_optional(&self.pool)
+            .await
+            .context("Failed to fetch MCP OAuth client")
+    }
+
+    pub async fn create_mcp_oauth_authorization_code(
+        &self,
+        code_hash: &str,
+        client_id: &str,
+        user_id: Uuid,
+        redirect_uri: &str,
+        scope: &str,
+        code_challenge: &str,
+        code_challenge_method: &str,
+        resource: Option<&str>,
+        expires_at: DateTime<Utc>,
+    ) -> HeimdallResult<McpOAuthAuthorizationCode> {
+        sqlx::query_as::<_, McpOAuthAuthorizationCode>(
+            "INSERT INTO mcp_oauth_authorization_codes \
+             (code_hash, client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, resource, expires_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+             RETURNING *",
+        )
+        .bind(code_hash)
+        .bind(client_id)
+        .bind(user_id)
+        .bind(redirect_uri)
+        .bind(scope)
+        .bind(code_challenge)
+        .bind(code_challenge_method)
+        .bind(resource)
+        .bind(expires_at)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to create MCP OAuth authorization code")
+    }
+
+    pub async fn consume_mcp_oauth_authorization_code(
+        &self,
+        code_hash: &str,
+    ) -> HeimdallResult<Option<McpOAuthAuthorizationCode>> {
+        sqlx::query_as::<_, McpOAuthAuthorizationCode>(
+            "UPDATE mcp_oauth_authorization_codes \
+             SET consumed_at = now() \
+             WHERE code_hash = $1 AND consumed_at IS NULL AND expires_at > now() \
+             RETURNING *",
+        )
+        .bind(code_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to consume MCP OAuth authorization code")
+    }
+
+    pub async fn create_mcp_oauth_access_token(
+        &self,
+        token_hash: &str,
+        client_id: &str,
+        user_id: Uuid,
+        scope: &str,
+        resource: Option<&str>,
+        expires_at: DateTime<Utc>,
+    ) -> HeimdallResult<McpOAuthAccessToken> {
+        sqlx::query_as::<_, McpOAuthAccessToken>(
+            "INSERT INTO mcp_oauth_access_tokens \
+             (token_hash, client_id, user_id, scope, resource, expires_at) \
+             VALUES ($1, $2, $3, $4, $5, $6) \
+             RETURNING *",
+        )
+        .bind(token_hash)
+        .bind(client_id)
+        .bind(user_id)
+        .bind(scope)
+        .bind(resource)
+        .bind(expires_at)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to create MCP OAuth access token")
+    }
+
+    pub async fn get_mcp_oauth_access_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> HeimdallResult<Option<McpOAuthAccessToken>> {
+        sqlx::query_as::<_, McpOAuthAccessToken>(
+            "SELECT * FROM mcp_oauth_access_tokens \
+             WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()",
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch MCP OAuth access token")
+    }
+
+    pub async fn touch_mcp_oauth_access_token(&self, id: Uuid) -> HeimdallResult<()> {
+        sqlx::query("UPDATE mcp_oauth_access_tokens SET last_used_at = now() WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to update MCP OAuth access token last_used_at")?;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
     // Threat Models
     // -----------------------------------------------------------------------
 

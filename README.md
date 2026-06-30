@@ -254,12 +254,15 @@ Set **at least one** environment provider, or connect Claude Code/Codex/Grok Sub
 | `OPENAI_COMPATIBLE_API_KEY` | OpenAI Compatible | API key for a custom OpenAI-compatible endpoint |
 | `OPENAI_COMPATIBLE_BASE_URL` | OpenAI Compatible | Base URL for the custom endpoint; both `http://host` and `http://host/v1` are accepted |
 | `XAI_API_KEY` | Grok API | xAI API key (`xai-...`), using `grok-build-0.1` by default; set `grok-4.3` for general Grok |
+| `XAI_OAUTH_REDIRECT_URI` | Grok Subscription | Optional hosted OAuth callback, e.g. `https://heimdall.antonlabs.cc/api/settings/xai-oauth/callback`; unset keeps local loopback mode |
+| `XAI_OAUTH_CLIENT_ID` | Grok Subscription | Optional xAI OAuth client id; defaults to the bundled loopback client |
+| `XAI_OAUTH_CLIENT_SECRET` | Grok Subscription | Optional xAI OAuth client secret for hosted/confidential clients |
 | `OLLAMA_URL` | Ollama | Ollama server URL (e.g. `http://localhost:11434`) |
 | `DEFAULT_AI_MODEL` | — | Override default model (default: `claude-sonnet-4-20250514`) |
 
 Every LLM call records which provider and model was actually used (visible in `agent_tool_calls`), so you always know which provider served each request — especially useful when fallback kicks in.
 
-Users can also add API keys through the Settings UI after registration. The OpenAI Compatible provider stores an API key plus custom base URL and can be selected independently in provider routing. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`. Grok Subscription connects through xAI OAuth for SuperGrok / X Premium+ on the fixed local callback path `/callback` served on `127.0.0.1:56121`; Docker Compose publishes that host callback port into the app container.
+Users can also add API keys through the Settings UI after registration. The OpenAI Compatible provider stores an API key plus custom base URL and can be selected independently in provider routing. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`. Grok Subscription connects through xAI OAuth for SuperGrok / X Premium+; local deployments default to `/callback` on `127.0.0.1:56121`, while hosted deployments should set `XAI_OAUTH_REDIRECT_URI` to the public callback path `/api/settings/xai-oauth/callback` on the Heimdall domain.
 
 Grok has two distinct providers:
 
@@ -949,17 +952,14 @@ Add to your MCP client configuration (e.g., Claude Code `~/.claude.json`, Cursor
 docker compose --profile mcp up -d
 ```
 
-Set `MCP_HTTP_AUTH_TOKEN` in `.env` before enabling the HTTP profile. The MCP server listens on port `45637` (configurable via `MCP_PORT`). Configure your MCP client to connect via URL:
+The MCP server listens on port `45637` (configurable via `MCP_PORT`). HTTP transport is protected with OAuth 2.1 style authorization code + PKCE. Heimdall exposes OAuth discovery metadata from the MCP server itself, so clients that support MCP OAuth can register dynamically and launch the browser sign-in flow.
 
 ```json
 {
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://127.0.0.1:45637/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-http-token>"
-      }
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -967,36 +967,35 @@ Set `MCP_HTTP_AUTH_TOKEN` in `.env` before enabling the HTTP profile. The MCP se
 
 Some clients use a slightly different HTTP field name, such as `serverUrl`, or a different transport label, such as `streamableHttp`.
 
-Heimdall does not map HTTP requests onto web sessions. Access is authenticated with the shared bearer token above, and tool calls must still include `user_id` unless `MCP_DEFAULT_USER_ID` is set for a trusted single-user stdio setup.
+For HTTP MCP, the OAuth access token determines the Heimdall user. Tool calls no longer need `user_id`; if a client sends one, it must match the authenticated OAuth user. `MCP_DEFAULT_USER_ID` is only a local stdio fallback.
+
+If the MCP server is published behind a proxy or non-local hostname, set `MCP_PUBLIC_BASE_URL` to the externally reachable MCP origin and `APP_PUBLIC_BASE_URL` to the web app origin used for sign-in redirects.
 
 ### Client Setup Guide
 
-Heimdall works best over `stdio`. Use HTTP only when your MCP client supports custom headers and cannot manage the subprocess directly.
+Heimdall works best over `stdio`. Use HTTP when your MCP client supports OAuth discovery and browser authorization.
 
 #### Quick Reference
 
 | Client | Config location | Recommended transport | Notes |
 |------|------|------|------|
-| Claude Code | `~/.claude.json` or project `.mcp.json` | `stdio` | Use HTTP only if you can attach bearer headers manually |
+| Claude Code | `~/.claude.json` or project `.mcp.json` | `stdio` | Use HTTP when the client supports MCP OAuth |
 | Cursor | `~/.cursor/mcp.json` or project `.cursor/mcp.json` | `stdio` | Supports project-scoped MCP config |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `stdio` | Remote HTTP needs custom headers |
-| Cline | Configure from the Cline MCP panel | `stdio` | Use remote HTTP only if the client can send `Authorization` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | `stdio` | Remote HTTP needs MCP OAuth support |
+| Cline | Configure from the Cline MCP panel | `stdio` | Use remote HTTP when OAuth discovery is supported |
 | Continue | `.continue/mcpServers/*.json` | `stdio` | MCP is available in Agent mode |
-| Gemini CLI | `~/.gemini/settings.json` or project `.gemini/settings.json` | `stdio` | Remote HTTP requires manual header support |
+| Gemini CLI | `~/.gemini/settings.json` or project `.gemini/settings.json` | `stdio` | Remote HTTP needs MCP OAuth support |
 
 #### Claude Code
 
-Authenticated HTTP, if you need remote transport:
+OAuth HTTP, if you need remote transport:
 
 ```json
 {
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://127.0.0.1:45637/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-http-token>"
-      }
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -1029,10 +1028,7 @@ HTTP:
 {
   "mcpServers": {
     "heimdall": {
-      "url": "http://127.0.0.1:45637/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-http-token>"
-      }
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -1065,10 +1061,7 @@ HTTP:
 {
   "mcpServers": {
     "heimdall": {
-      "serverUrl": "http://127.0.0.1:45637/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-http-token>"
-      }
+      "serverUrl": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -1100,7 +1093,7 @@ The most reliable setup path in Cline is the MCP UI:
 4. Set the name to `heimdall`.
 5. Set the URL to `http://127.0.0.1:45637/mcp`.
 6. Choose `Streamable HTTP` as the transport.
-7. Add the header `Authorization: Bearer <your-mcp-http-token>`. If the UI cannot set custom headers, use stdio instead.
+7. Complete the browser OAuth sign-in when the client prompts for authorization.
 
 Raw remote config:
 
@@ -1109,10 +1102,7 @@ Raw remote config:
   "mcpServers": {
     "heimdall": {
       "url": "http://127.0.0.1:45637/mcp",
-      "type": "streamableHttp",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-http-token>"
-      }
+      "type": "streamableHttp"
     }
   }
 }
@@ -1145,10 +1135,7 @@ Create `<project-root>/.continue/mcpServers/heimdall.json`:
   "mcpServers": {
     "heimdall": {
       "type": "http",
-      "url": "http://127.0.0.1:45637/mcp",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-http-token>"
-      }
+      "url": "http://127.0.0.1:45637/mcp"
     }
   }
 }
@@ -1175,17 +1162,14 @@ Continue currently uses MCP only in Agent mode.
 
 #### Gemini CLI
 
-Authenticated HTTP, if you need remote transport:
+OAuth HTTP, if you need remote transport:
 
 ```json
 {
   "mcpServers": {
     "heimdall": {
       "url": "http://127.0.0.1:45637/mcp",
-      "type": "http",
-      "headers": {
-        "Authorization": "Bearer <your-mcp-http-token>"
-      }
+      "type": "http"
     }
   }
 }
@@ -1215,12 +1199,12 @@ Manual stdio config:
 
 #### Troubleshooting
 
-- If Claude Code or Gemini CLI reports a schema error for Heimdall over HTTP, add an explicit `"type": "http"` and the `Authorization` header.
+- If Claude Code or Gemini CLI reports a schema error for Heimdall over HTTP, add an explicit `"type": "http"` and make sure the client supports MCP OAuth.
 - If Windsurf does not pick up the server, use `serverUrl` instead of `url`.
 - If Cline cannot connect, make sure the transport is `Streamable HTTP`, not SSE.
 - If Continue does not expose the tools, switch to Agent mode.
 - If the MCP server is running in Docker but the client is on another machine, replace `127.0.0.1` with the host machine's reachable IP or DNS name.
-- If bare `curl` requests to `http://127.0.0.1:45637/mcp` return `401`, the auth gate is working. A healthy authenticated request still returns `400` unless it speaks MCP correctly.
+- If bare `curl` requests to `http://127.0.0.1:45637/mcp` return `401` with `WWW-Authenticate`, the OAuth protected-resource gate is working. A healthy authenticated request still returns `400` unless it speaks MCP correctly.
 - For stdio setups, make sure `DATABASE_URL` points to the same Heimdall database the web app uses.
 
 ### Available Tools

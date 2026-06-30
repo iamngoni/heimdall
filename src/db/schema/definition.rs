@@ -128,6 +128,74 @@ pub fn heimdall_schema() -> SchemaDef {
             t.soft_delete();
         })
         // ---------------------------------------------------------------
+        // 6a. mcp_oauth_clients
+        // ---------------------------------------------------------------
+        .table("mcp_oauth_clients", |t| {
+            t.uuid_pk("id");
+            t.text("client_id").unique().not_null();
+            t.text("client_name");
+            t.jsonb("redirect_uris_json").not_null();
+            t.text("grant_types")
+                .not_null()
+                .default_str("'authorization_code'");
+            t.text("response_types").not_null().default_str("'code'");
+            t.text("scope").not_null().default_str("'mcp'");
+            t.text("token_endpoint_auth_method")
+                .not_null()
+                .default_str("'none'");
+            t.timestamps();
+        })
+        // ---------------------------------------------------------------
+        // 6b. mcp_oauth_authorization_codes
+        // ---------------------------------------------------------------
+        .table("mcp_oauth_authorization_codes", |t| {
+            t.uuid_pk("id");
+            t.text("code_hash").unique().not_null();
+            t.text("client_id")
+                .not_null()
+                .references("mcp_oauth_clients", "client_id")
+                .on_delete(OnDelete::Cascade);
+            t.uuid("user_id")
+                .not_null()
+                .references("users", "id")
+                .on_delete(OnDelete::Cascade);
+            t.text("redirect_uri").not_null();
+            t.text("scope").not_null().default_str("'mcp'");
+            t.text("code_challenge").not_null();
+            t.text("code_challenge_method")
+                .not_null()
+                .default_str("'S256'");
+            t.text("resource");
+            t.timestamp("expires_at").not_null();
+            t.timestamp("consumed_at");
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
+        })
+        // ---------------------------------------------------------------
+        // 6c. mcp_oauth_access_tokens
+        // ---------------------------------------------------------------
+        .table("mcp_oauth_access_tokens", |t| {
+            t.uuid_pk("id");
+            t.text("token_hash").unique().not_null();
+            t.text("client_id")
+                .not_null()
+                .references("mcp_oauth_clients", "client_id")
+                .on_delete(OnDelete::Cascade);
+            t.uuid("user_id")
+                .not_null()
+                .references("users", "id")
+                .on_delete(OnDelete::Cascade);
+            t.text("scope").not_null().default_str("'mcp'");
+            t.text("resource");
+            t.timestamp("expires_at").not_null();
+            t.timestamp("last_used_at");
+            t.timestamp("revoked_at");
+            t.timestamp("created_at")
+                .not_null()
+                .default(DefaultValue::Now);
+        })
+        // ---------------------------------------------------------------
         // 7. repos
         // ---------------------------------------------------------------
         .table("repos", |t| {
@@ -475,5 +543,20 @@ pub fn heimdall_schema() -> SchemaDef {
         .index("idx_findings_scan", "findings", &["scan_id"])
         .index("idx_sessions_user", "sessions", &["user_id"])
         .index("idx_sessions_token", "sessions", &["token_hash"])
+        .index(
+            "idx_mcp_oauth_codes_client",
+            "mcp_oauth_authorization_codes",
+            &["client_id"],
+        )
+        .index(
+            "idx_mcp_oauth_tokens_user",
+            "mcp_oauth_access_tokens",
+            &["user_id"],
+        )
+        .index(
+            "idx_mcp_oauth_tokens_hash",
+            "mcp_oauth_access_tokens",
+            &["token_hash"],
+        )
         .build()
 }

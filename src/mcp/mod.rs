@@ -9,12 +9,15 @@
 
 use std::{env, sync::Arc};
 
+use axum::http::request::Parts;
 use log::warn;
+use rmcp::RoleServer;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::schemars;
 use rmcp::schemars::JsonSchema;
+use rmcp::service::RequestContext;
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -26,6 +29,10 @@ use crate::integrations::issues;
 use crate::models::db_models::{Finding, Repo, User};
 use crate::routes::scans::build_scan_live_snapshot;
 use crate::state::AppState;
+
+pub mod oauth;
+
+use self::oauth::AuthenticatedMcpUser;
 
 #[derive(Clone)]
 pub struct HeimdallMcp {
@@ -608,12 +615,64 @@ impl HeimdallMcp {
             .ok_or_else(|| invalid_params(format!("Repository {repo_id} not found")))
     }
 
+    fn authenticated_mcp_user_id(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+    ) -> Result<Option<Uuid>, rmcp::ErrorData> {
+        let auth = ctx
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<AuthenticatedMcpUser>());
+
+        if let Some(auth) = auth {
+            if !auth.scope.split_whitespace().any(|scope| scope == "mcp") {
+                return Err(invalid_params(
+                    "MCP OAuth token is missing the required mcp scope.".to_string(),
+                ));
+            }
+            return Ok(Some(auth.user_id));
+        }
+
+        Ok(None)
+    }
+
+    async fn resolve_user_for_request(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+        explicit_user_id: Option<&str>,
+    ) -> Result<User, rmcp::ErrorData> {
+        if let Some(authenticated_user_id) = self.authenticated_mcp_user_id(ctx)? {
+            if let Some(explicit_user_id) = explicit_user_id {
+                let explicit_user_id = parse_uuid(explicit_user_id)?;
+                if explicit_user_id != authenticated_user_id {
+                    return Err(invalid_params(
+                        "Authenticated MCP OAuth token cannot act as another user.".to_string(),
+                    ));
+                }
+            }
+
+            return self
+                .state
+                .db
+                .get_user_by_id(authenticated_user_id)
+                .await
+                .map_err(|error| internal_err(format!("Database error: {error}")))?
+                .ok_or_else(|| invalid_params(format!("User {authenticated_user_id} not found")));
+        }
+
+        self.resolve_user(explicit_user_id).await
+    }
+
     async fn resolve_actor_user_id(
         &self,
+        ctx: &RequestContext<RoleServer>,
         explicit_user_id: Option<&str>,
         _fallback_user_id: Option<Uuid>,
     ) -> Result<Uuid, rmcp::ErrorData> {
-        Ok(self.resolve_user(explicit_user_id).await?.id)
+        Ok(self
+            .resolve_user_for_request(ctx, explicit_user_id)
+            .await?
+            .id)
     }
 
     async fn load_scan_for_user(
@@ -779,9 +838,12 @@ impl HeimdallMcp {
     #[tool(description = "List repositories visible to a Heimdall user.")]
     async fn list_repositories(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ListReposRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let limit = req.limit.unwrap_or(50);
         let offset = req.offset.unwrap_or(0);
         let repos = self
@@ -804,6 +866,7 @@ impl HeimdallMcp {
     )]
     async fn add_repository(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<AddRepositoryRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let remote_url = req.remote_url.trim();
@@ -811,7 +874,9 @@ impl HeimdallMcp {
             return Err(invalid_params("remote_url must not be empty".to_string()));
         }
 
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         if let Some(existing) = self
             .state
             .db
@@ -866,9 +931,12 @@ impl HeimdallMcp {
     #[tool(description = "Get details of a specific repository by its ID")]
     async fn get_repository(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<GetRepoRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let repo_id = parse_uuid(&req.repo_id)?;
         let repo = self.load_repo_for_user(repo_id, user.id).await?;
 
@@ -878,9 +946,12 @@ impl HeimdallMcp {
     #[tool(description = "Delete a repository from Heimdall.")]
     async fn delete_repository(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<DeleteRepositoryRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let repo_id = parse_uuid(&req.repo_id)?;
         let repo = self.load_repo_for_user(repo_id, user.id).await?;
 
@@ -901,10 +972,11 @@ impl HeimdallMcp {
     )]
     async fn trigger_scan(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<TriggerScanRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         let repo_id = parse_uuid(&req.repo_id)?;
         let repo = self.load_repo_for_user(repo_id, actor_user_id).await?;
@@ -936,9 +1008,12 @@ impl HeimdallMcp {
     #[tool(description = "See scan history for a repository.")]
     async fn list_scans(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ListScansRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let repo_id = parse_uuid(&req.repo_id)?;
         let limit = req.limit.unwrap_or(50);
         let offset = req.offset.unwrap_or(0);
@@ -969,9 +1044,12 @@ impl HeimdallMcp {
     #[tool(description = "Get the current status and live finding counts of a scan.")]
     async fn get_scan_status(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<GetScanRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let scan = self.load_scan_for_user(scan_id, user.id).await?;
 
@@ -1030,9 +1108,12 @@ impl HeimdallMcp {
     #[tool(description = "Stop a running or queued scan.")]
     async fn cancel_scan(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<CancelScanRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let scan = self.load_scan_for_user(scan_id, user.id).await?;
 
@@ -1062,9 +1143,12 @@ impl HeimdallMcp {
     #[tool(description = "Full audit trail and progress events for a scan.")]
     async fn list_scan_events(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ListScanEventsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let limit = req.limit.unwrap_or(100);
@@ -1083,9 +1167,12 @@ impl HeimdallMcp {
     )]
     async fn get_scan_progress_stream(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<GetScanProgressStreamRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let snapshot = build_scan_live_snapshot(&self.state.db, scan_id)
@@ -1109,9 +1196,12 @@ impl HeimdallMcp {
     )]
     async fn list_findings(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ListFindingsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let limit = req.limit.unwrap_or(50);
@@ -1142,9 +1232,12 @@ impl HeimdallMcp {
     )]
     async fn get_finding(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<GetFindingRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let finding_id = parse_uuid(&req.finding_id)?;
         let (finding, _) = self
             .load_finding_and_repo_for_user(finding_id, user.id)
@@ -1156,11 +1249,12 @@ impl HeimdallMcp {
     #[tool(description = "AI-powered explanation of a finding using grounded source context.")]
     async fn explain_finding(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ExplainFindingRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let finding_id = parse_uuid(&req.finding_id)?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         self.run_finding_ai_review(finding_id, actor_user_id, "ai_explanation")
             .await
@@ -1171,11 +1265,12 @@ impl HeimdallMcp {
     )]
     async fn verify_finding(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<VerifyFindingRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let finding_id = parse_uuid(&req.finding_id)?;
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         self.run_finding_ai_review(finding_id, actor_user_id, "ai_verification")
             .await
@@ -1184,9 +1279,12 @@ impl HeimdallMcp {
     #[tool(description = "Audit trail for a finding.")]
     async fn list_finding_events(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ListFindingEventsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let finding_id = parse_uuid(&req.finding_id)?;
         let (_finding, _) = self
             .load_finding_and_repo_for_user(finding_id, user.id)
@@ -1204,13 +1302,14 @@ impl HeimdallMcp {
     #[tool(description = "Add a comment or note to a finding.")]
     async fn comment_on_finding(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<CommentOnFindingRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         if req.comment.trim().is_empty() {
             return Err(invalid_params("comment must not be empty".to_string()));
         }
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         let finding_id = parse_uuid(&req.finding_id)?;
         let (_finding, _) = self
@@ -1239,10 +1338,11 @@ impl HeimdallMcp {
     )]
     async fn apply_patch(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ApplyPatchRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         let finding_id = parse_uuid(&req.finding_id)?;
         let (finding, _) = self
@@ -1306,9 +1406,12 @@ impl HeimdallMcp {
     )]
     async fn get_threat_model(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<GetThreatModelRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let threat_model = self
             .state
@@ -1328,9 +1431,12 @@ impl HeimdallMcp {
     )]
     async fn update_threat_model(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<UpdateThreatModelRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let threat_model_id = match req.threat_model_id.as_deref() {
             Some(value) => {
                 let threat_model_id = parse_uuid(value)?;
@@ -1386,9 +1492,12 @@ impl HeimdallMcp {
     #[tool(description = "Get all suggested diffs for a scan as unified patches.")]
     async fn get_patches(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<GetPatchesRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let patches = self
@@ -1404,6 +1513,7 @@ impl HeimdallMcp {
     #[tool(description = "Update the status of a finding.")]
     async fn update_finding_status(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<UpdateFindingStatusRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let status = req.status.trim().to_lowercase();
@@ -1415,7 +1525,7 @@ impl HeimdallMcp {
         }
 
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         let finding_id = parse_uuid(&req.finding_id)?;
         let (finding, _) = self
@@ -1455,6 +1565,7 @@ impl HeimdallMcp {
     #[tool(description = "Adjust a finding severity manually.")]
     async fn update_finding_severity(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<UpdateFindingSeverityRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let severity = req.severity.trim().to_lowercase();
@@ -1466,7 +1577,7 @@ impl HeimdallMcp {
         }
 
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         let finding_id = parse_uuid(&req.finding_id)?;
         let (finding, _) = self
@@ -1510,10 +1621,11 @@ impl HeimdallMcp {
     )]
     async fn create_issue(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<CreateIssueRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         let finding_id = parse_uuid(&req.finding_id)?;
         let (finding, repo) = self
@@ -1576,10 +1688,11 @@ impl HeimdallMcp {
     )]
     async fn create_all_issues(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<CreateAllIssuesRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let actor_user_id = self
-            .resolve_actor_user_id(req.user_id.as_deref(), None)
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
             .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let scan = self.load_scan_for_user(scan_id, actor_user_id).await?;
@@ -1681,9 +1794,12 @@ impl HeimdallMcp {
     #[tool(description = "See what AI agents did during a scan.")]
     async fn list_agent_tool_calls(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ListAgentToolCallsRequest>,
     ) -> Result<String, rmcp::ErrorData> {
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
         let scan_id = parse_uuid(&req.scan_id)?;
         let _scan = self.load_scan_for_user(scan_id, user.id).await?;
         let limit = req.limit.unwrap_or(50);
@@ -1702,10 +1818,13 @@ impl HeimdallMcp {
     )]
     async fn manage_api_keys(
         &self,
+        ctx: RequestContext<RoleServer>,
         Parameters(req): Parameters<ManageApiKeysRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let action = req.action.trim().to_lowercase();
-        let user = self.resolve_user(req.user_id.as_deref()).await?;
+        let user = self
+            .resolve_user_for_request(&ctx, req.user_id.as_deref())
+            .await?;
 
         match action.as_str() {
             "list" => {

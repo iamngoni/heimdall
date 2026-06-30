@@ -45,8 +45,7 @@ fn bind_codex_callback_listener() -> std::io::Result<TcpListener> {
     }))
 }
 
-/// Bind the xAI/Grok OAuth loopback callback listener. The Grok OAuth client
-/// uses `http://127.0.0.1:56121/callback` as its loopback redirect target.
+/// Bind the xAI/Grok OAuth loopback callback listener for local OAuth mode.
 fn bind_xai_oauth_callback_listener() -> std::io::Result<TcpListener> {
     let bind_host =
         std::env::var("XAI_OAUTH_CALLBACK_BIND_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
@@ -116,13 +115,22 @@ async fn main() -> std::io::Result<()> {
         "Codex OAuth callback bound on 127.0.0.1:{}",
         codex_callback_port
     );
-    let xai_oauth_callback_listener = bind_xai_oauth_callback_listener()?;
-    let xai_oauth_callback_addr = xai_oauth_callback_listener.local_addr()?;
-    info!(
-        "Grok OAuth callback bound on {}:{}",
-        xai_oauth_callback_addr.ip(),
-        xai_oauth_callback_addr.port()
-    );
+    let xai_oauth_callback_listener = if ai::xai_oauth::uses_loopback_callback() {
+        let listener = bind_xai_oauth_callback_listener()?;
+        let addr = listener.local_addr()?;
+        info!(
+            "Grok OAuth loopback callback bound on {}:{}",
+            addr.ip(),
+            addr.port()
+        );
+        Some(listener)
+    } else {
+        info!(
+            "Grok OAuth hosted callback configured at {}",
+            ai::xai_oauth::callback_redirect_uri()
+        );
+        None
+    };
 
     let app_state = web::Data::new(state::AppState::init(
         config.clone(),
@@ -181,7 +189,7 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting HTTP server on {}:{}", host, port);
 
-    HttpServer::new(move || {
+    let mut server = HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin(&cors_origin)
             .allowed_methods(vec!["GET", "POST", "PATCH", "DELETE"])
@@ -202,9 +210,11 @@ async fn main() -> std::io::Result<()> {
             .service(actix_files::Files::new("/static", "static"))
             .configure(routes::init)
     })
-    .listen(codex_callback_listener)?
-    .listen(xai_oauth_callback_listener)?
-    .bind((host.as_str(), port))?
-    .run()
-    .await
+    .listen(codex_callback_listener)?;
+
+    if let Some(listener) = xai_oauth_callback_listener {
+        server = server.listen(listener)?;
+    }
+
+    server.bind((host.as_str(), port))?.run().await
 }

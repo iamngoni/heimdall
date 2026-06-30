@@ -13,7 +13,7 @@
 //! Grok/SuperGrok PKCE flow used by Grok CLI-compatible clients and stores
 //! refreshable OAuth tokens against the Heimdall user.
 
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use anyhow::Context;
 use base64::Engine;
@@ -35,6 +35,9 @@ use crate::models::HeimdallResult;
 
 const XAI_OAUTH_DISCOVERY_URL: &str = "https://auth.x.ai/.well-known/openid-configuration";
 const XAI_OAUTH_CLIENT_ID: &str = "b1a00492-073a-47ea-816f-4c329264a828";
+const XAI_OAUTH_CLIENT_ID_ENV: &str = "XAI_OAUTH_CLIENT_ID";
+const XAI_OAUTH_CLIENT_SECRET_ENV: &str = "XAI_OAUTH_CLIENT_SECRET";
+const XAI_OAUTH_REDIRECT_URI_ENV: &str = "XAI_OAUTH_REDIRECT_URI";
 const XAI_OAUTH_SCOPE: &str = "openid profile email offline_access grok-cli:access api:access";
 const XAI_OAUTH_BASE_URL: &str = "https://api.x.ai/v1";
 /// xAI's Grok OAuth client is registered for this exact loopback callback.
@@ -465,11 +468,12 @@ fn build_authorize_url(
     state: &str,
     nonce: &str,
 ) -> HeimdallResult<String> {
+    let client_id = xai_oauth_client_id();
     let mut url = reqwest::Url::parse(authorization_endpoint)
         .context("Failed to build Grok Subscription authorize URL")?;
     url.query_pairs_mut()
         .append_pair("response_type", "code")
-        .append_pair("client_id", XAI_OAUTH_CLIENT_ID)
+        .append_pair("client_id", &client_id)
         .append_pair("redirect_uri", redirect_uri)
         .append_pair("scope", XAI_OAUTH_SCOPE)
         .append_pair("code_challenge", &pkce.code_challenge)
@@ -489,19 +493,26 @@ async fn exchange_code_for_tokens(
     code: &str,
 ) -> HeimdallResult<XaiOAuthTokens> {
     validate_xai_endpoint(token_endpoint, "token_endpoint")?;
+    let client_id = xai_oauth_client_id();
+    let client_secret = xai_oauth_client_secret();
+    let mut form = vec![
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("redirect_uri", redirect_uri),
+        ("client_id", client_id.as_str()),
+        ("code_verifier", code_verifier),
+        ("code_challenge", code_challenge),
+        ("code_challenge_method", "S256"),
+    ];
+    if let Some(secret) = client_secret.as_deref() {
+        form.push(("client_secret", secret));
+    }
+
     let response = reqwest::Client::new()
         .post(token_endpoint)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("Accept", "application/json")
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("code", code),
-            ("redirect_uri", redirect_uri),
-            ("client_id", XAI_OAUTH_CLIENT_ID),
-            ("code_verifier", code_verifier),
-            ("code_challenge", code_challenge),
-            ("code_challenge_method", "S256"),
-        ])
+        .form(&form)
         .send()
         .await
         .context("Grok Subscription token exchange request failed")?;
@@ -561,8 +572,44 @@ async fn store_xai_oauth_tokens(
     Ok(())
 }
 
-fn callback_redirect_uri() -> String {
-    format!("http://127.0.0.1:{XAI_OAUTH_CALLBACK_PORT}{XAI_OAUTH_CALLBACK_PATH}")
+fn xai_oauth_client_id() -> String {
+    env::var(XAI_OAUTH_CLIENT_ID_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| XAI_OAUTH_CLIENT_ID.to_string())
+}
+
+fn xai_oauth_client_secret() -> Option<String> {
+    env::var(XAI_OAUTH_CLIENT_SECRET_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+pub fn callback_redirect_uri() -> String {
+    env::var(XAI_OAUTH_REDIRECT_URI_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            format!("http://127.0.0.1:{XAI_OAUTH_CALLBACK_PORT}{XAI_OAUTH_CALLBACK_PATH}")
+        })
+}
+
+pub fn uses_loopback_callback() -> bool {
+    redirect_uri_uses_loopback_callback(&callback_redirect_uri())
+}
+
+fn redirect_uri_uses_loopback_callback(redirect_uri: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(redirect_uri) else {
+        return false;
+    };
+    let host = url.host_str().unwrap_or_default();
+    url.scheme() == "http"
+        && matches!(host, "127.0.0.1" | "localhost")
+        && url.port_or_known_default() == Some(XAI_OAUTH_CALLBACK_PORT)
+        && url.path() == XAI_OAUTH_CALLBACK_PATH
 }
 
 fn generate_pkce() -> PkceCodes {
@@ -704,5 +751,15 @@ mod tests {
         assert!(validate_xai_endpoint("https://auth.x.ai/oauth2/token", "token_endpoint").is_ok());
         assert!(validate_xai_endpoint("https://evil.example/token", "token_endpoint").is_err());
         assert!(validate_xai_endpoint("http://auth.x.ai/token", "token_endpoint").is_err());
+    }
+
+    #[test]
+    fn hosted_redirect_uri_does_not_require_loopback_listener() {
+        assert!(redirect_uri_uses_loopback_callback(
+            "http://127.0.0.1:56121/callback"
+        ));
+        assert!(!redirect_uri_uses_loopback_callback(
+            "https://heimdall.antonlabs.cc/api/settings/xai-oauth/callback"
+        ));
     }
 }

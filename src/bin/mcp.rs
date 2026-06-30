@@ -9,10 +9,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
-use axum::http::{StatusCode, header};
-use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
+use axum::middleware;
 use log::{info, warn};
 use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
@@ -31,27 +28,37 @@ use heimdall::state::AppState;
 use heimdall::templates;
 use heimdall::worker::ScanWorker;
 
-async fn require_http_auth(
-    State(expected_token): State<Arc<String>>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let authorized = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| value == format!("Bearer {}", expected_token.as_str()))
-        .unwrap_or(false);
+fn public_base_url(bind: &str, port: &str) -> String {
+    std::env::var("MCP_PUBLIC_BASE_URL")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            let host = match bind {
+                "0.0.0.0" | "::" => "localhost",
+                value => value,
+            };
+            format!("http://{host}:{port}")
+        })
+}
 
-    if !authorized {
-        return (
-            StatusCode::UNAUTHORIZED,
-            "Missing or invalid MCP HTTP bearer token",
-        )
-            .into_response();
-    }
-
-    next.run(request).await
+fn web_app_base_url(config: &Config) -> String {
+    std::env::var("APP_PUBLIC_BASE_URL")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            let host = match config.app.host.as_str() {
+                "0.0.0.0" | "::" => "localhost",
+                value => value,
+            };
+            let scheme = if config.app.tls_enabled {
+                "https"
+            } else {
+                "http"
+            };
+            format!("{scheme}://{host}:{}", config.app.port)
+        })
 }
 
 #[tokio::main]
@@ -126,16 +133,12 @@ async fn main() -> anyhow::Result<()> {
         let bind = std::env::var("MCP_HOST").unwrap_or_else(|_| "127.0.0.1".into());
         let port = std::env::var("MCP_PORT").unwrap_or_else(|_| "45637".into());
         let addr: std::net::SocketAddr = format!("{bind}:{port}").parse()?;
-        let auth_token = std::env::var("MCP_HTTP_AUTH_TOKEN")
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "MCP_HTTP_AUTH_TOKEN must be set when MCP_TRANSPORT=http or MCP_TRANSPORT=sse"
-                )
-            })?;
-        let auth_token = Arc::new(auth_token);
+        let public_base_url = public_base_url(&bind, &port);
+        let oauth_state = heimdall::mcp::oauth::OAuthServerState {
+            app_state: Arc::clone(&state),
+            public_base_url: public_base_url.clone(),
+            web_app_base_url: web_app_base_url(&config),
+        };
 
         let ct = CancellationToken::new();
         let mut server_config = StreamableHttpServerConfig::default();
@@ -152,15 +155,20 @@ async fn main() -> anyhow::Result<()> {
                 server_config,
             );
 
-        let router = axum::Router::new().nest_service("/mcp", service).layer(
-            middleware::from_fn_with_state(Arc::clone(&auth_token), require_http_auth),
+        let mcp_router = axum::Router::new().nest_service("/mcp", service).layer(
+            middleware::from_fn_with_state(
+                oauth_state.clone(),
+                heimdall::mcp::oauth::require_oauth,
+            ),
         );
+        let router = heimdall::mcp::oauth::router(oauth_state).merge(mcp_router);
         let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
 
         if transport.eq_ignore_ascii_case("sse") {
             warn!("MCP_TRANSPORT=sse is treated as Streamable HTTP for backward compatibility");
         }
-        info!("Starting Heimdall MCP server over authenticated Streamable HTTP at {addr}/mcp");
+        info!("Starting Heimdall MCP server over OAuth-protected Streamable HTTP at {addr}/mcp");
+        info!("MCP OAuth issuer: {public_base_url}");
         axum::serve(tcp_listener, router)
             .with_graceful_shutdown(async move {
                 tokio::signal::ctrl_c().await.ok();

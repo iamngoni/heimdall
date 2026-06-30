@@ -228,6 +228,16 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         });
         const data = await res.json();
         if (res.ok && data.success) {
+            const next = new URLSearchParams(window.location.search).get('next');
+            if (next) {
+                try {
+                    const target = new URL(next, window.location.origin);
+                    if (target.origin === window.location.origin || target.hostname === window.location.hostname) {
+                        window.location.href = target.href;
+                        return;
+                    }
+                } catch (_) {}
+            }
             window.location.href = '/';
         } else {
             const message = data && data.error
