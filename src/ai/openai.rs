@@ -10,8 +10,15 @@
 use crate::ai::ModelProvider;
 use crate::ai::types::{CompletionRequest, CompletionResponse, StopReason, TokenUsage, ToolCall};
 use crate::models::HeimdallResult;
+use anyhow::Context;
 use log::debug;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenAiCompatibleCredential {
+    pub api_key: String,
+    pub base_url: String,
+}
 
 pub struct OpenAiProvider {
     api_key: String,
@@ -32,6 +39,12 @@ impl OpenAiProvider {
         }
     }
 
+    pub fn openai_compatible(api_key: String, base_url: String) -> Self {
+        Self::new(api_key)
+            .with_base_url(base_url)
+            .with_provider_identity("openai_compatible", "OpenAI Compatible")
+    }
+
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
         self
@@ -42,6 +55,59 @@ impl OpenAiProvider {
         self.display_name = display_name.to_string();
         self
     }
+
+    fn chat_completions_url(&self) -> String {
+        let base_url = self.base_url.trim_end_matches('/');
+        if base_url.ends_with("/v1") {
+            format!("{base_url}/chat/completions")
+        } else {
+            format!("{base_url}/v1/chat/completions")
+        }
+    }
+}
+
+pub fn normalize_openai_compatible_base_url(raw: &str) -> HeimdallResult<String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        anyhow::bail!("Base URL is required for OpenAI-compatible providers");
+    }
+
+    let parsed = reqwest::Url::parse(trimmed)
+        .with_context(|| format!("Invalid OpenAI-compatible base URL: {trimmed}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        anyhow::bail!("OpenAI-compatible base URL must use http or https");
+    }
+    if parsed.host_str().is_none() {
+        anyhow::bail!("OpenAI-compatible base URL must include a host");
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        anyhow::bail!("OpenAI-compatible base URL must not contain credentials");
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        anyhow::bail!("OpenAI-compatible base URL must not include query strings or fragments");
+    }
+
+    Ok(trimmed.to_string())
+}
+
+pub fn encode_openai_compatible_secret(api_key: &str, base_url: &str) -> HeimdallResult<String> {
+    let credential = OpenAiCompatibleCredential {
+        api_key: api_key.to_string(),
+        base_url: normalize_openai_compatible_base_url(base_url)?,
+    };
+    serde_json::to_string(&credential)
+        .context("Failed to encode OpenAI-compatible provider credential")
+}
+
+pub fn decode_openai_compatible_secret(secret: &str) -> HeimdallResult<OpenAiCompatibleCredential> {
+    let mut credential: OpenAiCompatibleCredential = serde_json::from_str(secret)
+        .context("OpenAI-compatible provider credential is not valid JSON")?;
+    credential.api_key = credential.api_key.trim().to_string();
+    credential.base_url = normalize_openai_compatible_base_url(&credential.base_url)?;
+    if credential.api_key.is_empty() {
+        anyhow::bail!("OpenAI-compatible provider credential is missing an API key");
+    }
+    Ok(credential)
 }
 
 /// Returns true when the model accepts a non-default `temperature`. The
@@ -204,7 +270,7 @@ impl ModelProvider for OpenAiProvider {
 
         let resp = self
             .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
+            .post(self.chat_completions_url())
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
@@ -284,7 +350,10 @@ impl ModelProvider for OpenAiProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::model_supports_custom_temperature;
+    use super::{
+        OpenAiProvider, decode_openai_compatible_secret, encode_openai_compatible_secret,
+        model_supports_custom_temperature, normalize_openai_compatible_base_url,
+    };
 
     #[test]
     fn legacy_chat_models_allow_custom_temperature() {
@@ -330,5 +399,45 @@ mod tests {
         assert!(!model_supports_custom_temperature("openai/gpt-5"));
         assert!(!model_supports_custom_temperature("OpenAI/o3-mini"));
         assert!(model_supports_custom_temperature("OpenAI/gpt-4o"));
+    }
+
+    #[test]
+    fn normalizes_openai_compatible_base_url() {
+        assert_eq!(
+            normalize_openai_compatible_base_url(" http://localhost:1234/v1/ ").unwrap(),
+            "http://localhost:1234/v1"
+        );
+        assert!(normalize_openai_compatible_base_url("ftp://localhost:1234").is_err());
+        assert!(normalize_openai_compatible_base_url("https://user@example.com").is_err());
+    }
+
+    #[test]
+    fn openai_compatible_secret_round_trips() {
+        let encoded = encode_openai_compatible_secret("sk-custom", "http://localhost:1234/v1")
+            .expect("secret should encode");
+        let decoded = decode_openai_compatible_secret(&encoded).expect("secret should decode");
+        assert_eq!(decoded.api_key, "sk-custom");
+        assert_eq!(decoded.base_url, "http://localhost:1234/v1");
+    }
+
+    #[test]
+    fn chat_completions_url_accepts_root_or_v1_base_url() {
+        let root = OpenAiProvider::openai_compatible(
+            "sk-custom".to_string(),
+            "http://localhost:1234".to_string(),
+        );
+        let v1 = OpenAiProvider::openai_compatible(
+            "sk-custom".to_string(),
+            "http://localhost:1234/v1".to_string(),
+        );
+
+        assert_eq!(
+            root.chat_completions_url(),
+            "http://localhost:1234/v1/chat/completions"
+        );
+        assert_eq!(
+            v1.chat_completions_url(),
+            "http://localhost:1234/v1/chat/completions"
+        );
     }
 }

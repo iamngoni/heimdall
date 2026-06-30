@@ -7,7 +7,7 @@
 {% set breadcrumb_parent = "Settings" %}
 {% set breadcrumb_current = none %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
-{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_xai_oauth else 0) + (1 if ai_config.has_xai else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_xai_oauth else 0) + (1 if ai_config.has_xai else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_openai_compatible else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
 <div class="min-h-screen bg-slate-100 text-slate-900">
@@ -506,6 +506,7 @@
                                     {"id": "anthropic", "label": "Anthropic", "blurb": "Claude models for threat modeling and report generation.", "placeholder": "claude-sonnet-4-20250514", "swatch": "bg-slate-900", "initial": "A", "enabled": ai_config.has_anthropic, "model": ai_config.provider_models.anthropic},
                                     {"id": "claude_code", "label": "Claude Code", "blurb": "Claude billed via your Claude.ai Pro/Max subscription.", "placeholder": "claude-sonnet-4-20250514", "swatch": "bg-orange-600", "initial": "C", "enabled": ai_config.has_claude_code, "model": ai_config.provider_models.claude_code},
                                     {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "swatch": "bg-emerald-600", "initial": "O", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
+                                    {"id": "openai_compatible", "label": "OpenAI Compatible", "blurb": "Custom OpenAI-compatible endpoint with your own base URL.", "placeholder": "gpt-4o", "swatch": "bg-cyan-700", "initial": "OC", "enabled": ai_config.has_openai_compatible, "model": ai_config.provider_models.openai_compatible},
                                     {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "swatch": "bg-blue-600", "initial": "C", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
                                     {"id": "xai_oauth", "label": "Grok Subscription", "blurb": "Grok models through SuperGrok or X Premium+ OAuth.", "placeholder": "grok-build-0.1", "swatch": "bg-slate-900", "initial": "G", "enabled": ai_config.has_xai_oauth, "model": ai_config.provider_models.xai_oauth},
                                     {"id": "xai", "label": "Grok API", "blurb": "xAI API-key access for Grok and Grok Build.", "placeholder": "grok-build-0.1", "swatch": "bg-zinc-700", "initial": "G", "enabled": ai_config.has_xai, "model": ai_config.provider_models.xai},
@@ -706,6 +707,7 @@
                                                     class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
                                                 <option value="anthropic">Anthropic</option>
                                                 <option value="openai">OpenAI</option>
+                                                <option value="openai_compatible">OpenAI Compatible</option>
                                                 <option value="xai">Grok</option>
                                                 <option value="ollama">Ollama</option>
                                             </select>
@@ -721,6 +723,12 @@
                                             <input type="password" name="key" required
                                                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                                    placeholder="sk-...">
+                                        </label>
+                                        <label class="block sm:col-span-2">
+                                            <span class="mb-1.5 block text-xs font-medium text-slate-700">Base URL <span class="font-normal text-slate-400">for OpenAI Compatible</span></span>
+                                            <input name="base_url"
+                                                   class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                   placeholder="http://localhost:1234/v1">
                                         </label>
                                         <div class="sm:col-span-2 flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
                                             <button type="button"
@@ -747,6 +755,7 @@
                                                         class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
                                                     <option value="anthropic">Anthropic</option>
                                                     <option value="openai">OpenAI</option>
+                                                    <option value="openai_compatible">OpenAI Compatible</option>
                                                     <option value="xai">Grok</option>
                                                     <option value="ollama">Ollama</option>
                                                 </select>
@@ -756,6 +765,18 @@
                                                 <input type="password" name="key" required
                                                        class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                                        placeholder="sk-...">
+                                            </label>
+                                            <label class="block">
+                                                <span class="mb-1.5 block text-xs font-medium text-slate-700">Base URL</span>
+                                                <input name="base_url"
+                                                       class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                       placeholder="http://localhost:1234/v1">
+                                            </label>
+                                            <label class="block">
+                                                <span class="mb-1.5 block text-xs font-medium text-slate-700">Model</span>
+                                                <input name="model"
+                                                       class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                       placeholder="gpt-4o">
                                             </label>
                                             <div class="flex items-end">
                                                 <button type="submit"
@@ -774,7 +795,7 @@
                                     {% for key in api_keys %}
                                     <div class="flex items-center justify-between gap-4 py-4" id="key-{{ key.id }}">
                                         <div class="min-w-0 flex-1">
-                                            <p class="text-sm font-medium text-slate-900">{{ (key.provider or "Unknown")|capitalize }}{% if key.label %} <span class="font-normal text-slate-500">· {{ key.label }}</span>{% endif %}</p>
+                                            <p class="text-sm font-medium text-slate-900">{{ key.provider_label or (key.provider or "Unknown")|capitalize }}{% if key.label %} <span class="font-normal text-slate-500">· {{ key.label }}</span>{% endif %}</p>
                                             <p class="mt-0.5 text-xs text-slate-400">Created {{ key.created_at }}</p>
                                         </div>
                                         <button hx-delete="/api/settings/api-keys/{{ key.id }}"
@@ -789,7 +810,7 @@
                                     {% else %}
                                     <div id="api-keys-empty" class="py-10 text-center">
                                         <p class="text-sm font-medium text-slate-600">No API keys yet</p>
-                                        <p class="mt-1 text-xs text-slate-400">Add an Anthropic, OpenAI, Grok API, or Ollama key, or configure a subscription provider, to enable AI-powered scanning.</p>
+                                        <p class="mt-1 text-xs text-slate-400">Add an Anthropic, OpenAI, OpenAI-compatible, Grok API, or Ollama key, or configure a subscription provider, to enable AI-powered scanning.</p>
                                     </div>
                                     {% endif %}
                                 </div>

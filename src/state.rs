@@ -178,7 +178,7 @@ impl AppState {
     pub fn require_ai(&self) -> anyhow::Result<&dyn ModelProvider> {
         self.ai.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
-                "No AI provider configured. Connect Claude Code, Codex, or Grok Subscription in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, or OLLAMA_URL."
+                "No AI provider configured. Connect Claude Code, Codex, or Grok Subscription in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENAI_COMPATIBLE_API_KEY plus OPENAI_COMPATIBLE_BASE_URL, XAI_API_KEY, or OLLAMA_URL."
             )
         })
     }
@@ -191,7 +191,7 @@ impl AppState {
 
         if candidates.is_empty() {
             anyhow::bail!(
-                "No AI provider configured. Connect Claude Code, Codex, or add an Anthropic, OpenAI, Grok, or Ollama provider in Settings, or configure server env vars."
+                "No AI provider configured. Connect Claude Code, Codex, or add an Anthropic, OpenAI, OpenAI-compatible, Grok, or Ollama provider in Settings, or configure server env vars."
             );
         }
 
@@ -425,6 +425,13 @@ fn env_credential_for_provider(config: &AiConfig, provider_kind: ProviderKind) -
         ProviderKind::Codex | ProviderKind::ClaudeCode | ProviderKind::XaiOAuth => None,
         ProviderKind::Xai => config.xai_api_key.clone(),
         ProviderKind::OpenAi => config.openai_api_key.clone(),
+        ProviderKind::OpenAiCompatible => config
+            .openai_compatible_api_key
+            .as_deref()
+            .zip(config.openai_compatible_base_url.as_deref())
+            .and_then(|(api_key, base_url)| {
+                ai::openai::encode_openai_compatible_secret(api_key, base_url).ok()
+            }),
         ProviderKind::Ollama => config.ollama_url.clone(),
     }
 }
@@ -438,6 +445,8 @@ mod tests {
     fn ai_config(
         anthropic_api_key: Option<&str>,
         openai_api_key: Option<&str>,
+        openai_compatible_api_key: Option<&str>,
+        openai_compatible_base_url: Option<&str>,
         xai_api_key: Option<&str>,
         ollama_url: Option<&str>,
         default_model: &str,
@@ -445,6 +454,8 @@ mod tests {
         AiConfig {
             anthropic_api_key: anthropic_api_key.map(str::to_string),
             openai_api_key: openai_api_key.map(str::to_string),
+            openai_compatible_api_key: openai_compatible_api_key.map(str::to_string),
+            openai_compatible_base_url: openai_compatible_base_url.map(str::to_string),
             xai_api_key: xai_api_key.map(str::to_string),
             ollama_url: ollama_url.map(str::to_string),
             default_model: default_model.to_string(),
@@ -474,6 +485,8 @@ mod tests {
             Some("sk-openai"),
             None,
             None,
+            None,
+            None,
             "claude-sonnet-4-20250514",
         );
         let stored_keys = vec![stored_key("anthropic")];
@@ -499,6 +512,8 @@ mod tests {
             Some("sk-openai"),
             None,
             None,
+            None,
+            None,
             "claude-sonnet-4-20250514",
         );
         let stored_keys = vec![stored_key("anthropic")];
@@ -522,6 +537,8 @@ mod tests {
         let config = ai_config(
             None,
             Some("sk-openai"),
+            None,
+            None,
             None,
             Some("http://localhost:11434"),
             "gpt-4o",
@@ -552,7 +569,15 @@ mod tests {
 
     #[test]
     fn runtime_plan_ignores_unconfigured_preferred_provider() {
-        let config = ai_config(None, Some("sk-openai"), None, None, "claude-3-7-sonnet");
+        let config = ai_config(
+            None,
+            Some("sk-openai"),
+            None,
+            None,
+            None,
+            None,
+            "claude-3-7-sonnet",
+        );
         let stored_keys = Vec::new();
         let preferences = AiRoutingPreferences {
             preferred_provider: Some(ProviderKind::Anthropic),
@@ -571,7 +596,15 @@ mod tests {
 
     #[test]
     fn runtime_plan_uses_xai_env_provider_for_grok_model() {
-        let config = ai_config(None, None, Some("xai-env"), None, "grok-build-0.1");
+        let config = ai_config(
+            None,
+            None,
+            None,
+            None,
+            Some("xai-env"),
+            None,
+            "grok-build-0.1",
+        );
         let stored_keys = Vec::new();
         let preferences = AiRoutingPreferences {
             preferred_provider: None,
@@ -589,10 +622,42 @@ mod tests {
     }
 
     #[test]
+    fn runtime_plan_uses_openai_compatible_env_provider_when_configured() {
+        let config = ai_config(
+            None,
+            None,
+            Some("sk-custom"),
+            Some("http://localhost:1234/v1"),
+            None,
+            None,
+            "custom-model",
+        );
+        let stored_keys = Vec::new();
+        let preferences = AiRoutingPreferences {
+            preferred_provider: Some(ProviderKind::OpenAiCompatible),
+            fallbacks_enabled: false,
+            fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
+        };
+
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
+
+        assert_eq!(
+            plan,
+            vec![(
+                ProviderKind::OpenAiCompatible,
+                RuntimeProviderSource::Environment
+            )]
+        );
+    }
+
+    #[test]
     fn runtime_plan_prefers_stored_key_over_env_for_same_provider() {
         let config = ai_config(
             Some("sk-ant-env"),
             Some("sk-openai"),
+            None,
+            None,
             None,
             None,
             "claude-3-7-sonnet",

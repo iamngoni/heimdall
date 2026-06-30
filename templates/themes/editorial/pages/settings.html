@@ -7,7 +7,7 @@
 {% set breadcrumb_parent = "Settings" %}
 {% set breadcrumb_current = none %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
-{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_xai_oauth else 0) + (1 if ai_config.has_xai else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_xai_oauth else 0) + (1 if ai_config.has_xai else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_openai_compatible else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 {% set selected_theme = "sentinel" if current_theme == "classic" else current_theme %}
 
@@ -51,7 +51,7 @@
                                     {"id": "profile", "label": "Profile", "num": "01"},
                                     {"id": "appearance", "label": "Appearance", "num": "02"},
                                     {"id": "integrations", "label": "Integrations", "num": "03", "count": vcs_connected, "total": 3},
-                                    {"id": "providers", "label": "AI Providers", "num": "04", "count": ai_connected, "total": 7},
+                                    {"id": "providers", "label": "AI Providers", "num": "04", "count": ai_connected, "total": 8},
                                     {"id": "keys", "label": "API Keys", "num": "05"},
                                     {"id": "security", "label": "Security", "num": "06"}
                                 ] %}
@@ -344,6 +344,7 @@
                                     {"id": "anthropic", "label": "Anthropic", "blurb": "Claude models for threat modeling and report generation.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_anthropic, "model": ai_config.provider_models.anthropic},
                                     {"id": "claude_code", "label": "Claude Code", "blurb": "Claude billed via your Claude.ai Pro/Max subscription.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_claude_code, "model": ai_config.provider_models.claude_code},
                                     {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
+                                    {"id": "openai_compatible", "label": "OpenAI Compatible", "blurb": "Custom OpenAI-compatible endpoint with your own base URL.", "placeholder": "gpt-4o", "enabled": ai_config.has_openai_compatible, "model": ai_config.provider_models.openai_compatible},
                                     {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
                                     {"id": "xai_oauth", "label": "Grok Subscription", "blurb": "Grok models through SuperGrok or X Premium+ OAuth.", "placeholder": "grok-build-0.1", "enabled": ai_config.has_xai_oauth, "model": ai_config.provider_models.xai_oauth},
                                     {"id": "xai", "label": "Grok API", "blurb": "xAI API-key access for Grok and Grok Build.", "placeholder": "grok-build-0.1", "enabled": ai_config.has_xai, "model": ai_config.provider_models.xai},
@@ -533,6 +534,7 @@
                                                 <select name="provider" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
                                                     <option value="anthropic">Anthropic</option>
                                                     <option value="openai">OpenAI</option>
+                                                    <option value="openai_compatible">OpenAI Compatible</option>
                                                     <option value="xai">Grok</option>
                                                     <option value="ollama">Ollama</option>
                                                 </select>
@@ -545,6 +547,10 @@
                                         <label class="block">
                                             <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">API key</span>
                                             <input type="password" name="key" required class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="sk-...">
+                                        </label>
+                                        <label class="block">
+                                            <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Base URL for OpenAI Compatible</span>
+                                            <input name="base_url" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="http://localhost:1234/v1">
                                         </label>
                                         <div class="flex items-center justify-between gap-3 border-t border-ink-200 pt-4">
                                             <button type="button" onclick="document.getElementById('test-connection-drawer').classList.toggle('hidden')" class="link-editorial font-mono text-[11px] uppercase tracking-[0.16em] text-ink-600">
@@ -567,6 +573,7 @@
                                                 <select name="provider" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
                                                     <option value="anthropic">Anthropic</option>
                                                     <option value="openai">OpenAI</option>
+                                                    <option value="openai_compatible">OpenAI Compatible</option>
                                                     <option value="xai">Grok</option>
                                                     <option value="ollama">Ollama</option>
                                                 </select>
@@ -574,6 +581,14 @@
                                             <label class="block">
                                                 <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Key to test</span>
                                                 <input type="password" name="key" required class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="sk-...">
+                                            </label>
+                                            <label class="block">
+                                                <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Base URL</span>
+                                                <input name="base_url" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="http://localhost:1234/v1">
+                                            </label>
+                                            <label class="block">
+                                                <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Model</span>
+                                                <input name="model" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="gpt-4o">
                                             </label>
                                             <div class="flex items-end">
                                                 <button type="submit" class="inline-flex items-center justify-center border border-ink-900 bg-white px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-ink-900 hover:text-white">
@@ -597,7 +612,7 @@
                                             <div class="flex items-baseline gap-4">
                                                 <span class="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">{{ '%02d'|format(loop.index) }}</span>
                                                 <div class="min-w-0 flex-1">
-                                                    <p class="font-serif text-sm text-ink-900">{{ (key.provider or "Unknown")|capitalize }}{% if key.label %} <span class="text-ink-500">· {{ key.label }}</span>{% endif %}</p>
+                                                    <p class="font-serif text-sm text-ink-900">{{ key.provider_label or (key.provider or "Unknown")|capitalize }}{% if key.label %} <span class="text-ink-500">· {{ key.label }}</span>{% endif %}</p>
                                                     <p class="mt-0.5 text-xs text-ink-400">Created {{ key.created_at }}</p>
                                                 </div>
                                             </div>
@@ -613,7 +628,7 @@
                                         {% else %}
                                         <div id="api-keys-empty" class="border-b border-ink-200 py-10 text-center">
                                             <p class="font-serif text-lg text-ink-900">No API keys yet</p>
-                                            <p class="mt-2 text-sm text-ink-500">Add an Anthropic, OpenAI, Grok API, or Ollama key, or configure a subscription provider, to enable AI-powered scanning.</p>
+                                            <p class="mt-2 text-sm text-ink-500">Add an Anthropic, OpenAI, OpenAI-compatible, Grok API, or Ollama key, or configure a subscription provider, to enable AI-powered scanning.</p>
                                         </div>
                                         {% endif %}
                                     </div>

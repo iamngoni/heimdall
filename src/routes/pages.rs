@@ -1078,6 +1078,8 @@ async fn settings_page(
     let has_xai_oauth = page_provider_configured(ai_cfg, &api_keys, ProviderKind::XaiOAuth);
     let has_xai = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Xai);
     let has_openai = page_provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
+    let has_openai_compatible =
+        page_provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAiCompatible);
     let has_ollama = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
     let has_any_provider = has_anthropic
         || has_claude_code
@@ -1085,6 +1087,7 @@ async fn settings_page(
         || has_xai_oauth
         || has_xai
         || has_openai
+        || has_openai_compatible
         || has_ollama;
     let preferred_provider =
         page_effective_preferred_ai_provider(db_user.as_ref(), ai_cfg, &api_keys);
@@ -1101,6 +1104,11 @@ async fn settings_page(
             minijinja::Value::from_serialize(serde_json::json!({
                 "id": k.id,
                 "provider": k.provider,
+                "provider_label": k.provider.as_deref()
+                    .and_then(ai::provider_kind_from_name)
+                    .map(|provider| provider.label().to_string())
+                    .or_else(|| k.provider.clone())
+                    .unwrap_or_else(|| "Unknown".to_string()),
                 "label": k.label,
                 "created_at": k.created_at.format("%Y-%m-%d %H:%M").to_string(),
             }))
@@ -1130,6 +1138,7 @@ async fn settings_page(
             "has_xai_oauth": has_xai_oauth,
             "has_xai": has_xai,
             "has_openai": has_openai,
+            "has_openai_compatible": has_openai_compatible,
             "has_ollama": has_ollama,
             "has_any_provider": has_any_provider,
             "default_model": ai_cfg.default_model,
@@ -1168,6 +1177,10 @@ fn page_provider_configured(
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
         ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
+        ProviderKind::OpenAiCompatible => {
+            ai_cfg.openai_compatible_api_key.is_some()
+                && ai_cfg.openai_compatible_base_url.is_some()
+        }
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
 }

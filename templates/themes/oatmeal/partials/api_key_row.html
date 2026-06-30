@@ -1,6 +1,6 @@
 <div class="hm-oatmeal-panel-soft flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-center lg:justify-between" id="key-{{ key.id }}">
     <div>
-        <p class="text-sm font-semibold" style="color:var(--hm-text-900)">{{ key.provider|capitalize }}{% if key.label %} · {{ key.label }}{% endif %}</p>
+        <p class="text-sm font-semibold" style="color:var(--hm-text-900)">{{ key.provider_label or key.provider|capitalize }}{% if key.label %} · {{ key.label }}{% endif %}</p>
         <p class="mt-1 text-xs" style="color:var(--hm-text-500)">Created {{ key.created_at }}</p>
     </div>
     <button hx-delete="/api/settings/api-keys/{{ key.id }}"

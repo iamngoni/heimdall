@@ -210,6 +210,7 @@ pub struct ManageApiKeysRequest {
     pub user_id: Option<String>,
     pub provider: Option<String>,
     pub key: Option<String>,
+    pub base_url: Option<String>,
     pub label: Option<String>,
     pub key_id: Option<String>,
 }
@@ -218,6 +219,8 @@ pub struct ManageApiKeysRequest {
 pub struct TestConnectionRequest {
     pub provider: String,
     pub key: String,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -362,7 +365,10 @@ fn valid_severity(severity: &str) -> bool {
 }
 
 fn valid_provider(provider: &str) -> bool {
-    matches!(provider, "anthropic" | "openai" | "ollama")
+    matches!(
+        provider,
+        "anthropic" | "openai" | "openai_compatible" | "xai" | "ollama"
+    )
 }
 
 fn infer_source_type(remote_url: &str) -> &'static str {
@@ -1736,10 +1742,11 @@ impl HeimdallMcp {
                     .ok_or_else(|| {
                         invalid_params("provider is required for action=create".to_string())
                     })?
-                    .to_lowercase();
+                    .to_ascii_lowercase();
                 if !valid_provider(&provider) {
                     return Err(invalid_params(
-                        "provider must be one of: anthropic, openai, ollama".to_string(),
+                        "provider must be one of: anthropic, openai, openai_compatible, xai, ollama"
+                            .to_string(),
                     ));
                 }
                 let key = req
@@ -1750,6 +1757,32 @@ impl HeimdallMcp {
                     .ok_or_else(|| {
                         invalid_params("key is required for action=create".to_string())
                     })?;
+                let custom_base_url = if provider == "openai_compatible" {
+                    let base_url = req.base_url.as_deref().ok_or_else(|| {
+                        invalid_params(
+                            "base_url is required when provider=openai_compatible".to_string(),
+                        )
+                    })?;
+                    Some(
+                        ai::openai::normalize_openai_compatible_base_url(base_url)
+                            .map_err(|error| invalid_params(format!("{error:#}")))?,
+                    )
+                } else {
+                    None
+                };
+                let secret = if let Some(base_url) = custom_base_url.as_deref() {
+                    ai::openai::encode_openai_compatible_secret(key, base_url)
+                        .map_err(|error| invalid_params(format!("{error:#}")))?
+                } else {
+                    key.to_string()
+                };
+                let label = req
+                    .label
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|label| !label.is_empty())
+                    .map(str::to_string)
+                    .or_else(|| custom_base_url.clone());
 
                 let created = self
                     .state
@@ -1758,9 +1791,9 @@ impl HeimdallMcp {
                         user.id,
                         "llm_provider",
                         &provider,
-                        req.label.as_deref(),
-                        &hash_key(key),
-                        &encrypt_key(key, self.state.encryption_key.as_ref()),
+                        label.as_deref(),
+                        &hash_key(&secret),
+                        &encrypt_key(&secret, self.state.encryption_key.as_ref()),
                     )
                     .await
                     .map_err(|error| internal_err(format!("Failed to create API key: {error}")))?;
@@ -1807,23 +1840,48 @@ impl HeimdallMcp {
         let provider_impl: Box<dyn ai::ModelProvider> = match provider.as_str() {
             "anthropic" => Box::new(ai::claude::ClaudeProvider::new(req.key.clone())),
             "openai" => Box::new(ai::openai::OpenAiProvider::new(req.key.clone())),
+            "openai_compatible" => {
+                let base_url = req.base_url.as_deref().ok_or_else(|| {
+                    invalid_params("base_url is required for openai_compatible".to_string())
+                })?;
+                let base_url = ai::openai::normalize_openai_compatible_base_url(base_url)
+                    .map_err(|error| invalid_params(format!("{error:#}")))?;
+                Box::new(ai::openai::OpenAiProvider::openai_compatible(
+                    req.key.clone(),
+                    base_url,
+                ))
+            }
+            "xai" => Box::new(
+                ai::openai::OpenAiProvider::new(req.key.clone())
+                    .with_base_url("https://api.x.ai".to_string())
+                    .with_provider_identity("xai", "xAI"),
+            ),
             "ollama" => Box::new(ai::ollama::OllamaProvider::new(req.key.clone())),
             _ => {
                 return Err(invalid_params(
-                    "provider must be one of: anthropic, openai, ollama".to_string(),
+                    "provider must be one of: anthropic, openai, openai_compatible, xai, ollama"
+                        .to_string(),
                 ));
             }
         };
 
         let model = match provider.as_str() {
-            "anthropic" => "claude-sonnet-4-20250514",
-            "openai" => "gpt-4o-mini",
-            "ollama" => "llama3.2",
+            "anthropic" => "claude-sonnet-4-20250514".to_string(),
+            "openai" => "gpt-4o-mini".to_string(),
+            "openai_compatible" => req
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .unwrap_or("gpt-4o")
+                .to_string(),
+            "xai" => "grok-4.3".to_string(),
+            "ollama" => "llama3.2".to_string(),
             _ => unreachable!(),
         };
 
         let request = CompletionRequest {
-            model: model.to_string(),
+            model,
             messages: vec![Message {
                 role: "user".to_string(),
                 content: "Say hello in one word.".to_string(),

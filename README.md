@@ -84,7 +84,7 @@ What Heimdall does today:
 - Print-ready per-scan HTML reports at `/scans/{id}/report`
 - SARIF export for active scan findings at `/api/scans/{id}/sarif`
 - BYOK via environment variables or user-scoped keys stored in Settings, plus subscription-backed Claude Code, Codex, and Grok connections from Settings
-- AI provider fallback chain (Claude Code > Codex > Grok Subscription > Grok API > Anthropic > OpenAI > Ollama) with automatic retry on transient errors
+- AI provider fallback chain (Claude Code > Codex > Grok Subscription > Grok API > Anthropic > OpenAI > OpenAI Compatible > Ollama) with automatic retry on transient errors
 
 What is still missing or intentionally not done yet:
 
@@ -107,7 +107,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, required ch
 | **PostgreSQL** | 14+ | Yes | Primary database |
 | **Docker** | 20+ | Recommended | Garmr sandbox (PoC validation) |
 | **Git** | 2.25+ | Yes | Repository cloning |
-| **AI API Key** | — | Yes (at least one) | Claude, OpenAI, or Ollama |
+| **AI API Key** | — | Yes (at least one) | Claude, OpenAI, OpenAI-compatible, Grok, or Ollama |
 
 ### Install Rust
 
@@ -173,6 +173,8 @@ DATABASE_URL=postgres://heimdall:heimdall@localhost:5432/heimdall
 # Server-level AI provider fallback (optional if you connect Claude Code/Codex/Grok from Settings)
 ANTHROPIC_API_KEY=sk-ant-...          # Claude (recommended)
 # OPENAI_API_KEY=sk-...               # GPT-4o
+# OPENAI_COMPATIBLE_API_KEY=sk-...    # OpenAI-compatible custom endpoint
+# OPENAI_COMPATIBLE_BASE_URL=http://localhost:1234/v1
 # XAI_API_KEY=xai-...                 # Grok / Grok Build API-key path
 # OLLAMA_URL=http://localhost:11434    # Local models
 
@@ -243,19 +245,21 @@ Full Docker Compose example: `postgres://heimdall:heimdall@postgres:5432/heimdal
 
 ### AI Providers
 
-Set **at least one** environment provider, or connect Claude Code/Codex/Grok Subscription from Settings after registration. When multiple providers are configured, Heimdall chains them in a **fallback provider** — if the primary fails with a retryable error (429 rate limit, 500/502/503 server errors, billing/quota exhaustion, or connection failures), requests automatically fall through to the next configured provider. Default priority order: Claude Code > Codex > Grok Subscription > Grok API > Anthropic > OpenAI > Ollama.
+Set **at least one** environment provider, or connect Claude Code/Codex/Grok Subscription from Settings after registration. When multiple providers are configured, Heimdall chains them in a **fallback provider** — if the primary fails with a retryable error (429 rate limit, 500/502/503 server errors, billing/quota exhaustion, or connection failures), requests automatically fall through to the next configured provider. Default priority order: Claude Code > Codex > Grok Subscription > Grok API > Anthropic > OpenAI > OpenAI Compatible > Ollama.
 
 | Variable | Provider | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Claude | Anthropic API key (`sk-ant-...`) |
 | `OPENAI_API_KEY` | OpenAI | OpenAI API key (`sk-...`) |
+| `OPENAI_COMPATIBLE_API_KEY` | OpenAI Compatible | API key for a custom OpenAI-compatible endpoint |
+| `OPENAI_COMPATIBLE_BASE_URL` | OpenAI Compatible | Base URL for the custom endpoint; both `http://host` and `http://host/v1` are accepted |
 | `XAI_API_KEY` | Grok API | xAI API key (`xai-...`), using `grok-build-0.1` by default; set `grok-4.3` for general Grok |
 | `OLLAMA_URL` | Ollama | Ollama server URL (e.g. `http://localhost:11434`) |
 | `DEFAULT_AI_MODEL` | — | Override default model (default: `claude-sonnet-4-20250514`) |
 
 Every LLM call records which provider and model was actually used (visible in `agent_tool_calls`), so you always know which provider served each request — especially useful when fallback kicks in.
 
-Users can also add API keys through the Settings UI after registration. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`. Grok Subscription connects through xAI OAuth for SuperGrok / X Premium+ on the fixed local callback path `/callback` served on `127.0.0.1:56121`; Docker Compose publishes that host callback port into the app container.
+Users can also add API keys through the Settings UI after registration. The OpenAI Compatible provider stores an API key plus custom base URL and can be selected independently in provider routing. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`. Grok Subscription connects through xAI OAuth for SuperGrok / X Premium+ on the fixed local callback path `/callback` served on `127.0.0.1:56121`; Docker Compose publishes that host callback port into the app container.
 
 Grok has two distinct providers:
 
@@ -635,7 +639,7 @@ Each finding includes:
 | Database | PostgreSQL |
 | AST parsing | tree-sitter (Rust, Python, JS, TS, Go, Java) |
 | Docker SDK | bollard |
-| AI providers | Claude, OpenAI, Ollama (BYOK) |
+| AI providers | Claude, OpenAI, OpenAI-compatible, Grok, Ollama (BYOK) plus subscription-backed Claude Code, Codex, and Grok |
 | Auth | Argon2id + session cookies + CSRF double-submit cookie |
 | Encryption | AES-256-GCM (stored API keys) |
 | Async runtime | Tokio |
@@ -893,6 +897,7 @@ pub trait ModelProvider: Send + Sync {
 - **Grok API** — xAI API key for Grok and Grok Build
 - **Claude** (Anthropic) — native tool_use format through an Anthropic API key
 - **OpenAI** — function calling/Responses API format
+- **OpenAI Compatible** — custom `/v1/chat/completions` endpoint with API key and base URL from Settings or env vars
 - **Ollama** — local inference, no API key required (Llama 3.3, Mistral, etc.)
 
 **Automatic fallback:** When multiple providers are configured, Heimdall chains them via `FallbackProvider`. If the primary provider fails with a retryable error (HTTP 429/500/502/503/529, billing/quota errors, or connection failures), the request is automatically retried with the next provider. Non-retryable errors (401, invalid request) propagate immediately.

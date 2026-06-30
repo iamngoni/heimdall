@@ -30,6 +30,7 @@ pub enum ProviderKind {
     XaiOAuth,
     Xai,
     OpenAi,
+    OpenAiCompatible,
     Ollama,
 }
 
@@ -42,6 +43,7 @@ impl ProviderKind {
             Self::XaiOAuth => "xai_oauth",
             Self::Xai => "xai",
             Self::OpenAi => "openai",
+            Self::OpenAiCompatible => "openai_compatible",
             Self::Ollama => "ollama",
         }
     }
@@ -54,6 +56,7 @@ impl ProviderKind {
             Self::XaiOAuth => "Grok Subscription",
             Self::Xai => "Grok API",
             Self::OpenAi => "OpenAI",
+            Self::OpenAiCompatible => "OpenAI Compatible",
             Self::Ollama => "Ollama",
         }
     }
@@ -66,6 +69,7 @@ impl ProviderKind {
             Self::XaiOAuth => "grok-build-0.1",
             Self::Xai => "grok-build-0.1",
             Self::OpenAi => "gpt-4o",
+            Self::OpenAiCompatible => "gpt-4o",
             Self::Ollama => "llama3.3",
         }
     }
@@ -91,6 +95,7 @@ impl ProviderKind {
                     || model.starts_with("o3")
                     || model.starts_with("o4")
             }
+            Self::OpenAiCompatible => false,
             Self::Ollama => [
                 "llama",
                 "mistral",
@@ -116,6 +121,12 @@ pub fn provider_kind_from_name(name: &str) -> Option<ProviderKind> {
         | "grok_subscription" | "grok-subscription" => Some(ProviderKind::XaiOAuth),
         "xai" | "grok" | "grok_build" | "grok-build" | "grokbuild" => Some(ProviderKind::Xai),
         "openai" => Some(ProviderKind::OpenAi),
+        "openai_compatible"
+        | "openai-compatible"
+        | "custom_openai"
+        | "custom-openai"
+        | "custom_openai_compatible"
+        | "custom-openai-compatible" => Some(ProviderKind::OpenAiCompatible),
         "ollama" | "local" => Some(ProviderKind::Ollama),
         _ => None,
     }
@@ -129,6 +140,7 @@ pub fn default_provider_order() -> Vec<ProviderKind> {
         ProviderKind::Xai,
         ProviderKind::Anthropic,
         ProviderKind::OpenAi,
+        ProviderKind::OpenAiCompatible,
         ProviderKind::Ollama,
     ]
 }
@@ -272,12 +284,20 @@ pub fn build_provider_for_kind(
                 .with_provider_identity("xai", "xAI"),
         ),
         ProviderKind::OpenAi => Box::new(openai::OpenAiProvider::new(credential)),
+        ProviderKind::OpenAiCompatible => {
+            let credential = openai::decode_openai_compatible_secret(&credential)
+                .expect("OpenAI-compatible provider requires encoded base URL and API key");
+            Box::new(openai::OpenAiProvider::openai_compatible(
+                credential.api_key,
+                credential.base_url,
+            ))
+        }
         ProviderKind::Ollama => Box::new(ollama::OllamaProvider::new(credential)),
     }
 }
 
 impl ProviderKind {
-    pub fn ordered() -> [ProviderKind; 7] {
+    pub fn ordered() -> [ProviderKind; 8] {
         [
             Self::Anthropic,
             Self::ClaudeCode,
@@ -285,6 +305,7 @@ impl ProviderKind {
             Self::XaiOAuth,
             Self::Xai,
             Self::OpenAi,
+            Self::OpenAiCompatible,
             Self::Ollama,
         ]
     }
@@ -329,6 +350,13 @@ fn env_credential(config: &AiConfig, provider: ProviderKind) -> Option<String> {
         ProviderKind::Anthropic => config.anthropic_api_key.clone(),
         ProviderKind::Xai => config.xai_api_key.clone(),
         ProviderKind::OpenAi => config.openai_api_key.clone(),
+        ProviderKind::OpenAiCompatible => config
+            .openai_compatible_api_key
+            .as_deref()
+            .zip(config.openai_compatible_base_url.as_deref())
+            .and_then(|(api_key, base_url)| {
+                openai::encode_openai_compatible_secret(api_key, base_url).ok()
+            }),
         ProviderKind::Ollama => config.ollama_url.clone(),
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => None,
     }
@@ -388,6 +416,10 @@ mod tests {
             model_for_provider(ProviderKind::XaiOAuth, "claude-sonnet-4-20250514"),
             "grok-build-0.1"
         );
+        assert_eq!(
+            model_for_provider(ProviderKind::OpenAiCompatible, "claude-sonnet-4-20250514"),
+            "gpt-4o"
+        );
     }
 
     #[test]
@@ -418,6 +450,10 @@ mod tests {
         assert_eq!(
             provider_kind_from_name("grok-oauth"),
             Some(ProviderKind::XaiOAuth)
+        );
+        assert_eq!(
+            provider_kind_from_name("custom-openai"),
+            Some(ProviderKind::OpenAiCompatible)
         );
         assert_eq!(provider_kind_from_name("unknown"), None);
     }
@@ -453,10 +489,21 @@ mod tests {
     }
 
     #[test]
+    fn build_openai_compatible_provider_uses_custom_identity() {
+        let credential =
+            openai::encode_openai_compatible_secret("sk-custom", "http://localhost:1234/v1")
+                .unwrap();
+        let provider = build_provider_for_kind(ProviderKind::OpenAiCompatible, credential);
+        assert_eq!(provider.provider_name(), "openai_compatible");
+    }
+
+    #[test]
     fn build_provider_prefers_xai_in_default_env_order() {
         let config = AiConfig {
             anthropic_api_key: Some("sk-ant-test".to_string()),
             openai_api_key: Some("sk-openai-test".to_string()),
+            openai_compatible_api_key: None,
+            openai_compatible_base_url: None,
             xai_api_key: Some("xai-test".to_string()),
             ollama_url: None,
             default_model: "unknown-model".to_string(),
@@ -503,6 +550,7 @@ mod tests {
                 ProviderKind::Codex,
                 ProviderKind::XaiOAuth,
                 ProviderKind::Xai,
+                ProviderKind::OpenAiCompatible,
                 ProviderKind::Ollama,
             ]
         );

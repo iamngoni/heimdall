@@ -71,6 +71,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 struct CreateApiKeyRequest {
     provider: String,
     key: String,
+    base_url: Option<String>,
     label: Option<String>,
 }
 
@@ -84,6 +85,8 @@ struct SavePatRequest {
 struct TestConnectionRequest {
     provider: String,
     key: String,
+    base_url: Option<String>,
+    model: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -108,6 +111,7 @@ struct UpdateAiRoutingForm {
     model_xai_oauth: Option<String>,
     model_xai: Option<String>,
     model_openai: Option<String>,
+    model_openai_compatible: Option<String>,
     model_ollama: Option<String>,
 }
 
@@ -125,6 +129,7 @@ struct SettingsResponse {
     has_xai_oauth: bool,
     has_xai: bool,
     has_openai: bool,
+    has_openai_compatible: bool,
     has_ollama: bool,
     default_model: String,
     preferred_provider: Option<String>,
@@ -153,6 +158,7 @@ struct TestConnectionResponse {
 struct AiStatusResponse {
     env_anthropic: bool,
     env_openai: bool,
+    env_openai_compatible: bool,
     env_xai: bool,
     env_ollama: bool,
     stored_anthropic: bool,
@@ -161,6 +167,7 @@ struct AiStatusResponse {
     stored_xai_oauth: bool,
     stored_xai: bool,
     stored_openai: bool,
+    stored_openai_compatible: bool,
     stored_ollama: bool,
     default_model: String,
     preferred_provider: Option<String>,
@@ -192,6 +199,12 @@ fn hash_key(key: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(key.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+fn provider_display_label(provider: &str) -> String {
+    ai::provider_kind_from_name(provider)
+        .map(|provider| provider.label().to_string())
+        .unwrap_or_else(|| provider.to_string())
 }
 
 /// Encrypt an API key using AES-256-GCM if an encryption key is available,
@@ -230,6 +243,7 @@ fn render_api_key_row(
         key => minijinja::Value::from_serialize(serde_json::json!({
             "id": id,
             "provider": provider,
+            "provider_label": provider_display_label(provider),
             "label": label,
             "created_at": created_at.format("%Y-%m-%d %H:%M").to_string(),
         })),
@@ -325,6 +339,10 @@ fn provider_configured(
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
         ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
+        ProviderKind::OpenAiCompatible => {
+            ai_cfg.openai_compatible_api_key.is_some()
+                && ai_cfg.openai_compatible_base_url.is_some()
+        }
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
 }
@@ -426,6 +444,10 @@ fn provider_models_from_form(body: &UpdateAiRoutingForm) -> BTreeMap<ProviderKin
         (ProviderKind::XaiOAuth, body.model_xai_oauth.as_deref()),
         (ProviderKind::Xai, body.model_xai.as_deref()),
         (ProviderKind::OpenAi, body.model_openai.as_deref()),
+        (
+            ProviderKind::OpenAiCompatible,
+            body.model_openai_compatible.as_deref(),
+        ),
         (ProviderKind::Ollama, body.model_ollama.as_deref()),
     ];
     for (provider, value) in pairs {
@@ -468,6 +490,8 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
     let has_xai_oauth = provider_configured(ai_cfg, &api_keys, ProviderKind::XaiOAuth);
     let has_xai = provider_configured(ai_cfg, &api_keys, ProviderKind::Xai);
     let has_openai = provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
+    let has_openai_compatible =
+        provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAiCompatible);
     let has_ollama = provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
 
     let provider_models = db_user
@@ -482,6 +506,7 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
         has_xai_oauth,
         has_xai,
         has_openai,
+        has_openai_compatible,
         has_ollama,
         default_model: ai_cfg.default_model.clone(),
         preferred_provider: preferred_provider.map(|provider| provider.as_str().to_string()),
@@ -1075,23 +1100,54 @@ async fn create_api_key(
     req: HttpRequest,
     body: web::Json<CreateApiKeyRequest>,
 ) -> HttpResponse {
-    let provider = body.provider.to_lowercase();
-    if !["anthropic", "openai", "xai", "ollama"].contains(&provider.as_str()) {
+    let provider = body.provider.trim().to_ascii_lowercase();
+    if !["anthropic", "openai", "openai_compatible", "xai", "ollama"].contains(&provider.as_str()) {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
             format!(
-                "Unsupported provider: {}. Must be anthropic, openai, xai, or ollama.",
+                "Unsupported provider: {}. Must be anthropic, openai, openai_compatible, xai, or ollama.",
                 provider
             ),
         ));
     }
 
-    if body.key.is_empty() {
+    let key = body.key.trim();
+    if key.is_empty() {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
             "Key value must not be empty.",
         ));
     }
+
+    let custom_base_url = if provider == ProviderKind::OpenAiCompatible.as_str() {
+        let Some(base_url) = body.base_url.as_deref() else {
+            return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                400,
+                "Base URL is required for OpenAI-compatible providers.",
+            ));
+        };
+        match ai::openai::normalize_openai_compatible_base_url(base_url) {
+            Ok(base_url) => Some(base_url),
+            Err(error) => {
+                return HttpResponse::BadRequest()
+                    .json(ApiResponse::<()>::error(400, format!("{error:#}")));
+            }
+        }
+    } else {
+        None
+    };
+
+    let secret = if let Some(base_url) = custom_base_url.as_deref() {
+        match ai::openai::encode_openai_compatible_secret(key, base_url) {
+            Ok(secret) => secret,
+            Err(error) => {
+                return HttpResponse::BadRequest()
+                    .json(ApiResponse::<()>::error(400, format!("{error:#}")));
+            }
+        }
+    } else {
+        key.to_string()
+    };
 
     let user = req
         .extensions()
@@ -1099,10 +1155,17 @@ async fn create_api_key(
         .cloned()
         .expect("auth middleware ensures user exists");
     let user_id = user.id;
-    let key_hash = hash_key(&body.key);
-    let encrypted = encrypt_key(&body.key, state.encryption_key.as_ref());
-    let label = body.label.as_deref();
-    let key_preview = mask_key(&body.key);
+    let key_hash = hash_key(&secret);
+    let encrypted = encrypt_key(&secret, state.encryption_key.as_ref());
+    let label_owned = body
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+        .map(str::to_string)
+        .or_else(|| custom_base_url.clone());
+    let label = label_owned.as_deref();
+    let key_preview = mask_key(key);
 
     match state
         .db
@@ -1177,11 +1240,30 @@ async fn delete_api_key(
 
 /// POST /settings/test-connection — test an AI provider connection.
 async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest>) -> HttpResponse {
-    let provider = body.provider.to_lowercase();
+    let provider = body.provider.trim().to_ascii_lowercase();
 
     let test_provider: Box<dyn ai::ModelProvider> = match provider.as_str() {
         "anthropic" => Box::new(ai::claude::ClaudeProvider::new(body.key.clone())),
         "openai" => Box::new(ai::openai::OpenAiProvider::new(body.key.clone())),
+        "openai_compatible" => {
+            let Some(base_url) = body.base_url.as_deref() else {
+                return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                    400,
+                    "Base URL is required for OpenAI-compatible providers.",
+                ));
+            };
+            let base_url = match ai::openai::normalize_openai_compatible_base_url(base_url) {
+                Ok(base_url) => base_url,
+                Err(error) => {
+                    return HttpResponse::BadRequest()
+                        .json(ApiResponse::<()>::error(400, format!("{error:#}")));
+                }
+            };
+            Box::new(ai::openai::OpenAiProvider::openai_compatible(
+                body.key.clone(),
+                base_url,
+            ))
+        }
         "xai" => Box::new(
             ai::openai::OpenAiProvider::new(body.key.clone())
                 .with_base_url("https://api.x.ai".to_string())
@@ -1192,7 +1274,7 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
             return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
                 400,
                 format!(
-                    "Unsupported provider: {}. Must be anthropic, openai, xai, or ollama.",
+                    "Unsupported provider: {}. Must be anthropic, openai, openai_compatible, xai, or ollama.",
                     provider
                 ),
             ));
@@ -1202,6 +1284,13 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
     let model = match provider.as_str() {
         "anthropic" => "claude-sonnet-4-20250514".to_string(),
         "openai" => "gpt-4o-mini".to_string(),
+        "openai_compatible" => body
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+            .unwrap_or("gpt-4o")
+            .to_string(),
         "xai" => "grok-4.3".to_string(),
         "ollama" => "llama3.2".to_string(),
         _ => unreachable!(),
@@ -1274,6 +1363,8 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
     let stored_xai_oauth = stored_provider_configured(&api_keys, ProviderKind::XaiOAuth);
     let stored_xai = stored_provider_configured(&api_keys, ProviderKind::Xai);
     let stored_openai = stored_provider_configured(&api_keys, ProviderKind::OpenAi);
+    let stored_openai_compatible =
+        stored_provider_configured(&api_keys, ProviderKind::OpenAiCompatible);
     let stored_ollama = stored_provider_configured(&api_keys, ProviderKind::Ollama);
 
     let provider_models = db_user
@@ -1284,6 +1375,8 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
     let resp = AiStatusResponse {
         env_anthropic: ai_cfg.anthropic_api_key.is_some(),
         env_openai: ai_cfg.openai_api_key.is_some(),
+        env_openai_compatible: ai_cfg.openai_compatible_api_key.is_some()
+            && ai_cfg.openai_compatible_base_url.is_some(),
         env_xai: ai_cfg.xai_api_key.is_some(),
         env_ollama: ai_cfg.ollama_url.is_some(),
         stored_anthropic,
@@ -1292,6 +1385,7 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
         stored_xai_oauth,
         stored_xai,
         stored_openai,
+        stored_openai_compatible,
         stored_ollama,
         default_model: ai_cfg.default_model.clone(),
         preferred_provider: preferred_provider.map(|provider| provider.as_str().to_string()),
