@@ -54,7 +54,7 @@
                             {"id": "profile", "label": "Profile"},
                             {"id": "appearance", "label": "Appearance"},
                             {"id": "integrations", "label": "Integrations", "count": vcs_connected, "total": 3},
-                            {"id": "providers", "label": "AI Providers", "count": ai_connected, "total": 7},
+                            {"id": "providers", "label": "AI Providers", "count": ai_connected, "total": 8},
                             {"id": "keys", "label": "API Keys"},
                             {"id": "security", "label": "Security"}
                         ] %}
@@ -371,6 +371,38 @@
                                                     </details>
                                                 </div>
                                                 <div id="claude-code-feedback" class="mt-2"></div>
+                                                {% elif provider.id == 'openai_compatible' %}
+                                                <form hx-post="/api/settings/api-keys"
+                                                      hx-ext="json-enc"
+                                                      hx-swap="none"
+                                                      hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('OpenAI Compatible endpoint saved'); setTimeout(function(){ window.location.reload(); }, 300); } else { var msg='Failed to save endpoint'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }"
+                                                      class="mt-3 grid gap-3 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+                                                      style="background:var(--hm-surface);border-color:var(--hm-border)">
+                                                    <input type="hidden" name="provider" value="openai_compatible">
+                                                    <input type="hidden" name="label" value="OpenAI Compatible">
+                                                    <label class="block">
+                                                        <span class="text-[11px] font-semibold uppercase tracking-wide" style="color:var(--hm-text-500)">Base URL</span>
+                                                        <input name="base_url"
+                                                               required
+                                                               autocomplete="off"
+                                                               spellcheck="false"
+                                                               placeholder="http://localhost:1234/v1"
+                                                               class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-[12px] outline-none"
+                                                               style="background:var(--hm-surface-strong);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                                    </label>
+                                                    <label class="block">
+                                                        <span class="text-[11px] font-semibold uppercase tracking-wide" style="color:var(--hm-text-500)">API key <span class="font-normal normal-case tracking-normal">optional</span></span>
+                                                        <input type="password"
+                                                               name="key"
+                                                               autocomplete="off"
+                                                               placeholder="sk-..."
+                                                               class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-[12px] outline-none"
+                                                               style="background:var(--hm-surface-strong);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                                    </label>
+                                                    <div class="flex items-end">
+                                                        <button type="submit" class="hm-oatmeal-action w-full px-3 py-2 text-[11px] sm:w-auto">Save endpoint</button>
+                                                    </div>
+                                                </form>
                                                 {% endif %}
                                             </div>
                                         </div>
@@ -495,7 +527,9 @@
                                       class="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
                                     <label class="block">
                                         <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Provider</span>
-                                        <select name="provider" class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
+                                        <select name="provider"
+                                                onchange="this.closest('form').querySelector('input[name=key]').required = this.value !== 'openai_compatible'"
+                                                class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
                                                 style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)">
                                             <option value="anthropic">Anthropic</option>
                                             <option value="openai">OpenAI</option>
@@ -505,7 +539,7 @@
                                         </select>
                                     </label>
                                     <label class="block">
-                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Secret</span>
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Secret <span class="font-normal normal-case tracking-normal">optional for OpenAI Compatible</span></span>
                                         <input type="password" name="key" placeholder="sk-..." required
                                                class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm font-mono"
                                                style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>

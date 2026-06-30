@@ -70,7 +70,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 #[derive(Deserialize)]
 struct CreateApiKeyRequest {
     provider: String,
-    key: String,
+    key: Option<String>,
     base_url: Option<String>,
     label: Option<String>,
 }
@@ -84,7 +84,7 @@ struct SavePatRequest {
 #[derive(Deserialize)]
 struct TestConnectionRequest {
     provider: String,
-    key: String,
+    key: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
 }
@@ -339,10 +339,7 @@ fn provider_configured(
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
         ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
-        ProviderKind::OpenAiCompatible => {
-            ai_cfg.openai_compatible_api_key.is_some()
-                && ai_cfg.openai_compatible_base_url.is_some()
-        }
+        ProviderKind::OpenAiCompatible => ai_cfg.openai_compatible_base_url.is_some(),
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
 }
@@ -1112,8 +1109,8 @@ async fn create_api_key(
         ));
     }
 
-    let key = body.key.trim();
-    if key.is_empty() {
+    let key = body.key.as_deref().map(str::trim).unwrap_or_default();
+    if provider != ProviderKind::OpenAiCompatible.as_str() && key.is_empty() {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
             "Key value must not be empty.",
@@ -1166,7 +1163,11 @@ async fn create_api_key(
         .map(str::to_string)
         .or_else(|| custom_base_url.clone());
     let label = label_owned.as_deref();
-    let key_preview = mask_key(key);
+    let key_preview = if key.is_empty() {
+        "No API key".to_string()
+    } else {
+        mask_key(key)
+    };
 
     match state
         .db
@@ -1242,10 +1243,17 @@ async fn delete_api_key(
 /// POST /settings/test-connection — test an AI provider connection.
 async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest>) -> HttpResponse {
     let provider = body.provider.trim().to_ascii_lowercase();
+    let key = body.key.as_deref().map(str::trim).unwrap_or_default();
+    if provider != ProviderKind::OpenAiCompatible.as_str() && key.is_empty() {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Key value must not be empty.",
+        ));
+    }
 
     let test_provider: Box<dyn ai::ModelProvider> = match provider.as_str() {
-        "anthropic" => Box::new(ai::claude::ClaudeProvider::new(body.key.clone())),
-        "openai" => Box::new(ai::openai::OpenAiProvider::new(body.key.clone())),
+        "anthropic" => Box::new(ai::claude::ClaudeProvider::new(key.to_string())),
+        "openai" => Box::new(ai::openai::OpenAiProvider::new(key.to_string())),
         "openai_compatible" => {
             let Some(base_url) = body.base_url.as_deref() else {
                 return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
@@ -1261,16 +1269,16 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
                 }
             };
             Box::new(ai::openai::OpenAiProvider::openai_compatible(
-                body.key.clone(),
+                key.to_string(),
                 base_url,
             ))
         }
         "xai" => Box::new(
-            ai::openai::OpenAiProvider::new(body.key.clone())
+            ai::openai::OpenAiProvider::new(key.to_string())
                 .with_base_url("https://api.x.ai".to_string())
                 .with_provider_identity("xai", "xAI"),
         ),
-        "ollama" => Box::new(ai::ollama::OllamaProvider::new(body.key.clone())),
+        "ollama" => Box::new(ai::ollama::OllamaProvider::new(key.to_string())),
         _ => {
             return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
                 400,
@@ -1376,8 +1384,7 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
     let resp = AiStatusResponse {
         env_anthropic: ai_cfg.anthropic_api_key.is_some(),
         env_openai: ai_cfg.openai_api_key.is_some(),
-        env_openai_compatible: ai_cfg.openai_compatible_api_key.is_some()
-            && ai_cfg.openai_compatible_base_url.is_some(),
+        env_openai_compatible: ai_cfg.openai_compatible_base_url.is_some(),
         env_xai: ai_cfg.xai_api_key.is_some(),
         env_ollama: ai_cfg.ollama_url.is_some(),
         stored_anthropic,

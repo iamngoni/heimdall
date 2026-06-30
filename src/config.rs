@@ -236,8 +236,7 @@ impl AiConfig {
     pub fn has_provider(&self) -> bool {
         self.anthropic_api_key.is_some()
             || self.openai_api_key.is_some()
-            || (self.openai_compatible_api_key.is_some()
-                && self.openai_compatible_base_url.is_some())
+            || self.openai_compatible_base_url.is_some()
             || self.xai_api_key.is_some()
             || self.ollama_url.is_some()
     }

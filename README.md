@@ -107,7 +107,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, required ch
 | **PostgreSQL** | 14+ | Yes | Primary database |
 | **Docker** | 20+ | Recommended | Garmr sandbox (PoC validation) |
 | **Git** | 2.25+ | Yes | Repository cloning |
-| **AI API Key** | — | Yes (at least one) | Claude, OpenAI, OpenAI-compatible, Grok, or Ollama |
+| **AI provider** | — | Yes (at least one) | Claude, OpenAI, OpenAI-compatible endpoint, Grok, or Ollama |
 
 ### Install Rust
 
@@ -173,8 +173,8 @@ DATABASE_URL=postgres://heimdall:heimdall@localhost:5432/heimdall
 # Server-level AI provider fallback (optional if you connect Claude Code/Codex/Grok from Settings)
 ANTHROPIC_API_KEY=sk-ant-...          # Claude (recommended)
 # OPENAI_API_KEY=sk-...               # GPT-4o
-# OPENAI_COMPATIBLE_API_KEY=sk-...    # OpenAI-compatible custom endpoint
-# OPENAI_COMPATIBLE_BASE_URL=http://localhost:1234/v1
+# OPENAI_COMPATIBLE_BASE_URL=http://localhost:1234/v1 # OpenAI-compatible custom endpoint
+# OPENAI_COMPATIBLE_API_KEY=sk-...                    # Optional for endpoints that require auth
 # XAI_API_KEY=xai-...                 # Grok / Grok Build API-key path
 # OLLAMA_URL=http://localhost:11434    # Local models
 
@@ -251,8 +251,8 @@ Set **at least one** environment provider, or connect Claude Code/Codex/Grok Sub
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Claude | Anthropic API key (`sk-ant-...`) |
 | `OPENAI_API_KEY` | OpenAI | OpenAI API key (`sk-...`) |
-| `OPENAI_COMPATIBLE_API_KEY` | OpenAI Compatible | API key for a custom OpenAI-compatible endpoint |
 | `OPENAI_COMPATIBLE_BASE_URL` | OpenAI Compatible | Base URL for the custom endpoint; both `http://host` and `http://host/v1` are accepted |
+| `OPENAI_COMPATIBLE_API_KEY` | OpenAI Compatible | Optional API key for custom endpoints that require auth |
 | `XAI_API_KEY` | Grok API | xAI API key (`xai-...`), using `grok-build-0.1` by default; set `grok-4.3` for general Grok |
 | `XAI_OAUTH_REDIRECT_URI` | Grok Subscription | Optional hosted OAuth callback, e.g. `https://heimdall.antonlabs.cc/api/settings/xai-oauth/callback`; unset keeps local loopback mode |
 | `XAI_OAUTH_CLIENT_ID` | Grok Subscription | Optional xAI OAuth client id; defaults to the bundled loopback client |

@@ -1177,10 +1177,7 @@ fn page_provider_configured(
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
         ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
-        ProviderKind::OpenAiCompatible => {
-            ai_cfg.openai_compatible_api_key.is_some()
-                && ai_cfg.openai_compatible_base_url.is_some()
-        }
+        ProviderKind::OpenAiCompatible => ai_cfg.openai_compatible_base_url.is_some(),
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
 }

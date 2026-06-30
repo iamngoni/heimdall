@@ -104,9 +104,6 @@ pub fn decode_openai_compatible_secret(secret: &str) -> HeimdallResult<OpenAiCom
         .context("OpenAI-compatible provider credential is not valid JSON")?;
     credential.api_key = credential.api_key.trim().to_string();
     credential.base_url = normalize_openai_compatible_base_url(&credential.base_url)?;
-    if credential.api_key.is_empty() {
-        anyhow::bail!("OpenAI-compatible provider credential is missing an API key");
-    }
     Ok(credential)
 }
 
@@ -268,14 +265,15 @@ impl ModelProvider for OpenAiProvider {
             body.messages.len()
         );
 
-        let resp = self
+        let mut req = self
             .client
             .post(self.chat_completions_url())
-            .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+            .json(&body);
+        if !self.api_key.trim().is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", self.api_key.trim()));
+        }
+        let resp = req.send().await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -417,6 +415,15 @@ mod tests {
             .expect("secret should encode");
         let decoded = decode_openai_compatible_secret(&encoded).expect("secret should decode");
         assert_eq!(decoded.api_key, "sk-custom");
+        assert_eq!(decoded.base_url, "http://localhost:1234/v1");
+    }
+
+    #[test]
+    fn openai_compatible_secret_allows_endpoint_only_credentials() {
+        let encoded = encode_openai_compatible_secret("", "http://localhost:1234/v1")
+            .expect("secret should encode");
+        let decoded = decode_openai_compatible_secret(&encoded).expect("secret should decode");
+        assert_eq!(decoded.api_key, "");
         assert_eq!(decoded.base_url, "http://localhost:1234/v1");
     }
 

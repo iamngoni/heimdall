@@ -286,7 +286,7 @@ pub fn build_provider_for_kind(
         ProviderKind::OpenAi => Box::new(openai::OpenAiProvider::new(credential)),
         ProviderKind::OpenAiCompatible => {
             let credential = openai::decode_openai_compatible_secret(&credential)
-                .expect("OpenAI-compatible provider requires encoded base URL and API key");
+                .expect("OpenAI-compatible provider requires encoded base URL");
             Box::new(openai::OpenAiProvider::openai_compatible(
                 credential.api_key,
                 credential.base_url,
@@ -350,13 +350,21 @@ fn env_credential(config: &AiConfig, provider: ProviderKind) -> Option<String> {
         ProviderKind::Anthropic => config.anthropic_api_key.clone(),
         ProviderKind::Xai => config.xai_api_key.clone(),
         ProviderKind::OpenAi => config.openai_api_key.clone(),
-        ProviderKind::OpenAiCompatible => config
-            .openai_compatible_api_key
-            .as_deref()
-            .zip(config.openai_compatible_base_url.as_deref())
-            .and_then(|(api_key, base_url)| {
-                openai::encode_openai_compatible_secret(api_key, base_url).ok()
-            }),
+        ProviderKind::OpenAiCompatible => {
+            config
+                .openai_compatible_base_url
+                .as_deref()
+                .and_then(|base_url| {
+                    openai::encode_openai_compatible_secret(
+                        config
+                            .openai_compatible_api_key
+                            .as_deref()
+                            .unwrap_or_default(),
+                        base_url,
+                    )
+                    .ok()
+                })
+        }
         ProviderKind::Ollama => config.ollama_url.clone(),
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => None,
     }
@@ -495,6 +503,27 @@ mod tests {
                 .unwrap();
         let provider = build_provider_for_kind(ProviderKind::OpenAiCompatible, credential);
         assert_eq!(provider.provider_name(), "openai_compatible");
+    }
+
+    #[test]
+    fn build_openai_compatible_provider_accepts_base_url_without_api_key() {
+        let config = AiConfig {
+            anthropic_api_key: None,
+            openai_api_key: None,
+            openai_compatible_api_key: None,
+            openai_compatible_base_url: Some("http://localhost:1234/v1".to_string()),
+            xai_api_key: None,
+            ollama_url: None,
+            default_model: "custom-model".to_string(),
+        };
+
+        let provider = build_provider(&config).expect("provider should be configured");
+
+        assert_eq!(provider.provider_name(), "openai_compatible");
+        assert_eq!(
+            configured_provider_kind(&config),
+            Some(ProviderKind::OpenAiCompatible)
+        );
     }
 
     #[test]

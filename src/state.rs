@@ -178,7 +178,7 @@ impl AppState {
     pub fn require_ai(&self) -> anyhow::Result<&dyn ModelProvider> {
         self.ai.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
-                "No AI provider configured. Connect Claude Code, Codex, or Grok Subscription in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENAI_COMPATIBLE_API_KEY plus OPENAI_COMPATIBLE_BASE_URL, XAI_API_KEY, or OLLAMA_URL."
+                "No AI provider configured. Connect Claude Code, Codex, or Grok Subscription in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENAI_COMPATIBLE_BASE_URL with optional OPENAI_COMPATIBLE_API_KEY, XAI_API_KEY, or OLLAMA_URL."
             )
         })
     }
@@ -425,13 +425,21 @@ fn env_credential_for_provider(config: &AiConfig, provider_kind: ProviderKind) -
         ProviderKind::Codex | ProviderKind::ClaudeCode | ProviderKind::XaiOAuth => None,
         ProviderKind::Xai => config.xai_api_key.clone(),
         ProviderKind::OpenAi => config.openai_api_key.clone(),
-        ProviderKind::OpenAiCompatible => config
-            .openai_compatible_api_key
-            .as_deref()
-            .zip(config.openai_compatible_base_url.as_deref())
-            .and_then(|(api_key, base_url)| {
-                ai::openai::encode_openai_compatible_secret(api_key, base_url).ok()
-            }),
+        ProviderKind::OpenAiCompatible => {
+            config
+                .openai_compatible_base_url
+                .as_deref()
+                .and_then(|base_url| {
+                    ai::openai::encode_openai_compatible_secret(
+                        config
+                            .openai_compatible_api_key
+                            .as_deref()
+                            .unwrap_or_default(),
+                        base_url,
+                    )
+                    .ok()
+                })
+        }
         ProviderKind::Ollama => config.ollama_url.clone(),
     }
 }
@@ -627,6 +635,36 @@ mod tests {
             None,
             None,
             Some("sk-custom"),
+            Some("http://localhost:1234/v1"),
+            None,
+            None,
+            "custom-model",
+        );
+        let stored_keys = Vec::new();
+        let preferences = AiRoutingPreferences {
+            preferred_provider: Some(ProviderKind::OpenAiCompatible),
+            fallbacks_enabled: false,
+            fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
+        };
+
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
+
+        assert_eq!(
+            plan,
+            vec![(
+                ProviderKind::OpenAiCompatible,
+                RuntimeProviderSource::Environment
+            )]
+        );
+    }
+
+    #[test]
+    fn runtime_plan_uses_openai_compatible_env_provider_without_api_key() {
+        let config = ai_config(
+            None,
+            None,
+            None,
             Some("http://localhost:1234/v1"),
             None,
             None,

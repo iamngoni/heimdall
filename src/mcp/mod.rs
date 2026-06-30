@@ -225,7 +225,7 @@ pub struct ManageApiKeysRequest {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct TestConnectionRequest {
     pub provider: String,
-    pub key: String,
+    pub key: Option<String>,
     pub base_url: Option<String>,
     pub model: Option<String>,
 }
@@ -1868,14 +1868,12 @@ impl HeimdallMcp {
                             .to_string(),
                     ));
                 }
-                let key = req
-                    .key
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .ok_or_else(|| {
-                        invalid_params("key is required for action=create".to_string())
-                    })?;
+                let key = req.key.as_deref().map(str::trim).unwrap_or_default();
+                if provider != "openai_compatible" && key.is_empty() {
+                    return Err(invalid_params(
+                        "key is required for action=create".to_string(),
+                    ));
+                }
                 let custom_base_url = if provider == "openai_compatible" {
                     let base_url = req.base_url.as_deref().ok_or_else(|| {
                         invalid_params(
@@ -1916,6 +1914,11 @@ impl HeimdallMcp {
                     )
                     .await
                     .map_err(|error| internal_err(format!("Failed to create API key: {error}")))?;
+                let key_preview = if key.is_empty() {
+                    "No API key".to_string()
+                } else {
+                    mask_key(key)
+                };
 
                 Ok(json_text(&serde_json::json!({
                     "created": true,
@@ -1924,7 +1927,7 @@ impl HeimdallMcp {
                         "user_id": created.user_id,
                         "provider": created.provider,
                         "label": created.label,
-                        "key_preview": mask_key(key),
+                        "key_preview": key_preview,
                         "created_at": created.created_at.to_rfc3339(),
                     }
                 })))
@@ -1956,9 +1959,13 @@ impl HeimdallMcp {
         Parameters(req): Parameters<TestConnectionRequest>,
     ) -> Result<String, rmcp::ErrorData> {
         let provider = req.provider.trim().to_lowercase();
+        let key = req.key.as_deref().map(str::trim).unwrap_or_default();
+        if provider != "openai_compatible" && key.is_empty() {
+            return Err(invalid_params("key is required".to_string()));
+        }
         let provider_impl: Box<dyn ai::ModelProvider> = match provider.as_str() {
-            "anthropic" => Box::new(ai::claude::ClaudeProvider::new(req.key.clone())),
-            "openai" => Box::new(ai::openai::OpenAiProvider::new(req.key.clone())),
+            "anthropic" => Box::new(ai::claude::ClaudeProvider::new(key.to_string())),
+            "openai" => Box::new(ai::openai::OpenAiProvider::new(key.to_string())),
             "openai_compatible" => {
                 let base_url = req.base_url.as_deref().ok_or_else(|| {
                     invalid_params("base_url is required for openai_compatible".to_string())
@@ -1966,16 +1973,16 @@ impl HeimdallMcp {
                 let base_url = ai::openai::normalize_openai_compatible_base_url(base_url)
                     .map_err(|error| invalid_params(format!("{error:#}")))?;
                 Box::new(ai::openai::OpenAiProvider::openai_compatible(
-                    req.key.clone(),
+                    key.to_string(),
                     base_url,
                 ))
             }
             "xai" => Box::new(
-                ai::openai::OpenAiProvider::new(req.key.clone())
+                ai::openai::OpenAiProvider::new(key.to_string())
                     .with_base_url("https://api.x.ai".to_string())
                     .with_provider_identity("xai", "xAI"),
             ),
-            "ollama" => Box::new(ai::ollama::OllamaProvider::new(req.key.clone())),
+            "ollama" => Box::new(ai::ollama::OllamaProvider::new(key.to_string())),
             _ => {
                 return Err(invalid_params(
                     "provider must be one of: anthropic, openai, openai_compatible, xai, ollama"

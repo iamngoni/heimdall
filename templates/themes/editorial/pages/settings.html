@@ -409,6 +409,35 @@
                                                         </details>
                                                         <div id="claude-code-feedback"></div>
                                                     </div>
+                                                    {% elif provider.id == 'openai_compatible' %}
+                                                    <form hx-post="/api/settings/api-keys"
+                                                          hx-ext="json-enc"
+                                                          hx-swap="none"
+                                                          hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('OpenAI Compatible endpoint saved'); setTimeout(function(){ window.location.reload(); }, 300); } else { var msg='Failed to save endpoint'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }"
+                                                          class="mt-4 grid gap-4 border-t border-ink-200 pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                                        <input type="hidden" name="provider" value="openai_compatible">
+                                                        <input type="hidden" name="label" value="OpenAI Compatible">
+                                                        <label class="block">
+                                                            <span class="block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Base URL</span>
+                                                            <input name="base_url"
+                                                                   required
+                                                                   autocomplete="off"
+                                                                   spellcheck="false"
+                                                                   placeholder="http://localhost:1234/v1"
+                                                                   class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:border-ink-700">
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">API key <span class="normal-case tracking-normal">optional</span></span>
+                                                            <input type="password"
+                                                                   name="key"
+                                                                   autocomplete="off"
+                                                                   placeholder="sk-..."
+                                                                   class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:border-ink-700">
+                                                        </label>
+                                                        <div class="flex items-end">
+                                                            <button type="submit" class="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-900 underline">Save endpoint</button>
+                                                        </div>
+                                                    </form>
                                                     {% endif %}
                                                 </div>
                                             </div>
@@ -531,7 +560,9 @@
                                         <div class="grid gap-5 sm:grid-cols-2">
                                             <label class="block">
                                                 <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Provider</span>
-                                                <select name="provider" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
+                                                <select name="provider"
+                                                        onchange="this.closest('form').querySelector('input[name=key]').required = this.value !== 'openai_compatible'"
+                                                        class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
                                                     <option value="anthropic">Anthropic</option>
                                                     <option value="openai">OpenAI</option>
                                                     <option value="openai_compatible">OpenAI Compatible</option>
@@ -545,7 +576,7 @@
                                             </label>
                                         </div>
                                         <label class="block">
-                                            <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">API key</span>
+                                            <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">API key <span class="normal-case tracking-normal">optional for OpenAI Compatible</span></span>
                                             <input type="password" name="key" required class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="sk-...">
                                         </label>
                                         <label class="block">
@@ -570,7 +601,9 @@
                                               class="grid gap-4 sm:grid-cols-[1fr_2fr_auto]">
                                             <label class="block">
                                                 <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Provider</span>
-                                                <select name="provider" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
+                                                <select name="provider"
+                                                        onchange="this.closest('form').querySelector('input[name=key]').required = this.value !== 'openai_compatible'"
+                                                        class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
                                                     <option value="anthropic">Anthropic</option>
                                                     <option value="openai">OpenAI</option>
                                                     <option value="openai_compatible">OpenAI Compatible</option>
@@ -579,7 +612,7 @@
                                                 </select>
                                             </label>
                                             <label class="block">
-                                                <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Key to test</span>
+                                                <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Key to test <span class="normal-case tracking-normal">optional for OpenAI Compatible</span></span>
                                                 <input type="password" name="key" required class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="sk-...">
                                             </label>
                                             <label class="block">
