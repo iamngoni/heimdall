@@ -219,8 +219,8 @@
                                 </ol>
                             </section>
 
-                            <section>
-                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+                            <details class="border-y border-ink-200">
+                                <summary class="flex cursor-pointer list-none items-end justify-between gap-4 py-4">
                                     <div>
                                         <p class="section-num">02 · Execution Log</p>
                                         <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Persisted events</h2>
@@ -232,9 +232,10 @@
                                             {% endif %}
                                         </p>
                                     </div>
-                                </div>
+                                    <span class="shrink-0 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400">{{ activities|length }} events</span>
+                                </summary>
 
-                                <ol id="scan-activity-feed" class="divide-y divide-ink-200">
+                                <ol id="scan-activity-feed" class="divide-y divide-ink-200 border-t border-ink-200">
                                     {% for activity in activities %}
                                     <li data-activity-key="{{ activity.key }}" class="py-4">
                                         <div class="flex items-start gap-3">
@@ -255,7 +256,7 @@
                                     </li>
                                     {% endfor %}
                                 </ol>
-                            </section>
+                            </details>
                         </div>
 
                         <aside class="space-y-16">
@@ -294,40 +295,6 @@
                                              class="h-px bg-ink-900 transition-all duration-300"
                                              style="width: {{ current_task.progress_pct or 0 }}%"></div>
                                     </div>
-                                </div>
-                            </section>
-
-                            <section>
-                                <div class="border-b border-ink-200 pb-4">
-                                    <p class="section-num">Agent Trace</p>
-                                    <h2 class="mt-2 text-sm text-ink-900">Tool calls</h2>
-                                    <p class="mt-2 text-sm text-ink-500">Recent sub-operations recorded during the run.</p>
-                                </div>
-
-                                <div id="scan-agent-calls" class="divide-y divide-ink-200">
-                                    {% if agent_calls|length > 0 %}
-                                    {% for call in agent_calls %}
-                                    <div class="py-4">
-                                        <div class="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p class="text-sm text-ink-900">{{ call.label }}</p>
-                                                <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">{{ call.stage|replace("_", " ") }}</p>
-                                            </div>
-                                            <span class="font-mono text-xs text-ink-500">
-                                                {% if call.duration_ms %}{{ call.duration_ms }} ms{% else %}Pending{% endif %}
-                                            </span>
-                                        </div>
-                                        {% if call.error %}
-                                        <p class="mt-2 text-sm text-red-700">{{ call.error }}</p>
-                                        {% endif %}
-                                    </div>
-                                    {% endfor %}
-                                    {% else %}
-                                    <div class="border border-dashed border-ink-200 px-4 py-6 text-center text-sm">
-                                        <p class="text-ink-900">No agent operations yet</p>
-                                        <p class="mt-1 text-ink-400">AI calls will appear here as each pipeline stage runs.</p>
-                                    </div>
-                                    {% endif %}
                                 </div>
                             </section>
 
@@ -448,7 +415,6 @@ window.HeimdallScanPage = {
         this.activityState = document.getElementById('scan-activity-state');
         this.stageList = document.getElementById('scan-stage-list');
         this.activityFeed = document.getElementById('scan-activity-feed');
-        this.agentCalls = document.getElementById('scan-agent-calls');
         this.currentTaskStage = document.getElementById('scan-current-task-stage');
         this.currentTaskTitle = document.getElementById('scan-current-task-title');
         this.currentTaskDetail = document.getElementById('scan-current-task-detail');
@@ -585,7 +551,6 @@ window.HeimdallScanPage = {
         this.renderCurrentTask(snapshot.current_task || {});
         this.renderStages(snapshot.stages || []);
         this.renderActivity(snapshot.activity || []);
-        this.renderAgentCalls(snapshot.agent_calls || []);
 
         if (scan.is_live) {
             this.startPolling();
@@ -807,39 +772,6 @@ window.HeimdallScanPage = {
                         </div>
                     </div>
                 </li>
-            `;
-        }).join('');
-    },
-
-    renderAgentCalls(calls) {
-        if (!calls.length) {
-            this.agentCalls.innerHTML = `
-                <div class="border border-dashed border-ink-200 px-4 py-6 text-center text-sm">
-                    <p class="text-ink-900">No agent operations yet</p>
-                    <p class="mt-1 text-ink-400">AI calls will appear here as each pipeline stage runs.</p>
-                </div>
-            `;
-            return;
-        }
-
-        this.agentCalls.innerHTML = calls.map((call) => {
-            const duration = typeof call.duration_ms === 'number'
-                ? `${call.duration_ms} ms`
-                : 'Pending';
-            const error = call.error
-                ? `<p class="mt-2 text-sm text-red-700">${this.escapeHtml(call.error)}</p>`
-                : '';
-            return `
-                <div class="py-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-sm text-ink-900">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
-                            <p class="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
-                        </div>
-                        <span class="font-mono text-xs text-ink-500">${this.escapeHtml(duration)}</span>
-                    </div>
-                    ${error}
-                </div>
             `;
         }).join('');
     }

@@ -669,11 +669,6 @@ async fn scan_detail_page(
                 "timestamp": scan.updated_at.to_rfc3339(),
             })
         });
-    let agent_calls = live_snapshot
-        .get("agent_calls")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!([]));
-
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
@@ -703,7 +698,6 @@ async fn scan_detail_page(
         stages => minijinja::Value::from_serialize(&stage_values),
         activities => minijinja::Value::from_serialize(&activity_values),
         current_task => minijinja::Value::from_serialize(&current_task),
-        agent_calls => minijinja::Value::from_serialize(&agent_calls),
     };
 
     render_html(&state, "pages/scan.html", &user_theme(&req), ctx)

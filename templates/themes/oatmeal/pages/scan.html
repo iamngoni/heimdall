@@ -259,8 +259,8 @@
                                 </div>
                             </section>
 
-                            <section class="hm-oatmeal-panel p-6">
-                                <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
+                            <details class="hm-oatmeal-panel">
+                                <summary class="flex cursor-pointer list-none items-center justify-between border-b hm-oatmeal-rule px-6 py-5">
                                     <div>
                                         <p class="hm-oatmeal-kicker">03 / Execution Log</p>
                                         <p id="scan-activity-state" class="mt-2 text-sm" style="color:var(--hm-text-600)">
@@ -271,32 +271,34 @@
                                             {% endif %}
                                         </p>
                                     </div>
-                                    <span class="hm-oatmeal-chip">Persisted events</span>
-                                </div>
+                                    <span class="hm-oatmeal-chip">{{ activities|length }} events</span>
+                                </summary>
 
-                                <ol id="scan-activity-feed" class="mt-1">
-                                    {% for activity in activities %}
-                                    <li data-activity-key="{{ activity.key }}"
-                                        class="border-b hm-oatmeal-rule px-3 py-3.5">
-                                        <div class="flex items-start gap-3">
-                                            <span class="hm-oatmeal-dot mt-1.5
-                                                {{ 'hm-oatmeal-dot-positive' if activity.tone == 'success' else
-                                                   'hm-oatmeal-dot-warning' if activity.tone == 'warning' else
-                                                   'hm-oatmeal-dot-danger' if activity.tone == 'error' else
-                                                   'hm-oatmeal-dot-neutral' }}">
-                                            </span>
-                                            <div class="min-w-0 flex-1">
-                                                <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                                                    <p class="text-sm font-semibold" style="color:var(--hm-text-900)">{{ activity.title }}</p>
-                                                    <p class="text-xs" style="color:var(--hm-text-500)">{{ activity.timestamp }}</p>
+                                <div class="px-6 pb-5">
+                                    <ol id="scan-activity-feed" class="mt-1">
+                                        {% for activity in activities %}
+                                        <li data-activity-key="{{ activity.key }}"
+                                            class="border-b hm-oatmeal-rule px-3 py-3.5">
+                                            <div class="flex items-start gap-3">
+                                                <span class="hm-oatmeal-dot mt-1.5
+                                                    {{ 'hm-oatmeal-dot-positive' if activity.tone == 'success' else
+                                                       'hm-oatmeal-dot-warning' if activity.tone == 'warning' else
+                                                       'hm-oatmeal-dot-danger' if activity.tone == 'error' else
+                                                       'hm-oatmeal-dot-neutral' }}">
+                                                </span>
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                                                        <p class="text-sm font-semibold" style="color:var(--hm-text-900)">{{ activity.title }}</p>
+                                                        <p class="text-xs" style="color:var(--hm-text-500)">{{ activity.timestamp }}</p>
+                                                    </div>
+                                                    <p class="mt-1 break-all text-sm" style="color:var(--hm-text-600)">{{ activity.detail }}</p>
                                                 </div>
-                                                <p class="mt-1 break-all text-sm" style="color:var(--hm-text-600)">{{ activity.detail }}</p>
                                             </div>
-                                        </div>
-                                    </li>
-                                    {% endfor %}
-                                </ol>
-                            </section>
+                                        </li>
+                                        {% endfor %}
+                                    </ol>
+                                </div>
+                            </details>
                         </div>
 
                         <aside class="space-y-8">
@@ -337,41 +339,6 @@
                                              class="h-1 rounded-full transition-all duration-300"
                                              style="width: {{ current_task.progress_pct or 0 }}%; background:var(--hm-text-700)"></div>
                                     </div>
-                                </div>
-                            </section>
-
-                            <section class="hm-oatmeal-panel p-6">
-                                <div class="flex items-center justify-between border-b hm-oatmeal-rule pb-3">
-                                    <div>
-                                        <p class="hm-oatmeal-kicker">Agent Trace</p>
-                                        <h2 class="mt-2 text-sm font-semibold" style="color:var(--hm-text-900)">Tool Calls</h2>
-                                    </div>
-                                </div>
-
-                                <div id="scan-agent-calls" class="mt-1">
-                                    {% if agent_calls|length > 0 %}
-                                    {% for call in agent_calls %}
-                                    <div class="border-b hm-oatmeal-rule px-3 py-3">
-                                        <div class="flex items-start justify-between gap-3">
-                                            <div class="min-w-0">
-                                                <p class="truncate text-sm font-semibold" style="color:var(--hm-text-900)">{{ call.label }}</p>
-                                                <p class="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">{{ call.stage|replace("_", " ") }}</p>
-                                            </div>
-                                            <span class="hm-oatmeal-number shrink-0">
-                                                {% if call.duration_ms %}{{ call.duration_ms }} ms{% else %}Pending{% endif %}
-                                            </span>
-                                        </div>
-                                        {% if call.error %}
-                                        <p class="mt-2 text-sm" style="color:var(--hm-danger-text)">{{ call.error }}</p>
-                                        {% endif %}
-                                    </div>
-                                    {% endfor %}
-                                    {% else %}
-                                    <div class="px-3 py-8 text-center text-sm">
-                                        <p class="font-medium" style="color:var(--hm-text-600)">No agent operations yet</p>
-                                        <p class="mt-1" style="color:var(--hm-text-500)">AI calls will appear here as each pipeline stage runs.</p>
-                                    </div>
-                                    {% endif %}
                                 </div>
                             </section>
 
@@ -501,7 +468,6 @@ window.HeimdallScanPage = {
         this.activityState = document.getElementById('scan-activity-state');
         this.stageList = document.getElementById('scan-stage-list');
         this.activityFeed = document.getElementById('scan-activity-feed');
-        this.agentCalls = document.getElementById('scan-agent-calls');
         this.currentTaskStage = document.getElementById('scan-current-task-stage');
         this.currentTaskTitle = document.getElementById('scan-current-task-title');
         this.currentTaskDetail = document.getElementById('scan-current-task-detail');
@@ -638,7 +604,6 @@ window.HeimdallScanPage = {
         this.renderCurrentTask(snapshot.current_task || {});
         this.renderStages(snapshot.stages || []);
         this.renderActivity(snapshot.activity || []);
-        this.renderAgentCalls(snapshot.agent_calls || []);
 
         if (scan.is_live) {
             this.startPolling();
@@ -923,39 +888,6 @@ window.HeimdallScanPage = {
                         </div>
                     </div>
                 </li>
-            `;
-        }).join('');
-    },
-
-    renderAgentCalls(calls) {
-        if (!calls.length) {
-            this.agentCalls.innerHTML = `
-                <div class="px-3 py-8 text-center text-sm">
-                    <p class="font-medium" style="color:var(--hm-text-600)">No agent operations yet</p>
-                    <p class="mt-1" style="color:var(--hm-text-500)">AI calls will appear here as each pipeline stage runs.</p>
-                </div>
-            `;
-            return;
-        }
-
-        this.agentCalls.innerHTML = calls.map((call) => {
-            const duration = typeof call.duration_ms === 'number'
-                ? `${call.duration_ms} ms`
-                : 'Pending';
-            const error = call.error
-                ? `<p class="mt-2 text-sm" style="color:var(--hm-danger-text)">${this.escapeHtml(call.error)}</p>`
-                : '';
-            return `
-                <div class="border-b hm-oatmeal-rule px-3 py-3">
-                    <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                            <p class="truncate text-sm font-semibold" style="color:var(--hm-text-900)">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
-                            <p class="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
-                        </div>
-                        <span class="hm-oatmeal-number shrink-0">${this.escapeHtml(duration)}</span>
-                    </div>
-                    ${error}
-                </div>
             `;
         }).join('');
     }

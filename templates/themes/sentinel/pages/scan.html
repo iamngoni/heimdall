@@ -248,8 +248,8 @@
                                 </div>
                             </section>
 
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div class="flex items-center justify-between gap-4">
+                            <details class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-5">
                                     <div>
                                         <h2 class="text-sm font-semibold text-slate-900">Execution Log</h2>
                                         <p id="scan-activity-state" class="mt-1 text-sm text-slate-500">
@@ -260,32 +260,34 @@
                                             {% endif %}
                                         </p>
                                     </div>
-                                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Persisted events</span>
-                                </div>
+                                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">{{ activities|length }} events</span>
+                                </summary>
 
-                                <ol id="scan-activity-feed" class="mt-4 space-y-3">
-                                    {% for activity in activities %}
-                                    <li data-activity-key="{{ activity.key }}"
-                                        class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                                        <div class="flex items-start gap-3">
-                                            <span class="mt-1 h-2.5 w-2.5 rounded-full
-                                                {{ 'bg-emerald-500' if activity.tone == 'success' else
-                                                   'bg-amber-500' if activity.tone == 'warning' else
-                                                   'bg-blue-500' if activity.tone == 'active' else
-                                                   'bg-slate-400' }}">
-                                            </span>
-                                            <div class="min-w-0 flex-1">
-                                                <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                                                    <p class="text-sm font-semibold text-slate-900">{{ activity.title }}</p>
-                                                    <p class="text-xs text-slate-400">{{ activity.timestamp }}</p>
+                                <div class="border-t border-slate-200 p-5 pt-4">
+                                    <ol id="scan-activity-feed" class="space-y-3">
+                                        {% for activity in activities %}
+                                        <li data-activity-key="{{ activity.key }}"
+                                            class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                                            <div class="flex items-start gap-3">
+                                                <span class="mt-1 h-2.5 w-2.5 rounded-full
+                                                    {{ 'bg-emerald-500' if activity.tone == 'success' else
+                                                       'bg-amber-500' if activity.tone == 'warning' else
+                                                       'bg-blue-500' if activity.tone == 'active' else
+                                                       'bg-slate-400' }}">
+                                                </span>
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                                                        <p class="text-sm font-semibold text-slate-900">{{ activity.title }}</p>
+                                                        <p class="text-xs text-slate-400">{{ activity.timestamp }}</p>
+                                                    </div>
+                                                    <p class="mt-1 break-all text-sm text-slate-500">{{ activity.detail }}</p>
                                                 </div>
-                                                <p class="mt-1 break-all text-sm text-slate-500">{{ activity.detail }}</p>
                                             </div>
-                                        </div>
-                                    </li>
-                                    {% endfor %}
-                                </ol>
-                            </section>
+                                        </li>
+                                        {% endfor %}
+                                    </ol>
+                                </div>
+                            </details>
                         </div>
 
                         <aside class="space-y-6">
@@ -328,39 +330,6 @@
                                              class="h-2 rounded-full bg-blue-500 transition-all duration-300"
                                              style="width: {{ current_task.progress_pct or 0 }}%"></div>
                                     </div>
-                                </div>
-                            </section>
-
-                            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <div>
-                                    <h2 class="text-sm font-semibold text-slate-900">Agent Trace</h2>
-                                    <p class="mt-1 text-sm text-slate-500">Recent tool calls and sub-operations recorded during the run.</p>
-                                </div>
-
-                                <div id="scan-agent-calls" class="mt-4 space-y-3">
-                                    {% if agent_calls|length > 0 %}
-                                    {% for call in agent_calls %}
-                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                        <div class="flex items-start justify-between gap-3">
-                                            <div>
-                                                <p class="text-sm font-semibold text-slate-900">{{ call.label }}</p>
-                                                <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">{{ call.stage|replace("_", " ") }}</p>
-                                            </div>
-                                            <span class="text-xs font-semibold text-slate-500">
-                                                {% if call.duration_ms %}{{ call.duration_ms }} ms{% else %}Pending{% endif %}
-                                            </span>
-                                        </div>
-                                        {% if call.error %}
-                                        <p class="mt-2 text-sm text-rose-600">{{ call.error }}</p>
-                                        {% endif %}
-                                    </div>
-                                    {% endfor %}
-                                    {% else %}
-                                    <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
-                                        <p class="font-medium text-slate-600">No agent operations yet</p>
-                                        <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
-                                    </div>
-                                    {% endif %}
                                 </div>
                             </section>
 
@@ -477,7 +446,6 @@ window.HeimdallScanPage = {
         this.activityState = document.getElementById('scan-activity-state');
         this.stageList = document.getElementById('scan-stage-list');
         this.activityFeed = document.getElementById('scan-activity-feed');
-        this.agentCalls = document.getElementById('scan-agent-calls');
         this.currentTaskStage = document.getElementById('scan-current-task-stage');
         this.currentTaskTitle = document.getElementById('scan-current-task-title');
         this.currentTaskDetail = document.getElementById('scan-current-task-detail');
@@ -614,7 +582,6 @@ window.HeimdallScanPage = {
         this.renderCurrentTask(snapshot.current_task || {});
         this.renderStages(snapshot.stages || []);
         this.renderActivity(snapshot.activity || []);
-        this.renderAgentCalls(snapshot.agent_calls || []);
 
         if (scan.is_live) {
             this.startPolling();
@@ -914,39 +881,6 @@ window.HeimdallScanPage = {
                         </div>
                     </div>
                 </li>
-            `;
-        }).join('');
-    },
-
-    renderAgentCalls(calls) {
-        if (!calls.length) {
-            this.agentCalls.innerHTML = `
-                <div class="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm">
-                    <p class="font-medium text-slate-600">No agent operations yet</p>
-                    <p class="mt-1 text-slate-400">AI calls will appear here as each pipeline stage runs.</p>
-                </div>
-            `;
-            return;
-        }
-
-        this.agentCalls.innerHTML = calls.map((call) => {
-            const duration = typeof call.duration_ms === 'number'
-                ? `${call.duration_ms} ms`
-                : 'Pending';
-            const error = call.error
-                ? `<p class="mt-2 text-sm text-rose-600">${this.escapeHtml(call.error)}</p>`
-                : '';
-            return `
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-sm font-semibold text-slate-900">${this.escapeHtml(call.label || this.humanize(call.tool_name))}</p>
-                            <p class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-400">${this.escapeHtml(this.humanize(call.stage || 'operation'))}</p>
-                        </div>
-                        <span class="text-xs font-semibold text-slate-500">${this.escapeHtml(duration)}</span>
-                    </div>
-                    ${error}
-                </div>
             `;
         }).join('');
     }

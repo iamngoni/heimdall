@@ -787,24 +787,6 @@ pub async fn build_scan_live_snapshot(
             })
         });
 
-    let agent_calls = db
-        .list_agent_tool_calls_by_scan(scan_id, 12)
-        .await?
-        .into_iter()
-        .map(|call| {
-            serde_json::json!({
-                "id": call.id,
-                "stage": call.stage,
-                "tool_name": call.tool_name,
-                "label": humanize_tool_name(&call.tool_name),
-                "duration_ms": call.duration_ms,
-                "error": call.error,
-                "tone": if call.error.is_some() { "error" } else { "active" },
-                "created_at": call.created_at.to_rfc3339(),
-            })
-        })
-        .collect::<Vec<_>>();
-
     Ok(Some(serde_json::json!({
         "scan": {
             "id": scan.id,
@@ -824,7 +806,6 @@ pub async fn build_scan_live_snapshot(
         "current_task": current_task,
         "stages": stage_values,
         "activity": activity,
-        "agent_calls": agent_calls,
     })))
 }
 
@@ -860,17 +841,6 @@ fn humanize_slug(value: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-fn humanize_tool_name(tool_name: &str) -> &'static str {
-    match tool_name {
-        "llm_completion" => "LLM completion",
-        "read_file" => "Read file",
-        "search_code" => "Search code",
-        "get_callers" => "Trace callers",
-        "get_dependencies" => "Trace dependencies",
-        _ => "Tool call",
-    }
 }
 
 fn activity_tone(status: Option<&str>, event_type: &str) -> &'static str {
