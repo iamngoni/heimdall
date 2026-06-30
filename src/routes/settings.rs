@@ -20,7 +20,7 @@ use crate::ai::ProviderKind;
 use crate::ai::types::{CompletionRequest, Message};
 use crate::middleware::auth::AuthenticatedUser;
 use crate::models::{ApiKey, ApiResponse, User};
-use crate::state::{AppState, ClaudeCodePendingLogin, CodexPendingLogin};
+use crate::state::{AppState, ClaudeCodePendingLogin, CodexPendingLogin, XaiOAuthPendingLogin};
 
 /// Pending Codex logins are dropped after this many minutes regardless of
 /// whether the user completed the OAuth flow.
@@ -29,6 +29,9 @@ const CODEX_LOGIN_TTL_MINUTES: i64 = 5;
 /// approve the OAuth grant on claude.ai and paste the code back within this
 /// window.
 const CLAUDE_CODE_LOGIN_TTL_MINUTES: i64 = 10;
+/// Pending Grok Subscription logins use the fixed xAI loopback callback and
+/// should be completed promptly after the browser approval.
+const XAI_OAUTH_LOGIN_TTL_MINUTES: i64 = 10;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -44,6 +47,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
             .route("/codex/authorize", web::get().to(codex_authorize))
+            .route("/xai-oauth/authorize", web::get().to(xai_oauth_authorize))
             .route(
                 "/claude-code/authorize",
                 web::get().to(claude_code_authorize),
@@ -96,11 +100,13 @@ struct UpdateThemeRequest {
 struct UpdateAiRoutingForm {
     preferred_provider: String,
     fallbacks_enabled: Option<String>,
-    /// CSV of provider ids in priority order, e.g. "codex,openai,anthropic,ollama".
+    /// CSV of provider ids in priority order, e.g. "codex,xai_oauth,xai,openai,anthropic,ollama".
     fallback_order: Option<String>,
     model_anthropic: Option<String>,
     model_claude_code: Option<String>,
     model_codex: Option<String>,
+    model_xai_oauth: Option<String>,
+    model_xai: Option<String>,
     model_openai: Option<String>,
     model_ollama: Option<String>,
 }
@@ -116,6 +122,8 @@ struct SettingsResponse {
     has_anthropic: bool,
     has_claude_code: bool,
     has_codex: bool,
+    has_xai_oauth: bool,
+    has_xai: bool,
     has_openai: bool,
     has_ollama: bool,
     default_model: String,
@@ -145,10 +153,13 @@ struct TestConnectionResponse {
 struct AiStatusResponse {
     env_anthropic: bool,
     env_openai: bool,
+    env_xai: bool,
     env_ollama: bool,
     stored_anthropic: bool,
     stored_claude_code: bool,
     stored_codex: bool,
+    stored_xai_oauth: bool,
+    stored_xai: bool,
     stored_openai: bool,
     stored_ollama: bool,
     default_model: String,
@@ -311,7 +322,8 @@ fn provider_configured(
 
     match provider {
         ProviderKind::Anthropic => ai_cfg.anthropic_api_key.is_some(),
-        ProviderKind::ClaudeCode | ProviderKind::Codex => false,
+        ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
+        ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
@@ -411,6 +423,8 @@ fn provider_models_from_form(body: &UpdateAiRoutingForm) -> BTreeMap<ProviderKin
         (ProviderKind::Anthropic, body.model_anthropic.as_deref()),
         (ProviderKind::ClaudeCode, body.model_claude_code.as_deref()),
         (ProviderKind::Codex, body.model_codex.as_deref()),
+        (ProviderKind::XaiOAuth, body.model_xai_oauth.as_deref()),
+        (ProviderKind::Xai, body.model_xai.as_deref()),
         (ProviderKind::OpenAi, body.model_openai.as_deref()),
         (ProviderKind::Ollama, body.model_ollama.as_deref()),
     ];
@@ -451,6 +465,8 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
     let has_anthropic = provider_configured(ai_cfg, &api_keys, ProviderKind::Anthropic);
     let has_claude_code = provider_configured(ai_cfg, &api_keys, ProviderKind::ClaudeCode);
     let has_codex = provider_configured(ai_cfg, &api_keys, ProviderKind::Codex);
+    let has_xai_oauth = provider_configured(ai_cfg, &api_keys, ProviderKind::XaiOAuth);
+    let has_xai = provider_configured(ai_cfg, &api_keys, ProviderKind::Xai);
     let has_openai = provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
     let has_ollama = provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
 
@@ -463,6 +479,8 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
         has_anthropic,
         has_claude_code,
         has_codex,
+        has_xai_oauth,
+        has_xai,
         has_openai,
         has_ollama,
         default_model: ai_cfg.default_model.clone(),
@@ -747,6 +765,142 @@ pub async fn codex_callback(
     }
 }
 
+/// GET /settings/xai-oauth/authorize — start Grok OAuth for SuperGrok / X Premium+ access.
+async fn xai_oauth_authorize(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let return_url = settings_return_url(&req);
+
+    let request = match ai::xai_oauth::prepare_xai_oauth_authorization().await {
+        Ok(request) => request,
+        Err(error) => {
+            log::error!("Failed to start Grok OAuth authorization: {error:#}");
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to start Grok OAuth authorization: {error:#}"),
+            ));
+        }
+    };
+
+    let pending = XaiOAuthPendingLogin {
+        user_id: user.id,
+        code_verifier: request.code_verifier,
+        code_challenge: request.code_challenge,
+        token_endpoint: request.token_endpoint,
+        return_url,
+        expires_at: Utc::now() + chrono::Duration::minutes(XAI_OAUTH_LOGIN_TTL_MINUTES),
+    };
+
+    {
+        let mut logins = state.xai_oauth_logins.lock().await;
+        let now = Utc::now();
+        logins.retain(|_, entry| entry.expires_at > now);
+        logins.insert(request.state.clone(), pending);
+    }
+
+    HttpResponse::Found()
+        .insert_header(("Location", request.authorize_url))
+        .finish()
+}
+
+#[derive(Deserialize)]
+pub struct XaiOAuthCallbackQuery {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+    pub error_description: Option<String>,
+}
+
+/// GET /callback — completes the Grok Subscription OAuth flow. The xAI/Grok
+/// OAuth client currently uses `http://127.0.0.1:56121/callback`.
+pub async fn xai_oauth_callback(
+    state: web::Data<AppState>,
+    query: web::Query<XaiOAuthCallbackQuery>,
+) -> HttpResponse {
+    let fallback_return = "/settings#settings-providers";
+
+    if let Some(error) = query.error.as_deref() {
+        let description = query
+            .error_description
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .unwrap_or(error);
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::xai_oauth::login_error_html(
+                &format!("Grok authorization failed: {description}"),
+                fallback_return,
+            ));
+    }
+
+    let Some(state_param) = query.state.as_deref().filter(|s| !s.is_empty()) else {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::xai_oauth::login_error_html(
+                "Grok callback was missing the OAuth state parameter.",
+                fallback_return,
+            ));
+    };
+
+    let Some(code) = query.code.as_deref().filter(|s| !s.is_empty()) else {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::xai_oauth::login_error_html(
+                "Grok callback did not include an authorization code.",
+                fallback_return,
+            ));
+    };
+
+    let pending = {
+        let mut logins = state.xai_oauth_logins.lock().await;
+        let now = Utc::now();
+        logins.retain(|_, entry| entry.expires_at > now);
+        logins.remove(state_param)
+    };
+
+    let Some(pending) = pending else {
+        return HttpResponse::BadRequest()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::xai_oauth::login_error_html(
+                "Grok login session expired or was not initiated by this server. \
+                 Please retry the connect flow from Settings.",
+                fallback_return,
+            ));
+    };
+
+    match ai::xai_oauth::complete_xai_oauth_login(
+        state.db.clone(),
+        state.encryption_key,
+        pending.user_id,
+        &pending.code_verifier,
+        &pending.code_challenge,
+        &pending.token_endpoint,
+        code,
+    )
+    .await
+    {
+        Ok(tokens) => HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(ai::xai_oauth::login_success_html(
+                &tokens,
+                &pending.return_url,
+            )),
+        Err(error) => {
+            log::error!("Grok OAuth callback failed: {error:#}");
+            HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(ai::xai_oauth::login_error_html(
+                    &format!("{error:#}"),
+                    &pending.return_url,
+                ))
+        }
+    }
+}
+
 /// GET /settings/claude-code/authorize — start the Claude.ai OAuth flow for
 /// subscription-backed Claude Code access. Stores a pending login keyed by
 /// the OAuth `state` and redirects the user to claude.ai. The user approves
@@ -922,11 +1076,11 @@ async fn create_api_key(
     body: web::Json<CreateApiKeyRequest>,
 ) -> HttpResponse {
     let provider = body.provider.to_lowercase();
-    if !["anthropic", "openai", "ollama"].contains(&provider.as_str()) {
+    if !["anthropic", "openai", "xai", "ollama"].contains(&provider.as_str()) {
         return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
             400,
             format!(
-                "Unsupported provider: {}. Must be anthropic, openai, or ollama.",
+                "Unsupported provider: {}. Must be anthropic, openai, xai, or ollama.",
                 provider
             ),
         ));
@@ -1028,12 +1182,17 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
     let test_provider: Box<dyn ai::ModelProvider> = match provider.as_str() {
         "anthropic" => Box::new(ai::claude::ClaudeProvider::new(body.key.clone())),
         "openai" => Box::new(ai::openai::OpenAiProvider::new(body.key.clone())),
+        "xai" => Box::new(
+            ai::openai::OpenAiProvider::new(body.key.clone())
+                .with_base_url("https://api.x.ai".to_string())
+                .with_provider_identity("xai", "xAI"),
+        ),
         "ollama" => Box::new(ai::ollama::OllamaProvider::new(body.key.clone())),
         _ => {
             return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
                 400,
                 format!(
-                    "Unsupported provider: {}. Must be anthropic, openai, or ollama.",
+                    "Unsupported provider: {}. Must be anthropic, openai, xai, or ollama.",
                     provider
                 ),
             ));
@@ -1043,6 +1202,7 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
     let model = match provider.as_str() {
         "anthropic" => "claude-sonnet-4-20250514".to_string(),
         "openai" => "gpt-4o-mini".to_string(),
+        "xai" => "grok-4.3".to_string(),
         "ollama" => "llama3.2".to_string(),
         _ => unreachable!(),
     };
@@ -1111,6 +1271,8 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
     let stored_anthropic = stored_provider_configured(&api_keys, ProviderKind::Anthropic);
     let stored_claude_code = stored_provider_configured(&api_keys, ProviderKind::ClaudeCode);
     let stored_codex = stored_provider_configured(&api_keys, ProviderKind::Codex);
+    let stored_xai_oauth = stored_provider_configured(&api_keys, ProviderKind::XaiOAuth);
+    let stored_xai = stored_provider_configured(&api_keys, ProviderKind::Xai);
     let stored_openai = stored_provider_configured(&api_keys, ProviderKind::OpenAi);
     let stored_ollama = stored_provider_configured(&api_keys, ProviderKind::Ollama);
 
@@ -1122,10 +1284,13 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
     let resp = AiStatusResponse {
         env_anthropic: ai_cfg.anthropic_api_key.is_some(),
         env_openai: ai_cfg.openai_api_key.is_some(),
+        env_xai: ai_cfg.xai_api_key.is_some(),
         env_ollama: ai_cfg.ollama_url.is_some(),
         stored_anthropic,
         stored_claude_code,
         stored_codex,
+        stored_xai_oauth,
+        stored_xai,
         stored_openai,
         stored_ollama,
         default_model: ai_cfg.default_model.clone(),

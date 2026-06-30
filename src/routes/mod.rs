@@ -34,6 +34,11 @@ pub fn init(cfg: &mut ServiceConfig) {
     // pending login stored at /api/settings/codex/authorize time.
     cfg.route("/auth/callback", web::get().to(settings::codex_callback));
 
+    // xAI/Grok OAuth redirect target. The Grok client is registered for
+    // http://127.0.0.1:56121/callback and is matched to a pending Settings
+    // login by the OAuth `state` parameter.
+    cfg.route("/callback", web::get().to(settings::xai_oauth_callback));
+
     // Rate limiter for auth endpoints: ~10 requests per 60 seconds per IP
     // replenish_interval_ms = 60_000 / 10 = 6_000ms (one token every 6 seconds)
     let auth_rate_limit = GovernorConfigBuilder::default()

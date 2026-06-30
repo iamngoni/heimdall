@@ -100,6 +100,7 @@ pub struct DatabaseConfig {
 pub struct AiConfig {
     pub anthropic_api_key: Option<String>,
     pub openai_api_key: Option<String>,
+    pub xai_api_key: Option<String>,
     pub ollama_url: Option<String>,
     pub default_model: String,
 }
@@ -219,6 +220,7 @@ impl AiConfig {
         AiConfig {
             anthropic_api_key: env_nonempty("ANTHROPIC_API_KEY"),
             openai_api_key: env_nonempty("OPENAI_API_KEY"),
+            xai_api_key: env_nonempty("XAI_API_KEY"),
             ollama_url: env_nonempty("OLLAMA_URL"),
             default_model: env_nonempty_or("DEFAULT_AI_MODEL", "claude-sonnet-4-20250514"),
         }
@@ -228,6 +230,7 @@ impl AiConfig {
     pub fn has_provider(&self) -> bool {
         self.anthropic_api_key.is_some()
             || self.openai_api_key.is_some()
+            || self.xai_api_key.is_some()
             || self.ollama_url.is_some()
     }
 }

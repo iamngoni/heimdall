@@ -300,7 +300,8 @@ impl CodexProvider {
             )));
         }
 
-        parse_responses_sse(&response_text, request.model).map_err(CodexRequestError::Other)
+        parse_responses_sse(&response_text, request.model, "codex")
+            .map_err(CodexRequestError::Other)
     }
 }
 
@@ -513,7 +514,7 @@ fn generate_login_state() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn build_responses_body(request: &CompletionRequest) -> Value {
+pub(crate) fn build_responses_body(request: &CompletionRequest) -> Value {
     let instructions = request
         .messages
         .iter()
@@ -566,13 +567,10 @@ fn build_responses_body(request: &CompletionRequest) -> Value {
         })
         .unwrap_or_default();
 
-    json!({
+    let mut body = json!({
         "model": request.model.as_str(),
         "instructions": instructions,
         "input": input,
-        "tools": tools,
-        "tool_choice": "auto",
-        "parallel_tool_calls": true,
         "reasoning": null,
         "store": false,
         "stream": true,
@@ -580,10 +578,22 @@ fn build_responses_body(request: &CompletionRequest) -> Value {
         "client_metadata": {
             "application": "heimdall",
         },
-    })
+    });
+
+    if !tools.is_empty() {
+        body["tools"] = json!(tools);
+        body["tool_choice"] = json!("auto");
+        body["parallel_tool_calls"] = json!(true);
+    }
+
+    body
 }
 
-fn parse_responses_sse(body: &str, model: String) -> HeimdallResult<CompletionResponse> {
+pub(crate) fn parse_responses_sse(
+    body: &str,
+    model: String,
+    provider: &str,
+) -> HeimdallResult<CompletionResponse> {
     let mut content = String::new();
     let mut tool_calls = Vec::new();
     let mut usage = TokenUsage {
@@ -621,7 +631,7 @@ fn parse_responses_sse(body: &str, model: String) -> HeimdallResult<CompletionRe
         tool_calls,
         stop_reason,
         usage,
-        provider: "codex".to_string(),
+        provider: provider.to_string(),
         model,
     })
 }
@@ -841,12 +851,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn responses_body_omits_tool_choice_without_tools() {
+        let request = CompletionRequest {
+            model: "grok-build-0.1".to_string(),
+            messages: vec![crate::ai::types::Message {
+                role: "user".to_string(),
+                content: "summarize this".to_string(),
+            }],
+            max_tokens: Some(128),
+            temperature: None,
+            tools: None,
+        };
+
+        let body = build_responses_body(&request);
+
+        assert!(body.get("tools").is_none());
+        assert!(body.get("tool_choice").is_none());
+        assert!(body.get("parallel_tool_calls").is_none());
+    }
+
+    #[test]
     fn parses_responses_sse_text_and_tool_calls() {
         let sse = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n\
                    data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"inspect\",\"arguments\":\"{\\\"path\\\":\\\"Cargo.toml\\\"}\"}}\n\n\
                    data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"total_tokens\":7}}}\n\n";
 
-        let response = parse_responses_sse(sse, "gpt-5.4".to_string()).unwrap();
+        let response = parse_responses_sse(sse, "gpt-5.4".to_string(), "codex").unwrap();
 
         assert_eq!(response.content, "hello");
         assert_eq!(response.stop_reason, StopReason::ToolUse);

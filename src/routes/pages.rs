@@ -1081,10 +1081,17 @@ async fn settings_page(
     let has_anthropic = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Anthropic);
     let has_claude_code = page_provider_configured(ai_cfg, &api_keys, ProviderKind::ClaudeCode);
     let has_codex = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Codex);
+    let has_xai_oauth = page_provider_configured(ai_cfg, &api_keys, ProviderKind::XaiOAuth);
+    let has_xai = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Xai);
     let has_openai = page_provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAi);
     let has_ollama = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
-    let has_any_provider =
-        has_anthropic || has_claude_code || has_codex || has_openai || has_ollama;
+    let has_any_provider = has_anthropic
+        || has_claude_code
+        || has_codex
+        || has_xai_oauth
+        || has_xai
+        || has_openai
+        || has_ollama;
     let preferred_provider =
         page_effective_preferred_ai_provider(db_user.as_ref(), ai_cfg, &api_keys);
     let fallback_order =
@@ -1126,6 +1133,8 @@ async fn settings_page(
             "has_anthropic": has_anthropic,
             "has_claude_code": has_claude_code,
             "has_codex": has_codex,
+            "has_xai_oauth": has_xai_oauth,
+            "has_xai": has_xai,
             "has_openai": has_openai,
             "has_ollama": has_ollama,
             "has_any_provider": has_any_provider,
@@ -1162,7 +1171,8 @@ fn page_provider_configured(
 
     match provider {
         ProviderKind::Anthropic => ai_cfg.anthropic_api_key.is_some(),
-        ProviderKind::ClaudeCode | ProviderKind::Codex => false,
+        ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
+        ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }

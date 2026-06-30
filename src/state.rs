@@ -33,6 +33,18 @@ pub struct CodexPendingLogin {
     pub expires_at: DateTime<Utc>,
 }
 
+/// In-flight Grok Subscription OAuth login awaiting the fixed loopback
+/// callback on `http://127.0.0.1:56121/callback`.
+#[derive(Clone, Debug)]
+pub struct XaiOAuthPendingLogin {
+    pub user_id: Uuid,
+    pub code_verifier: String,
+    pub code_challenge: String,
+    pub token_endpoint: String,
+    pub return_url: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 /// In-flight Claude Code (Claude.ai subscription) OAuth login awaiting the
 /// user to paste back the authorization code from
 /// `console.anthropic.com/oauth/code/callback`. Keyed by the OAuth `state`
@@ -116,6 +128,8 @@ pub struct AppState {
     pub codex_callback_port: u16,
     /// Pending Codex OAuth logins awaiting their redirect callback.
     pub codex_logins: Arc<Mutex<HashMap<String, CodexPendingLogin>>>,
+    /// Pending Grok Subscription OAuth logins awaiting their loopback callback.
+    pub xai_oauth_logins: Arc<Mutex<HashMap<String, XaiOAuthPendingLogin>>>,
     /// Pending Claude Code OAuth logins awaiting the user to paste back the
     /// `code#state` blob from the Anthropic console redirect page.
     pub claude_code_logins: Arc<Mutex<HashMap<String, ClaudeCodePendingLogin>>>,
@@ -155,6 +169,7 @@ impl AppState {
             worker_enabled,
             codex_callback_port,
             codex_logins: Arc::new(Mutex::new(HashMap::new())),
+            xai_oauth_logins: Arc::new(Mutex::new(HashMap::new())),
             claude_code_logins: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -163,7 +178,7 @@ impl AppState {
     pub fn require_ai(&self) -> anyhow::Result<&dyn ModelProvider> {
         self.ai.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
-                "No AI provider configured. Connect Claude Code or Codex in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OLLAMA_URL."
+                "No AI provider configured. Connect Claude Code, Codex, or Grok Subscription in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, or OLLAMA_URL."
             )
         })
     }
@@ -176,7 +191,7 @@ impl AppState {
 
         if candidates.is_empty() {
             anyhow::bail!(
-                "No AI provider configured. Connect Claude Code, Codex, or add an Anthropic, OpenAI, or Ollama provider in Settings, or configure server env vars."
+                "No AI provider configured. Connect Claude Code, Codex, or add an Anthropic, OpenAI, Grok, or Ollama provider in Settings, or configure server env vars."
             );
         }
 
@@ -262,6 +277,14 @@ impl AppState {
             ProviderKind::Codex => Box::new(ai::codex::CodexProvider::with_persistence(
                 secret,
                 ai::codex::CodexTokenPersistence {
+                    db: Arc::clone(&self.db),
+                    api_key_id: api_key.id,
+                    encryption_key: self.encryption_key,
+                },
+            )?),
+            ProviderKind::XaiOAuth => Box::new(ai::xai_oauth::XaiOAuthProvider::with_persistence(
+                secret,
+                ai::xai_oauth::XaiOAuthTokenPersistence {
                     db: Arc::clone(&self.db),
                     api_key_id: api_key.id,
                     encryption_key: self.encryption_key,
@@ -399,7 +422,8 @@ fn runtime_source_for_provider(
 fn env_credential_for_provider(config: &AiConfig, provider_kind: ProviderKind) -> Option<String> {
     match provider_kind {
         ProviderKind::Anthropic => config.anthropic_api_key.clone(),
-        ProviderKind::Codex | ProviderKind::ClaudeCode => None,
+        ProviderKind::Codex | ProviderKind::ClaudeCode | ProviderKind::XaiOAuth => None,
+        ProviderKind::Xai => config.xai_api_key.clone(),
         ProviderKind::OpenAi => config.openai_api_key.clone(),
         ProviderKind::Ollama => config.ollama_url.clone(),
     }
@@ -414,12 +438,14 @@ mod tests {
     fn ai_config(
         anthropic_api_key: Option<&str>,
         openai_api_key: Option<&str>,
+        xai_api_key: Option<&str>,
         ollama_url: Option<&str>,
         default_model: &str,
     ) -> AiConfig {
         AiConfig {
             anthropic_api_key: anthropic_api_key.map(str::to_string),
             openai_api_key: openai_api_key.map(str::to_string),
+            xai_api_key: xai_api_key.map(str::to_string),
             ollama_url: ollama_url.map(str::to_string),
             default_model: default_model.to_string(),
         }
@@ -443,7 +469,13 @@ mod tests {
 
     #[test]
     fn runtime_plan_uses_only_primary_provider_when_fallbacks_disabled() {
-        let config = ai_config(None, Some("sk-openai"), None, "claude-sonnet-4-20250514");
+        let config = ai_config(
+            None,
+            Some("sk-openai"),
+            None,
+            None,
+            "claude-sonnet-4-20250514",
+        );
         let stored_keys = vec![stored_key("anthropic")];
         let preferences = AiRoutingPreferences {
             preferred_provider: None,
@@ -462,7 +494,13 @@ mod tests {
 
     #[test]
     fn runtime_plan_prefers_user_selected_provider() {
-        let config = ai_config(None, Some("sk-openai"), None, "claude-sonnet-4-20250514");
+        let config = ai_config(
+            None,
+            Some("sk-openai"),
+            None,
+            None,
+            "claude-sonnet-4-20250514",
+        );
         let stored_keys = vec![stored_key("anthropic")];
         let preferences = AiRoutingPreferences {
             preferred_provider: Some(ProviderKind::OpenAi),
@@ -484,6 +522,7 @@ mod tests {
         let config = ai_config(
             None,
             Some("sk-openai"),
+            None,
             Some("http://localhost:11434"),
             "gpt-4o",
         );
@@ -513,7 +552,7 @@ mod tests {
 
     #[test]
     fn runtime_plan_ignores_unconfigured_preferred_provider() {
-        let config = ai_config(None, Some("sk-openai"), None, "claude-3-7-sonnet");
+        let config = ai_config(None, Some("sk-openai"), None, None, "claude-3-7-sonnet");
         let stored_keys = Vec::new();
         let preferences = AiRoutingPreferences {
             preferred_provider: Some(ProviderKind::Anthropic),
@@ -531,10 +570,30 @@ mod tests {
     }
 
     #[test]
+    fn runtime_plan_uses_xai_env_provider_for_grok_model() {
+        let config = ai_config(None, None, Some("xai-env"), None, "grok-build-0.1");
+        let stored_keys = Vec::new();
+        let preferences = AiRoutingPreferences {
+            preferred_provider: None,
+            fallbacks_enabled: false,
+            fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
+        };
+
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
+
+        assert_eq!(
+            plan,
+            vec![(ProviderKind::Xai, RuntimeProviderSource::Environment)]
+        );
+    }
+
+    #[test]
     fn runtime_plan_prefers_stored_key_over_env_for_same_provider() {
         let config = ai_config(
             Some("sk-ant-env"),
             Some("sk-openai"),
+            None,
             None,
             "claude-3-7-sonnet",
         );

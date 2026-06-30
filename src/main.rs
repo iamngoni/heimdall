@@ -45,6 +45,14 @@ fn bind_codex_callback_listener() -> std::io::Result<TcpListener> {
     }))
 }
 
+/// Bind the xAI/Grok OAuth loopback callback listener. The Grok OAuth client
+/// uses `http://127.0.0.1:56121/callback` as its loopback redirect target.
+fn bind_xai_oauth_callback_listener() -> std::io::Result<TcpListener> {
+    let bind_host =
+        std::env::var("XAI_OAUTH_CALLBACK_BIND_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    TcpListener::bind((bind_host.as_str(), ai::xai_oauth::XAI_OAUTH_CALLBACK_PORT))
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
@@ -107,6 +115,13 @@ async fn main() -> std::io::Result<()> {
     info!(
         "Codex OAuth callback bound on 127.0.0.1:{}",
         codex_callback_port
+    );
+    let xai_oauth_callback_listener = bind_xai_oauth_callback_listener()?;
+    let xai_oauth_callback_addr = xai_oauth_callback_listener.local_addr()?;
+    info!(
+        "Grok OAuth callback bound on {}:{}",
+        xai_oauth_callback_addr.ip(),
+        xai_oauth_callback_addr.port()
     );
 
     let app_state = web::Data::new(state::AppState::init(
@@ -188,6 +203,7 @@ async fn main() -> std::io::Result<()> {
             .configure(routes::init)
     })
     .listen(codex_callback_listener)?
+    .listen(xai_oauth_callback_listener)?
     .bind((host.as_str(), port))?
     .run()
     .await

@@ -7,7 +7,7 @@
 {% set breadcrumb_parent = "Settings" %}
 {% set breadcrumb_current = none %}
 {% set vcs_connected = (1 if integrations.github.connected else 0) + (1 if integrations.gitlab.connected else 0) + (1 if integrations.bitbucket.connected else 0) %}
-{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
+{% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_xai_oauth else 0) + (1 if ai_config.has_xai else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
 <div class="min-h-screen" style="color:var(--hm-text-900)">
@@ -54,7 +54,7 @@
                             {"id": "profile", "label": "Profile"},
                             {"id": "appearance", "label": "Appearance"},
                             {"id": "integrations", "label": "Integrations", "count": vcs_connected, "total": 3},
-                            {"id": "providers", "label": "AI Providers", "count": ai_connected, "total": 4},
+                            {"id": "providers", "label": "AI Providers", "count": ai_connected, "total": 7},
                             {"id": "keys", "label": "API Keys"},
                             {"id": "security", "label": "Security"}
                         ] %}
@@ -304,14 +304,13 @@
                                 {"id": "claude_code", "label": "Claude Code", "blurb": "Claude models billed against your Claude.ai Pro/Max subscription.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_claude_code, "model": ai_config.provider_models.claude_code},
                                 {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
                                 {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
+                                {"id": "xai_oauth", "label": "Grok Subscription", "blurb": "Grok models through SuperGrok or X Premium+ OAuth.", "placeholder": "grok-build-0.1", "enabled": ai_config.has_xai_oauth, "model": ai_config.provider_models.xai_oauth},
+                                {"id": "xai", "label": "Grok API", "blurb": "xAI API-key access for Grok and Grok Build.", "placeholder": "grok-build-0.1", "enabled": ai_config.has_xai, "model": ai_config.provider_models.xai},
                                 {"id": "ollama", "label": "Ollama", "blurb": "Local models for self-hosted, private deployments.", "placeholder": "llama3.3", "enabled": ai_config.has_ollama, "model": ai_config.provider_models.ollama}
                             ] %}
 
-                            <form hx-patch="/api/settings/ai-routing"
-                                  hx-target="#ai-routing-feedback"
-                                  hx-swap="innerHTML"
-                                  data-ai-routing-form
-                                  class="space-y-5">
+                            <div data-ai-routing-form
+                                 class="space-y-5">
 
                                 <div class="overflow-hidden rounded-2xl border" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
                                     {% for provider in ai_provider_catalog %}
@@ -335,6 +334,10 @@
                                                 <a href="/api/settings/codex/authorize"
                                                    hx-boost="false"
                                                    class="hm-oatmeal-action-soft mt-2 inline-flex px-3 py-1 text-[11px]">{{ 'Reconnect ChatGPT' if provider.enabled else 'Connect ChatGPT' }}</a>
+                                                {% elif provider.id == 'xai_oauth' %}
+                                                <a href="/api/settings/xai-oauth/authorize"
+                                                   hx-boost="false"
+                                                   class="hm-oatmeal-action-soft mt-2 inline-flex px-3 py-1 text-[11px]">{{ 'Reconnect Grok' if provider.enabled else 'Connect Grok' }}</a>
                                                 {% elif provider.id == 'claude_code' %}
                                                 <div class="mt-2 flex flex-wrap items-center gap-2">
                                                     <a href="/api/settings/claude-code/authorize"
@@ -462,14 +465,18 @@
 
                                     <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div id="ai-routing-feedback"></div>
-                                        <button type="submit"
+                                        <button type="button"
+                                                hx-patch="/api/settings/ai-routing"
+                                                hx-include="closest [data-ai-routing-form]"
+                                                hx-target="#ai-routing-feedback"
+                                                hx-swap="innerHTML"
                                                 {% if not ai_config.has_any_provider %}disabled{% endif %}
                                                 class="hm-oatmeal-action px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">
                                             Save Providers
                                         </button>
                                     </div>
                                 </div>
-                            </form>
+                            </div>
                         </section>
 
                         {# ── API Keys ───────────────────────────── #}
@@ -491,6 +498,7 @@
                                                 style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)">
                                             <option value="anthropic">Anthropic</option>
                                             <option value="openai">OpenAI</option>
+                                            <option value="xai">Grok</option>
                                             <option value="ollama">Ollama</option>
                                         </select>
                                     </label>
@@ -657,6 +665,7 @@ function selectTheme(themeId) {
 (function () {
     const list = document.querySelector('[data-fallback-order-list]');
     const input = document.querySelector('[data-fallback-order-input]');
+    const preferred = document.querySelector('[data-ai-routing-form] select[name="preferred_provider"]');
     if (!list || !input) {
         return;
     }
@@ -672,6 +681,17 @@ function selectTheme(themeId) {
                 rank.textContent = String(index + 1);
             }
         });
+    };
+
+    const movePreferredToFront = function () {
+        if (!preferred || !preferred.value) {
+            return;
+        }
+        const item = list.querySelector('[data-provider="' + preferred.value + '"]');
+        if (item && item !== list.firstElementChild) {
+            list.prepend(item);
+            syncInput();
+        }
     };
 
     let dragged = null;
@@ -708,6 +728,10 @@ function selectTheme(themeId) {
         event.preventDefault();
         syncInput();
     });
+
+    if (preferred) {
+        preferred.addEventListener('change', movePreferredToFront);
+    }
 
     syncInput();
 })();

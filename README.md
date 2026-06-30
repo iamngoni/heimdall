@@ -63,7 +63,7 @@ docker compose -f docker-compose.dev.yml up -d
 
 # 3. Configure environment
 cp .env.example .env
-# Edit .env for server-level BYOK, or connect Claude Code/Codex from Settings after registration.
+# Edit .env for server-level BYOK, or connect Claude Code/Codex/Grok from Settings after registration.
 
 # 4. Run the server (schema is applied automatically on startup)
 cargo run --bin heimdall
@@ -83,8 +83,8 @@ What Heimdall does today:
 - Optional per-repo automatic issue creation for supported GitHub/GitLab/Bitbucket repositories
 - Print-ready per-scan HTML reports at `/scans/{id}/report`
 - SARIF export for active scan findings at `/api/scans/{id}/sarif`
-- BYOK via environment variables or user-scoped keys stored in Settings, plus subscription-backed Claude Code and Codex connections from Settings
-- AI provider fallback chain (Claude Code > Codex > Anthropic > OpenAI > Ollama) with automatic retry on transient errors
+- BYOK via environment variables or user-scoped keys stored in Settings, plus subscription-backed Claude Code, Codex, and Grok connections from Settings
+- AI provider fallback chain (Claude Code > Codex > Grok Subscription > Grok API > Anthropic > OpenAI > Ollama) with automatic retry on transient errors
 
 What is still missing or intentionally not done yet:
 
@@ -170,9 +170,10 @@ Edit `.env` with your settings:
 # Host-run Heimdall talking to local or Dockerized Postgres
 DATABASE_URL=postgres://heimdall:heimdall@localhost:5432/heimdall
 
-# Server-level AI provider fallback (optional if you connect Claude Code/Codex from Settings)
+# Server-level AI provider fallback (optional if you connect Claude Code/Codex/Grok from Settings)
 ANTHROPIC_API_KEY=sk-ant-...          # Claude (recommended)
 # OPENAI_API_KEY=sk-...               # GPT-4o
+# XAI_API_KEY=xai-...                 # Grok / Grok Build API-key path
 # OLLAMA_URL=http://localhost:11434    # Local models
 
 # Security (generate these)
@@ -240,20 +241,28 @@ Host-run app example: `postgres://heimdall:heimdall@localhost:5432/heimdall`
 
 Full Docker Compose example: `postgres://heimdall:heimdall@postgres:5432/heimdall`
 
-### AI Providers (BYOK)
+### AI Providers
 
-Set **at least one** environment provider, or connect Claude Code/Codex from Settings after registration. When multiple providers are configured, Heimdall chains them in a **fallback provider** — if the primary fails with a retryable error (429 rate limit, 500/502/503 server errors, billing/quota exhaustion, or connection failures), requests automatically fall through to the next configured provider. Default priority order: Claude Code > Codex > Anthropic > OpenAI > Ollama.
+Set **at least one** environment provider, or connect Claude Code/Codex/Grok Subscription from Settings after registration. When multiple providers are configured, Heimdall chains them in a **fallback provider** — if the primary fails with a retryable error (429 rate limit, 500/502/503 server errors, billing/quota exhaustion, or connection failures), requests automatically fall through to the next configured provider. Default priority order: Claude Code > Codex > Grok Subscription > Grok API > Anthropic > OpenAI > Ollama.
 
 | Variable | Provider | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Claude | Anthropic API key (`sk-ant-...`) |
 | `OPENAI_API_KEY` | OpenAI | OpenAI API key (`sk-...`) |
+| `XAI_API_KEY` | Grok API | xAI API key (`xai-...`), using `grok-build-0.1` by default; set `grok-4.3` for general Grok |
 | `OLLAMA_URL` | Ollama | Ollama server URL (e.g. `http://localhost:11434`) |
 | `DEFAULT_AI_MODEL` | — | Override default model (default: `claude-sonnet-4-20250514`) |
 
 Every LLM call records which provider and model was actually used (visible in `agent_tool_calls`), so you always know which provider served each request — especially useful when fallback kicks in.
 
-Users can also add API keys through the Settings UI after registration. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`.
+Users can also add API keys through the Settings UI after registration. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`. Grok Subscription connects through xAI OAuth for SuperGrok / X Premium+ on the fixed local callback path `/callback` served on `127.0.0.1:56121`; Docker Compose publishes that host callback port into the app container.
+
+Grok has two distinct providers:
+
+- **Grok Subscription** (`xai_oauth`) — browser OAuth, no `XAI_API_KEY`; default model `grok-build-0.1`; uses SuperGrok or X Premium+ where xAI grants API access to the account.
+- **Grok API** (`xai`) — xAI API key via `XAI_API_KEY` or a stored Settings key; default model `grok-build-0.1`.
+
+xAI can still reject OAuth-backed API access with HTTP 403 for accounts that have an in-app subscription but are not entitled on the OAuth/API surface. In that case, use the `XAI_API_KEY` path.
 
 Runtime precedence is:
 
@@ -880,6 +889,8 @@ pub trait ModelProvider: Send + Sync {
 **Supported providers:**
 - **Claude Code** — Claude.ai subscription OAuth tokens, default first choice when connected in Settings
 - **Codex** — ChatGPT/OpenAI subscription OAuth tokens, second in the default fallback order
+- **Grok Subscription** — SuperGrok / X Premium+ OAuth tokens, default Grok path when connected in Settings
+- **Grok API** — xAI API key for Grok and Grok Build
 - **Claude** (Anthropic) — native tool_use format through an Anthropic API key
 - **OpenAI** — function calling/Responses API format
 - **Ollama** — local inference, no API key required (Llama 3.3, Mistral, etc.)

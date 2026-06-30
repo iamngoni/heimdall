@@ -6,8 +6,12 @@ services:
     container_name: heimdall
     ports:
       - "${APP_PORT:-8080}:8080"
+      - "127.0.0.1:${XAI_OAUTH_CALLBACK_PORT:-56121}:56121"
     env_file:
       - .env
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER:-heimdall}:${POSTGRES_PASSWORD:-heimdall}@postgres:5432/${POSTGRES_DB:-heimdall}"
+      XAI_OAUTH_CALLBACK_BIND_HOST: "0.0.0.0"
     depends_on:
       postgres:
         condition: service_healthy

@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 pub struct OpenAiProvider {
     api_key: String,
     base_url: String,
+    provider_name: String,
+    display_name: String,
     client: reqwest::Client,
 }
 
@@ -24,12 +26,20 @@ impl OpenAiProvider {
         Self {
             api_key,
             base_url: "https://api.openai.com".to_string(),
+            provider_name: "openai".to_string(),
+            display_name: "OpenAI".to_string(),
             client: reqwest::Client::new(),
         }
     }
 
     pub fn with_base_url(mut self, url: String) -> Self {
         self.base_url = url;
+        self
+    }
+
+    pub fn with_provider_identity(mut self, provider_name: &str, display_name: &str) -> Self {
+        self.provider_name = provider_name.to_string();
+        self.display_name = display_name.to_string();
         self
     }
 }
@@ -186,7 +196,8 @@ impl ModelProvider for OpenAiProvider {
         };
 
         debug!(
-            "OpenAI API request: model={}, messages={}",
+            "{} API request: model={}, messages={}",
+            self.display_name,
             body.model,
             body.messages.len()
         );
@@ -205,13 +216,19 @@ impl ModelProvider for OpenAiProvider {
             let error_body = resp.text().await.unwrap_or_default();
             if let Ok(err) = serde_json::from_str::<OpenAiError>(&error_body) {
                 anyhow::bail!(
-                    "OpenAI API error ({}): {} — {}",
+                    "{} API error ({}): {} — {}",
+                    self.display_name,
                     status,
                     err.error.error_type,
                     err.error.message
                 );
             }
-            anyhow::bail!("OpenAI API error ({}): {}", status, error_body);
+            anyhow::bail!(
+                "{} API error ({}): {}",
+                self.display_name,
+                status,
+                error_body
+            );
         }
 
         let api_resp: OpenAiResponse = resp.json().await?;
@@ -255,13 +272,13 @@ impl ModelProvider for OpenAiProvider {
                 completion_tokens: api_resp.usage.completion_tokens,
                 total_tokens: api_resp.usage.total_tokens,
             },
-            provider: "openai".to_string(),
+            provider: self.provider_name.clone(),
             model: request.model,
         })
     }
 
     fn provider_name(&self) -> &str {
-        "openai"
+        &self.provider_name
     }
 }
 
