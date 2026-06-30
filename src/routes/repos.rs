@@ -1244,7 +1244,7 @@ async fn fetch_gitlab_repos(
             let body = resp.text().await.unwrap_or_default();
             error!("[gitlab] auth failed ({status}): {body}");
             return Err(RemoteFetchError::Auth(format!(
-                "{} needs to be reconnected before repositories can be loaded.",
+                "{} needs to be reconnected with read_api scope before repositories can be loaded.",
                 provider_display_name("gitlab")
             )));
         }

@@ -1045,6 +1045,8 @@ async fn github_callback(
 // GitLab OAuth
 // ---------------------------------------------------------------------------
 
+const GITLAB_OAUTH_SCOPES: &str = "read_user read_api read_repository";
+
 /// GET /auth/gitlab/authorize
 ///
 /// Redirect the user to GitLab's authorization page.
@@ -1069,7 +1071,7 @@ async fn gitlab_authorize(
         "{base_url}/oauth/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}&state={}",
         urlencoding(client_id),
         urlencoding(redirect_uri),
-        urlencoding("read_user read_repository"),
+        urlencoding(GITLAB_OAUTH_SCOPES),
         urlencoding(&oauth_state),
     );
 

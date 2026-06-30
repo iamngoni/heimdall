@@ -245,7 +245,7 @@
                                 <div class="border-t border-ink-200">
                                     {% for provider in [
                                         {"id": "github", "name": "GitHub", "initial": "G", "desc": "Scan public and private repositories.", "scope": "repo", "placeholder": "ghp_..."},
-                                        {"id": "gitlab", "name": "GitLab", "initial": "L", "desc": "Sync GitLab projects and merge requests.", "scope": "read_user, read_repository", "placeholder": "glpat-..."},
+                                        {"id": "gitlab", "name": "GitLab", "initial": "L", "desc": "Sync GitLab projects and merge requests.", "scope": "read_user, read_api, read_repository", "placeholder": "glpat-..."},
                                         {"id": "bitbucket", "name": "Bitbucket", "initial": "B", "desc": "Sync Bitbucket repositories.", "scope": "Repositories: Read, Account: Read", "placeholder": "App password"}
                                     ] %}
                                     {% set data = integrations[provider.id] %}

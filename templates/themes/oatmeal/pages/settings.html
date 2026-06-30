@@ -202,7 +202,7 @@
                             <div class="overflow-hidden rounded-2xl border" style="background:var(--hm-surface-strong);border-color:var(--hm-border)">
                                 {% set providers = [
                                     {"id": "github", "label": "GitHub", "state": integrations.github, "scope": "repo", "placeholder": "ghp_..."},
-                                    {"id": "gitlab", "label": "GitLab", "state": integrations.gitlab, "scope": "read_user, read_repository", "placeholder": "glpat-..."},
+                                    {"id": "gitlab", "label": "GitLab", "state": integrations.gitlab, "scope": "read_user, read_api, read_repository", "placeholder": "glpat-..."},
                                     {"id": "bitbucket", "label": "Bitbucket", "state": integrations.bitbucket, "scope": "Repositories: Read, Account: Read", "placeholder": "App password"}
                                 ] %}
                                 {% for provider in providers %}
