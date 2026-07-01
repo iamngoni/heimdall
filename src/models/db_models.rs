@@ -584,6 +584,34 @@ pub struct PatchWithFilePath {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct RemediationRun {
+    pub id: Uuid,
+    pub finding_id: Uuid,
+    pub patch_id: Option<Uuid>,
+    pub scan_id: Uuid,
+    pub repo_id: Uuid,
+    pub user_id: Option<Uuid>,
+    pub provider: String,
+    pub model: String,
+    pub status: String,
+    pub base_branch: Option<String>,
+    pub branch_name: Option<String>,
+    pub commit_sha: Option<String>,
+    pub pr_url: Option<String>,
+    pub external_pr_id: Option<String>,
+    pub external_pr_number: Option<String>,
+    pub title: Option<String>,
+    pub summary: Option<String>,
+    pub validation_output: Option<String>,
+    pub error_message: Option<String>,
+    pub metadata_json: Option<serde_json::Value>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AgentToolCall {
     pub id: Uuid,
     pub scan_id: Uuid,

@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use crate::ai;
 use crate::ai::types::{CompletionRequest, Message};
-use crate::integrations::issues;
+use crate::integrations::{issues, remediation};
 use crate::models::db_models::{Finding, Repo, User};
 use crate::routes::scans::build_scan_live_snapshot;
 use crate::state::AppState;
@@ -194,6 +194,18 @@ pub struct UpdateFindingSeverityRequest {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct CreateIssueRequest {
+    pub finding_id: String,
+    pub user_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateFixPrRequest {
+    pub finding_id: String,
+    pub user_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetFixPrStatusRequest {
     pub finding_id: String,
     pub user_id: Option<String>,
 }
@@ -1680,6 +1692,119 @@ impl HeimdallMcp {
             "created": created,
             "issue": repo_issue,
             "event": event,
+        })))
+    }
+
+    #[tool(
+        description = "Start Heimdall's fix PR agent for a finding. The agent uses the selected user AI provider, creates a branch, validates the generated diff, and opens a draft GitHub pull request asynchronously."
+    )]
+    async fn create_fix_pr(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        Parameters(req): Parameters<CreateFixPrRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let actor_user_id = self
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
+            .await?;
+        let finding_id = parse_uuid(&req.finding_id)?;
+        let (finding, repo) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
+            .await?;
+
+        if !remediation::supports_fix_pr(&repo) {
+            return Err(invalid_params(
+                "Fix PR automation currently requires a provider-connected GitHub repository."
+                    .to_string(),
+            ));
+        }
+
+        let runtime = self
+            .state
+            .resolve_ai_for_user(actor_user_id)
+            .await
+            .map_err(|error| internal_err(format!("AI runtime unavailable: {error}")))?;
+        let patch = self
+            .state
+            .db
+            .get_patch_for_finding(finding.id)
+            .await
+            .map_err(|error| internal_err(format!("Failed to fetch patch context: {error}")))?;
+        let branch_suffix = Uuid::new_v4().to_string();
+        let branch_suffix = branch_suffix.split('-').next().unwrap_or(&branch_suffix);
+        let branch_name = remediation::branch_name_for_finding_with_suffix(&finding, branch_suffix);
+        let base_branch = repo
+            .default_branch
+            .clone()
+            .unwrap_or_else(|| "main".to_string());
+
+        let run = self
+            .state
+            .db
+            .create_remediation_run(
+                finding.id,
+                patch.as_ref().map(|patch| patch.id),
+                finding.scan_id,
+                repo.id,
+                Some(actor_user_id),
+                runtime.provider_kind.as_str(),
+                &runtime.model,
+                Some(&base_branch),
+                Some(&branch_name),
+            )
+            .await
+            .map_err(|error| internal_err(format!("Failed to create remediation run: {error}")))?;
+
+        let job = remediation::RemediationJob {
+            db: Arc::clone(&self.state.db),
+            ai_provider: runtime.provider.clone(),
+            ai_model: runtime.model.clone(),
+            ai_provider_name: runtime.provider_kind.as_str().to_string(),
+            encryption_key: self.state.encryption_key,
+            data_dir: self.state.config.app.data_dir.clone(),
+            repo,
+            finding,
+            patch,
+            run: run.clone(),
+            user_id: actor_user_id,
+        };
+        tokio::spawn(async move {
+            if let Err(error) = remediation::run_fix_pr(job).await {
+                warn!("MCP fix PR remediation agent failed: {error:#}");
+            }
+        });
+
+        Ok(json_text(&serde_json::json!({
+            "queued": true,
+            "run": run,
+            "note": "The fix PR agent runs asynchronously. Use get_fix_pr_status or list_finding_events to watch completion.",
+        })))
+    }
+
+    #[tool(description = "Get the latest fix PR agent run for a finding.")]
+    async fn get_fix_pr_status(
+        &self,
+        ctx: RequestContext<RoleServer>,
+        Parameters(req): Parameters<GetFixPrStatusRequest>,
+    ) -> Result<String, rmcp::ErrorData> {
+        let actor_user_id = self
+            .resolve_actor_user_id(&ctx, req.user_id.as_deref(), None)
+            .await?;
+        let finding_id = parse_uuid(&req.finding_id)?;
+        let (finding, repo) = self
+            .load_finding_and_repo_for_user(finding_id, actor_user_id)
+            .await?;
+        let run = self
+            .state
+            .db
+            .get_latest_remediation_run_for_finding(finding.id)
+            .await
+            .map_err(|error| internal_err(format!("Failed to load remediation run: {error}")))?;
+
+        Ok(json_text(&serde_json::json!({
+            "supported": remediation::supports_fix_pr(&repo),
+            "finding_id": finding.id,
+            "repo_id": repo.id,
+            "run": run,
         })))
     }
 

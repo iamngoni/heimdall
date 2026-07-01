@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::ai::{self, ProviderKind};
 use crate::config::AiConfig;
-use crate::integrations::issues;
+use crate::integrations::{issues, remediation};
 use crate::middleware::auth::AuthenticatedUser;
 use crate::models::{ApiKey, PaginationParams, User};
 use crate::routes::scans::build_scan_live_snapshot;
@@ -910,6 +910,11 @@ async fn finding_detail_page(
             .unwrap_or_default(),
         None => None,
     };
+    let remediation_run = state
+        .db
+        .get_latest_remediation_run_for_finding(finding_id)
+        .await
+        .unwrap_or_default();
     let event_values: Vec<minijinja::Value> = events
         .iter()
         .rev()
@@ -964,6 +969,35 @@ async fn finding_detail_page(
             "number": repo_issue.as_ref().and_then(|issue| issue.external_issue_number.clone()),
             "state": repo_issue.as_ref().map(|issue| issue.state.clone()),
             "auto_created": repo_issue.as_ref().map(|issue| issue.auto_created).unwrap_or(false),
+        })),
+        remediation => minijinja::Value::from_serialize(serde_json::json!({
+            "supported": remediation::supports_fix_pr(&repo),
+            "provider": if repo.source_type == "github" { "github" } else { repo.source_type.as_str() },
+            "status": remediation_run.as_ref().map(|run| run.status.as_str()),
+            "running": remediation_run
+                .as_ref()
+                .map(|run| matches!(run.status.as_str(), "queued" | "running"))
+                .unwrap_or(false),
+            "failed": remediation_run.as_ref().map(|run| run.status == "failed").unwrap_or(false),
+            "pr_opened": remediation_run.as_ref().map(|run| run.status == "pr_opened").unwrap_or(false),
+            "run": remediation_run.as_ref().map(|run| serde_json::json!({
+                "id": run.id,
+                "status": run.status,
+                "provider": run.provider,
+                "model": run.model,
+                "branch_name": run.branch_name,
+                "base_branch": run.base_branch,
+                "commit_sha": run.commit_sha,
+                "pr_url": run.pr_url,
+                "external_pr_number": run.external_pr_number,
+                "title": run.title,
+                "summary": run.summary,
+                "validation_output": run.validation_output,
+                "error_message": run.error_message,
+                "created_at": run.created_at.format("%Y-%m-%d %H:%M").to_string(),
+                "started_at": run.started_at.map(|value| value.format("%Y-%m-%d %H:%M").to_string()),
+                "completed_at": run.completed_at.map(|value| value.format("%Y-%m-%d %H:%M").to_string()),
+            })),
         })),
     };
 
@@ -1378,6 +1412,42 @@ fn serialize_finding_event(event: &crate::models::db_models::FindingEvent) -> mi
                     "The suggested diff was marked as applied in Heimdall. No repository write-back was recorded.".to_string()
                 }),
             "success",
+        ),
+        "remediation_started" => (
+            "Fix PR agent started".to_string(),
+            match (
+                metadata.get("branch").and_then(|value| value.as_str()),
+                metadata.get("model").and_then(|value| value.as_str()),
+            ) {
+                (Some(branch), Some(model)) => {
+                    format!("Generating a fix branch `{branch}` with `{model}`.")
+                }
+                _ => event
+                    .comment
+                    .clone()
+                    .unwrap_or_else(|| "Fix PR generation started.".to_string()),
+            },
+            "active",
+        ),
+        "remediation_pr_opened" => (
+            "Fix PR opened".to_string(),
+            metadata
+                .get("pr_url")
+                .and_then(|value| value.as_str())
+                .map(|url| format!("Draft pull request opened: {url}"))
+                .or(event.comment.clone())
+                .unwrap_or_else(|| "A draft pull request was opened for this finding.".to_string()),
+            "success",
+        ),
+        "remediation_failed" => (
+            "Fix PR agent failed".to_string(),
+            metadata
+                .get("error")
+                .and_then(|value| value.as_str())
+                .or(event.comment.as_deref())
+                .unwrap_or("Fix PR generation failed before a pull request was opened.")
+                .to_string(),
+            "warning",
         ),
         "comment" => (
             "Comment added".to_string(),

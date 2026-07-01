@@ -11,7 +11,7 @@ use crate::db::schema::builder::Schema;
 use crate::db::schema::types::*;
 
 /// The single source of truth for Heimdall's database schema.
-/// All 16 tables, all indexes, all constraints.
+/// All tables, all indexes, all constraints.
 /// Generate driver-specific SQL from this definition.
 pub fn heimdall_schema() -> SchemaDef {
     Schema::new()
@@ -382,6 +382,7 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("old_value");
             t.text("new_value");
             t.text("comment");
+            t.jsonb("metadata");
             t.timestamp("created_at")
                 .not_null()
                 .default(DefaultValue::Now);
@@ -412,7 +413,48 @@ pub fn heimdall_schema() -> SchemaDef {
                 .default(DefaultValue::Now);
         })
         // ---------------------------------------------------------------
-        // 15. agent_tool_calls
+        // 15. remediation_runs
+        // ---------------------------------------------------------------
+        .table("remediation_runs", |t| {
+            t.uuid_pk("id");
+            t.uuid("finding_id")
+                .not_null()
+                .references("findings", "id")
+                .on_delete(OnDelete::Cascade);
+            t.uuid("patch_id")
+                .references("patches", "id")
+                .on_delete(OnDelete::SetNull);
+            t.uuid("scan_id")
+                .not_null()
+                .references("scans", "id")
+                .on_delete(OnDelete::Cascade);
+            t.uuid("repo_id")
+                .not_null()
+                .references("repos", "id")
+                .on_delete(OnDelete::Cascade);
+            t.uuid("user_id")
+                .references("users", "id")
+                .on_delete(OnDelete::SetNull);
+            t.text("provider").not_null();
+            t.text("model").not_null();
+            t.text("status").not_null().default_str("'queued'");
+            t.text("base_branch");
+            t.text("branch_name");
+            t.text("commit_sha");
+            t.text("pr_url");
+            t.text("external_pr_id");
+            t.text("external_pr_number");
+            t.text("title");
+            t.text("summary");
+            t.text("validation_output");
+            t.text("error_message");
+            t.jsonb("metadata_json");
+            t.timestamp("started_at");
+            t.timestamp("completed_at");
+            t.timestamps();
+        })
+        // ---------------------------------------------------------------
+        // 16. agent_tool_calls
         // ---------------------------------------------------------------
         .table("agent_tool_calls", |t| {
             t.uuid_pk("id");
@@ -436,7 +478,7 @@ pub fn heimdall_schema() -> SchemaDef {
                 .default(DefaultValue::Now);
         })
         // ---------------------------------------------------------------
-        // 16. scan_events
+        // 17. scan_events
         // ---------------------------------------------------------------
         .table("scan_events", |t| {
             t.uuid_pk("id");
@@ -457,7 +499,7 @@ pub fn heimdall_schema() -> SchemaDef {
                 .default(DefaultValue::Now);
         })
         // ---------------------------------------------------------------
-        // 17. repo_issues
+        // 18. repo_issues
         // ---------------------------------------------------------------
         .table("repo_issues", |t| {
             t.uuid_pk("id");
@@ -480,7 +522,7 @@ pub fn heimdall_schema() -> SchemaDef {
             t.timestamps();
         })
         // ---------------------------------------------------------------
-        // 18. threat_models
+        // 19. threat_models
         // ---------------------------------------------------------------
         .table("threat_models", |t| {
             t.uuid_pk("id");
@@ -533,6 +575,16 @@ pub fn heimdall_schema() -> SchemaDef {
             &["repo_id", "state"],
         )
         .index("idx_repo_issues_finding", "repo_issues", &["finding_id"])
+        .index(
+            "idx_remediation_runs_finding",
+            "remediation_runs",
+            &["finding_id", "created_at"],
+        )
+        .index(
+            "idx_remediation_runs_repo_status",
+            "remediation_runs",
+            &["repo_id", "status"],
+        )
         .index("idx_scans_repo_commit", "scans", &["repo_id", "commit_sha"])
         // ---------------------------------------------------------------
         // Practical indexes

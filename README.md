@@ -47,7 +47,7 @@ graph LR
 1. **Connect a repository** — GitHub OAuth, GitLab OAuth, Bitbucket OAuth/PAT, public git URL, or zip upload
 2. **Run a scan** — manually triggered, the pipeline takes over
 3. **Review findings** — severity-ranked, with code context, explanations, and suggested diffs
-4. **Handle fixes** — export or manually apply the unified diff, then mark it handled in Heimdall
+4. **Handle fixes** — open a draft GitHub fix PR with the remediation agent, or manually apply/export the suggested diff and mark it handled in Heimdall
 
 ## Quick Start
 
@@ -79,7 +79,7 @@ What Heimdall does today:
 - Nine-stage scan pipeline: Ingest, Tyr, Static Analysis, Taint Analysis, Config Scan, Hunt, Víðarr, Garmr, Report
 - Background scan worker with configurable polling, stale scan detection, and cancellation support
 - Live scan progress via SSE, plus persisted execution and tool-call logs in the database
-- Finding review with explain, verify, patch, and repository issue creation/linking
+- Finding review with explain, verify, suggested diffs, fix-PR agent runs, and repository issue creation/linking
 - Optional per-repo automatic issue creation for supported GitHub/GitLab/Bitbucket repositories
 - Print-ready per-scan HTML reports at `/scans/{id}/report`
 - SARIF export for active scan findings at `/api/scans/{id}/sarif`
@@ -562,6 +562,7 @@ Each finding includes:
 - **Source badge** — AI (Hunt agent), Static (pattern rules), Dependencies (audit)
 - **Confidence** — High (static rules), Medium (AI-discovered), Confirmed (sandbox-validated)
 - **Repository issue linkage** — manual from finding review, plus optional per-repo auto-create with severity/confidence gating when the repository provider supports it
+- **Fix PR agent** — for provider-connected GitHub repositories, Heimdall can clone the repo, use the selected per-user AI provider to generate/repair a diff, validate it with `git apply --check` and `git diff --check`, push a branch, and open a draft pull request
 
 ## API Reference
 
@@ -603,8 +604,10 @@ Each finding includes:
 |--------|----------|-------------|
 | `GET` | `/api/findings/{id}` | Get finding details |
 | `PATCH` | `/api/findings/{id}/severity` | Update severity |
+| `GET` | `/api/findings/{id}/remediation` | Render the latest fix-PR agent status panel |
+| `POST` | `/api/findings/{id}/remediate` | Start the fix-PR agent for a GitHub-backed finding |
 | `POST` | `/api/findings/{id}/apply-patch` | Mark a suggested diff as applied in Heimdall metadata (no repo write-back) |
-| `POST` | `/api/findings/{id}/comments` | Add a comment |
+| `POST` | `/api/findings/{id}/comment` | Add a comment |
 | `GET` | `/api/findings/{id}/events` | Get finding event history |
 
 ### Settings
@@ -707,7 +710,8 @@ heimdall/
 │   ├── worker.rs               # Background scan worker (poll + execute)
 │   ├── integrations/
 │   │   ├── mod.rs              # Integration hub
-│   │   └── issues.rs           # Issue tracker integration (GitHub, GitLab, Bitbucket)
+│   │   ├── issues.rs           # Issue tracker integration (GitHub, GitLab, Bitbucket)
+│   │   └── remediation.rs      # Fix-PR remediation agent (GitHub branch + draft PR)
 │   ├── ai/
 │   │   ├── mod.rs              # ModelProvider trait + provider builder
 │   │   ├── types.rs            # Request/response types
@@ -1228,6 +1232,8 @@ Manual stdio config:
 | `list_finding_events` | Get finding event history |
 | `comment_on_finding` | Add a note to a finding |
 | `apply_patch` | Mark the latest suggested diff as applied in Heimdall metadata |
+| `create_fix_pr` | Start the fix-PR remediation agent for a GitHub-backed finding |
+| `get_fix_pr_status` | Get the latest fix-PR agent run for a finding |
 | `get_threat_model` | Get the STRIDE threat model (boundaries, surfaces, data flows) |
 | `update_threat_model` | Update a threat model field |
 | `get_patches` | Get all suggested diffs for a scan as unified patches |

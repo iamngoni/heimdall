@@ -12,10 +12,10 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::ai::types::{CompletionRequest, Message};
-use crate::integrations::issues;
+use crate::integrations::{issues, remediation};
 use crate::middleware::auth::AuthenticatedUser;
 use crate::models::ApiResponse;
-use crate::models::db_models::{Finding, Repo};
+use crate::models::db_models::{Finding, RemediationRun, Repo};
 use crate::state::AppState;
 
 pub fn init(cfg: &mut web::ServiceConfig) {
@@ -26,6 +26,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/{id}/explain", web::post().to(explain_finding))
             .route("/{id}/verify", web::post().to(verify_finding))
             .route("/{id}/issue", web::post().to(create_issue))
+            .route("/{id}/remediation", web::get().to(remediation_panel))
+            .route("/{id}/remediate", web::post().to(start_remediation))
             .route("/{id}/apply-patch", web::post().to(apply_patch))
             .route("/{id}/comment", web::post().to(add_comment))
             .route("/{id}/severity", web::patch().to(update_severity))
@@ -369,6 +371,123 @@ async fn apply_patch(
             ),
         )),
     }
+}
+
+async fn remediation_panel(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let finding_id = path.into_inner();
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+    let (finding, repo) = match load_finding_and_repo(&state, finding_id, user.id).await {
+        Ok(data) => data,
+        Err(response) => return response,
+    };
+
+    render_finding_remediation_panel(&state, &finding, &repo, &user.theme).await
+}
+
+async fn start_remediation(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<Uuid>,
+) -> HttpResponse {
+    let finding_id = path.into_inner();
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+    let (finding, repo) = match load_finding_and_repo(&state, finding_id, user.id).await {
+        Ok(data) => data,
+        Err(response) => return response,
+    };
+
+    if !remediation::supports_fix_pr(&repo) {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Fix PR automation currently requires a provider-connected GitHub repository.",
+        ));
+    }
+
+    let runtime = match state.resolve_ai_for_user(user.id).await {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            return HttpResponse::ServiceUnavailable()
+                .json(ApiResponse::<()>::error(503, error.to_string()));
+        }
+    };
+
+    let patch = match state.db.get_patch_for_finding(finding.id).await {
+        Ok(patch) => patch,
+        Err(error) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to load suggested patch context: {error}"),
+            ));
+        }
+    };
+    let branch_suffix = Uuid::new_v4().to_string();
+    let branch_suffix = branch_suffix.split('-').next().unwrap_or(&branch_suffix);
+    let branch_name = remediation::branch_name_for_finding_with_suffix(&finding, branch_suffix);
+    let base_branch = repo
+        .default_branch
+        .clone()
+        .unwrap_or_else(|| "main".to_string());
+
+    let run = match state
+        .db
+        .create_remediation_run(
+            finding.id,
+            patch.as_ref().map(|patch| patch.id),
+            finding.scan_id,
+            repo.id,
+            Some(user.id),
+            runtime.provider_kind.as_str(),
+            &runtime.model,
+            Some(&base_branch),
+            Some(&branch_name),
+        )
+        .await
+    {
+        Ok(run) => run,
+        Err(error) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to create remediation run: {error}"),
+            ));
+        }
+    };
+
+    let job = remediation::RemediationJob {
+        db: state.db.clone(),
+        ai_provider: runtime.provider.clone(),
+        ai_model: runtime.model.clone(),
+        ai_provider_name: runtime.provider_kind.as_str().to_string(),
+        encryption_key: state.encryption_key,
+        data_dir: state.config.app.data_dir.clone(),
+        repo: repo.clone(),
+        finding: finding.clone(),
+        patch,
+        run: run.clone(),
+        user_id: user.id,
+    };
+    tokio::spawn(async move {
+        if let Err(error) = remediation::run_fix_pr(job).await {
+            log::warn!("Fix PR remediation agent failed: {error:#}");
+        }
+    });
+
+    if req.headers().contains_key("HX-Request") {
+        return render_finding_remediation_panel(&state, &finding, &repo, &user.theme).await;
+    }
+
+    HttpResponse::Accepted().json(ApiResponse::ok(run))
 }
 
 async fn add_comment(
@@ -780,6 +899,82 @@ async fn render_finding_issue_panel(
     }
 }
 
+async fn render_finding_remediation_panel(
+    state: &AppState,
+    finding: &Finding,
+    repo: &Repo,
+    theme: &str,
+) -> HttpResponse {
+    let run = match state
+        .db
+        .get_latest_remediation_run_for_finding(finding.id)
+        .await
+    {
+        Ok(run) => run,
+        Err(error) => {
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                format!("Failed to load remediation run: {error}"),
+            ));
+        }
+    };
+    let ctx = minijinja::context! {
+        finding_id => finding.id,
+        remediation => remediation_panel_value(repo, run.as_ref()),
+    };
+
+    match state
+        .themes
+        .get(theme)
+        .render("partials/finding_remediation_panel.html", ctx)
+    {
+        Ok(html) => {
+            let activity_html = match render_finding_recent_activity_html(state, finding.id).await {
+                Ok(activity) => activity,
+                Err(response) => return response,
+            };
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(format!("{html}\n{activity_html}"))
+        }
+        Err(error) => HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            format!("Failed to render finding remediation panel: {error}"),
+        )),
+    }
+}
+
+fn remediation_panel_value(repo: &Repo, run: Option<&RemediationRun>) -> minijinja::Value {
+    minijinja::Value::from_serialize(serde_json::json!({
+        "supported": remediation::supports_fix_pr(repo),
+        "provider": if repo.source_type == "github" { "github" } else { repo.source_type.as_str() },
+        "status": run.map(|run| run.status.as_str()),
+        "running": run
+            .map(|run| matches!(run.status.as_str(), "queued" | "running"))
+            .unwrap_or(false),
+        "failed": run.map(|run| run.status == "failed").unwrap_or(false),
+        "pr_opened": run.map(|run| run.status == "pr_opened").unwrap_or(false),
+        "run": run.map(|run| serde_json::json!({
+            "id": run.id,
+            "status": run.status,
+            "provider": run.provider,
+            "model": run.model,
+            "branch_name": run.branch_name,
+            "base_branch": run.base_branch,
+            "commit_sha": run.commit_sha,
+            "pr_url": run.pr_url,
+            "external_pr_number": run.external_pr_number,
+            "title": run.title,
+            "summary": run.summary,
+            "validation_output": run.validation_output,
+            "error_message": run.error_message,
+            "created_at": run.created_at.format("%Y-%m-%d %H:%M").to_string(),
+            "started_at": run.started_at.map(|value| value.format("%Y-%m-%d %H:%M").to_string()),
+            "completed_at": run.completed_at.map(|value| value.format("%Y-%m-%d %H:%M").to_string()),
+        })),
+    }))
+}
+
 async fn render_finding_recent_activity_html(
     state: &AppState,
     finding_id: Uuid,
@@ -925,6 +1120,42 @@ fn serialize_recent_activity_event(
                     .unwrap_or_else(|| "Repository issue linkage changed.".to_string()),
             },
             "success",
+        ),
+        "remediation_started" => (
+            "Fix PR agent started".to_string(),
+            match (
+                metadata.get("branch").and_then(|value| value.as_str()),
+                metadata.get("model").and_then(|value| value.as_str()),
+            ) {
+                (Some(branch), Some(model)) => {
+                    format!("Generating a fix branch `{branch}` with `{model}`.")
+                }
+                _ => event
+                    .comment
+                    .clone()
+                    .unwrap_or_else(|| "Fix PR generation started.".to_string()),
+            },
+            "active",
+        ),
+        "remediation_pr_opened" => (
+            "Fix PR opened".to_string(),
+            metadata
+                .get("pr_url")
+                .and_then(|value| value.as_str())
+                .map(|url| format!("Draft pull request opened: {url}"))
+                .or(event.comment.clone())
+                .unwrap_or_else(|| "A draft pull request was opened for this finding.".to_string()),
+            "success",
+        ),
+        "remediation_failed" => (
+            "Fix PR agent failed".to_string(),
+            metadata
+                .get("error")
+                .and_then(|value| value.as_str())
+                .or(event.comment.as_deref())
+                .unwrap_or("Fix PR generation failed before a pull request was opened.")
+                .to_string(),
+            "warning",
         ),
         _ => (
             humanize_event_slug(&event.event_type),

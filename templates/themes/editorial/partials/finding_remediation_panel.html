@@ -1,0 +1,81 @@
+{% set target_finding_id = finding_id or finding.id %}
+<section id="finding-remediation-panel"
+         class="space-y-5"
+         {% if remediation.running %}hx-get="/api/findings/{{ target_finding_id }}/remediation" hx-trigger="load delay:5s" hx-swap="outerHTML"{% endif %}>
+    <div class="flex flex-col gap-4 border-b border-ink-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+            <p class="section-num">Fix PR</p>
+            <h2 class="mt-2 text-sm text-ink-900">Draft remediation</h2>
+            <p class="mt-2 text-sm leading-6 text-ink-500">Generate a draft pull request from this finding.</p>
+        </div>
+
+        {% if remediation.pr_opened and remediation.run.pr_url %}
+        <a href="{{ remediation.run.pr_url }}"
+           target="_blank"
+           rel="noreferrer"
+           class="inline-flex items-center border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+            Open PR ->
+        </a>
+        {% elif remediation.supported and not remediation.running %}
+        <button hx-post="/api/findings/{{ target_finding_id }}/remediate"
+                hx-target="#finding-remediation-panel"
+                hx-swap="outerHTML"
+                hx-indicator="#finding-remediation-loading"
+                class="inline-flex items-center gap-2 border-b border-ink-900 pb-1 text-sm font-medium text-ink-900 transition hover:border-ink-400">
+            <span>Create Fix PR -></span>
+            <span class="htmx-indicator-inline items-center gap-1 text-ink-400">
+                <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                </svg>
+            </span>
+        </button>
+        {% endif %}
+    </div>
+
+    {% if remediation.supported %}
+        {% if remediation.pr_opened and remediation.run %}
+        <div class="space-y-3">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                <span class="font-mono tracking-wide text-ink-900">PR #{{ remediation.run.external_pr_number or "open" }}</span>
+                <span class="text-ink-300">-</span>
+                <span class="font-mono text-ink-500">{{ remediation.run.branch_name }}</span>
+            </div>
+            {% if remediation.run.summary %}
+            <p class="text-sm leading-6 text-ink-600">{{ remediation.run.summary }}</p>
+            {% endif %}
+        </div>
+        {% elif remediation.running and remediation.run %}
+        <div class="border border-ink-200 px-5 py-5">
+            <p class="text-sm text-ink-900">Agent running</p>
+            <p class="mt-2 font-mono text-xs leading-6 text-ink-500">{{ remediation.run.status|replace("_", " ")|title }} - {{ remediation.run.branch_name }}</p>
+        </div>
+        {% elif remediation.failed and remediation.run %}
+        <div class="border border-amber-200 px-5 py-5">
+            <p class="text-sm text-amber-700">Agent failed</p>
+            <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink-600">{{ remediation.run.error_message or "The fix PR agent failed before opening a pull request." }}</p>
+        </div>
+        {% else %}
+        <div class="border border-dashed border-ink-200 px-5 py-6 text-center">
+            <p class="text-sm text-ink-900">No fix PR run yet</p>
+        </div>
+        {% endif %}
+
+        <div id="finding-remediation-loading"
+             class="htmx-indicator-flex items-start gap-3 border-t border-ink-200 pt-5 text-ink-700">
+            <svg class="mt-0.5 h-4 w-4 animate-spin text-ink-500" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+            <div>
+                <p class="text-sm text-ink-900">Starting fix agent</p>
+                <p class="mt-1 text-sm leading-6 text-ink-500">Preparing a branch and draft pull request.</p>
+            </div>
+        </div>
+    {% else %}
+    <div class="border border-ink-200 px-5 py-5">
+        <p class="text-sm text-amber-700">Fix PR unavailable</p>
+        <p class="mt-2 text-sm leading-6 text-ink-600">Connect this repository through GitHub OAuth to enable fix PR generation.</p>
+    </div>
+    {% endif %}
+</section>

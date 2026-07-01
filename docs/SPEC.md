@@ -48,7 +48,7 @@ End-to-end flow, from the user clicking "Run Scan" to viewing findings:
 
 8. **Stage 5 -- Report.** Findings are ranked by severity and confidence. The LLM generates suggested diffs as unified patches. Each finding gets a plain English explanation, CWE/CVE classification, affected file and line number, and the PoC exploit details. Status: `validated` -> `reporting` -> `completed`.
 
-9. **User views results.** The scan progress screen shows real-time updates via Server-Sent Events. Once complete, the user navigates to the findings list (filterable by severity, status, CWE) and can drill into each finding to see the explanation, code context, PoC details, and suggested diff. They can accept/reject/dismiss findings, export or manually apply the suggested diff outside Heimdall, mark it handled in Heimdall, and edit the threat model for future scans.
+9. **User views results.** The scan progress screen shows real-time updates via Server-Sent Events. Once complete, the user navigates to the findings list (filterable by severity, status, CWE) and can drill into each finding to see the explanation, code context, PoC details, and suggested diff. They can accept/reject/dismiss findings, start the fix-PR agent for supported GitHub repositories, export or manually apply the suggested diff outside Heimdall, mark it handled in Heimdall, and edit the threat model for future scans.
 
 ---
 
@@ -168,6 +168,8 @@ The pipeline is a sequential chain of nine stages. Each stage is a distinct modu
 - Update scan status to `completed`
 
 **Outputs:** Final `findings` with patches, explanations, and classifications
+
+Suggested report-stage patches are not repository write-back. Repository write-back is handled by remediation runs: the fix-PR agent clones the connected GitHub repository, asks the selected user AI provider to generate or repair a minimal unified diff, validates the diff with Git, commits and pushes a branch, and opens a draft pull request.
 
 ---
 
@@ -561,10 +563,11 @@ UNIQUE constraint on (user_id, provider).
 | id | TEXT (UUIDv7) | PK |
 | finding_id | TEXT | FK -> findings.id, NOT NULL |
 | user_id | TEXT | FK -> users.id, nullable (null for system events) |
-| event_type | TEXT | "status_change", "comment", "patch_applied", "poc_validated", "severity_changed" |
+| event_type | TEXT | "status_change", "comment", "patch_applied", "poc_validated", "severity_changed", "remediation_started", "remediation_pr_opened", "remediation_failed" |
 | old_value | TEXT | nullable |
 | new_value | TEXT | nullable |
 | comment | TEXT | nullable, free text |
+| metadata | JSONB | provider/run/PR metadata, nullable |
 | created_at | TEXT | ISO 8601 |
 
 #### 14. patches
@@ -582,7 +585,36 @@ UNIQUE constraint on (user_id, provider).
 | applied_at | TEXT | ISO 8601, nullable |
 | created_at | TEXT | ISO 8601 |
 
-#### 15. agent_tool_calls
+#### 15. remediation_runs
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT (UUIDv7) | PK |
+| finding_id | TEXT | FK -> findings.id, NOT NULL |
+| patch_id | TEXT | FK -> patches.id, nullable context seed |
+| scan_id | TEXT | FK -> scans.id, NOT NULL |
+| repo_id | TEXT | FK -> repos.id, NOT NULL |
+| user_id | TEXT | FK -> users.id, nullable |
+| provider | TEXT | selected provider name |
+| model | TEXT | selected model |
+| status | TEXT | "queued", "running", "pr_opened", "failed" |
+| base_branch | TEXT | PR base branch |
+| branch_name | TEXT | generated remediation branch |
+| commit_sha | TEXT | commit created by the agent, nullable |
+| pr_url | TEXT | draft PR URL, nullable |
+| external_pr_id | TEXT | provider PR id, nullable |
+| external_pr_number | TEXT | provider PR number, nullable |
+| title | TEXT | PR title, nullable |
+| summary | TEXT | agent summary, nullable |
+| validation_output | TEXT | bounded Git validation output, nullable |
+| error_message | TEXT | failure reason, nullable |
+| metadata_json | JSONB | provider/run metadata, nullable |
+| started_at | TEXT | ISO 8601, nullable |
+| completed_at | TEXT | ISO 8601, nullable |
+| created_at | TEXT | ISO 8601 |
+| updated_at | TEXT | ISO 8601 |
+
+#### 16. agent_tool_calls
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -1096,13 +1128,15 @@ templates/
 |--------|------|-------------|
 | GET | `/scans/{id}/progress/stream` | SSE event stream for scan progress |
 
-#### HTMX Fragment Routes (12)
+#### HTMX Fragment Routes
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/scans/{id}/findings/list` | Findings list fragment (for filtering) |
 | PATCH | `/findings/{id}/status` | Update finding status |
 | POST | `/findings/{id}/apply-patch` | Mark a suggested diff as applied in Heimdall metadata (no repo write-back) |
+| GET | `/findings/{id}/remediation` | Render latest fix-PR agent state |
+| POST | `/findings/{id}/remediate` | Queue a fix-PR agent run for a GitHub-backed finding |
 | GET | `/scans/{id}/threat-model/edit/{section}` | Threat model section edit form fragment |
 | PUT | `/scans/{id}/threat-model/{section}` | Save threat model section edit |
 | GET | `/scans/{id}/threat-model/display/{section}` | Threat model section display fragment |
@@ -1167,7 +1201,8 @@ templates/
 3. Selects the ones they want to track as handled (checkboxes)
 4. Previews the combined diff
 5. Uses the batch action only to update Heimdall state after handling those patches elsewhere
-6. Sees success/failure status for each
+6. For a single supported GitHub finding, starts the fix-PR agent from the finding detail page instead of manually applying the patch
+7. Sees queued/running/failed/PR-opened status and links to the draft PR when opened
 
 ---
 

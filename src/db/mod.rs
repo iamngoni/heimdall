@@ -45,7 +45,38 @@ pub fn runtime_schema_updates_sql() -> &'static str {
          ADD COLUMN IF NOT EXISTS preferred_ai_provider TEXT, \
          ADD COLUMN IF NOT EXISTS ai_fallbacks_enabled BOOLEAN NOT NULL DEFAULT FALSE, \
          ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama', \
-         ADD COLUMN IF NOT EXISTS ai_provider_models TEXT NOT NULL DEFAULT '{}'"
+         ADD COLUMN IF NOT EXISTS ai_provider_models TEXT NOT NULL DEFAULT '{}';
+     ALTER TABLE finding_events ADD COLUMN IF NOT EXISTS metadata JSONB;
+     CREATE TABLE IF NOT EXISTS remediation_runs (
+         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+         finding_id UUID NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+         patch_id UUID REFERENCES patches(id) ON DELETE SET NULL,
+         scan_id UUID NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
+         repo_id UUID NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+         user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+         provider TEXT NOT NULL,
+         model TEXT NOT NULL,
+         status TEXT NOT NULL DEFAULT 'queued',
+         base_branch TEXT,
+         branch_name TEXT,
+         commit_sha TEXT,
+         pr_url TEXT,
+         external_pr_id TEXT,
+         external_pr_number TEXT,
+         title TEXT,
+         summary TEXT,
+         validation_output TEXT,
+         error_message TEXT,
+         metadata_json JSONB,
+         started_at TIMESTAMPTZ,
+         completed_at TIMESTAMPTZ,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     );
+     CREATE INDEX IF NOT EXISTS idx_remediation_runs_finding
+         ON remediation_runs (finding_id, created_at);
+     CREATE INDEX IF NOT EXISTS idx_remediation_runs_repo_status
+         ON remediation_runs (repo_id, status)"
 }
 
 pub async fn apply_runtime_schema_updates(pool: &PgPool) -> HeimdallResult<()> {
@@ -1509,6 +1540,124 @@ impl DatabaseOperations {
         .fetch_one(&self.pool)
         .await
         .context("Failed to create patch")
+    }
+
+    // -----------------------------------------------------------------------
+    // Remediation runs
+    // -----------------------------------------------------------------------
+
+    pub async fn create_remediation_run(
+        &self,
+        finding_id: Uuid,
+        patch_id: Option<Uuid>,
+        scan_id: Uuid,
+        repo_id: Uuid,
+        user_id: Option<Uuid>,
+        provider: &str,
+        model: &str,
+        base_branch: Option<&str>,
+        branch_name: Option<&str>,
+    ) -> HeimdallResult<RemediationRun> {
+        sqlx::query_as::<_, RemediationRun>(
+            "INSERT INTO remediation_runs \
+             (finding_id, patch_id, scan_id, repo_id, user_id, provider, model, base_branch, branch_name) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+             RETURNING *",
+        )
+        .bind(finding_id)
+        .bind(patch_id)
+        .bind(scan_id)
+        .bind(repo_id)
+        .bind(user_id)
+        .bind(provider)
+        .bind(model)
+        .bind(base_branch)
+        .bind(branch_name)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to create remediation run")
+    }
+
+    pub async fn mark_remediation_run_running(
+        &self,
+        run_id: Uuid,
+    ) -> HeimdallResult<Option<RemediationRun>> {
+        sqlx::query_as::<_, RemediationRun>(
+            "UPDATE remediation_runs \
+             SET status = 'running', started_at = COALESCE(started_at, now()), updated_at = now() \
+             WHERE id = $1 RETURNING *",
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to mark remediation run running")
+    }
+
+    pub async fn complete_remediation_run_pr(
+        &self,
+        run_id: Uuid,
+        commit_sha: Option<&str>,
+        pr_url: Option<&str>,
+        external_pr_id: Option<&str>,
+        external_pr_number: Option<&str>,
+        title: Option<&str>,
+        summary: Option<&str>,
+        validation_output: Option<&str>,
+        metadata_json: Option<&serde_json::Value>,
+    ) -> HeimdallResult<Option<RemediationRun>> {
+        sqlx::query_as::<_, RemediationRun>(
+            "UPDATE remediation_runs \
+             SET status = 'pr_opened', commit_sha = $2, pr_url = $3, external_pr_id = $4, \
+                 external_pr_number = $5, title = $6, summary = $7, validation_output = $8, \
+                 error_message = NULL, metadata_json = $9, completed_at = now(), updated_at = now() \
+             WHERE id = $1 RETURNING *",
+        )
+        .bind(run_id)
+        .bind(commit_sha)
+        .bind(pr_url)
+        .bind(external_pr_id)
+        .bind(external_pr_number)
+        .bind(title)
+        .bind(summary)
+        .bind(validation_output)
+        .bind(metadata_json)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to complete remediation run")
+    }
+
+    pub async fn fail_remediation_run(
+        &self,
+        run_id: Uuid,
+        error_message: &str,
+        validation_output: Option<&str>,
+    ) -> HeimdallResult<Option<RemediationRun>> {
+        sqlx::query_as::<_, RemediationRun>(
+            "UPDATE remediation_runs \
+             SET status = 'failed', error_message = $2, validation_output = $3, \
+                 completed_at = now(), updated_at = now() \
+             WHERE id = $1 RETURNING *",
+        )
+        .bind(run_id)
+        .bind(error_message)
+        .bind(validation_output)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fail remediation run")
+    }
+
+    pub async fn get_latest_remediation_run_for_finding(
+        &self,
+        finding_id: Uuid,
+    ) -> HeimdallResult<Option<RemediationRun>> {
+        sqlx::query_as::<_, RemediationRun>(
+            "SELECT * FROM remediation_runs WHERE finding_id = $1 \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(finding_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to fetch latest remediation run")
     }
 
     pub async fn get_repo_issue_by_fingerprint(
