@@ -178,7 +178,7 @@ impl AppState {
     pub fn require_ai(&self) -> anyhow::Result<&dyn ModelProvider> {
         self.ai.as_deref().ok_or_else(|| {
             anyhow::anyhow!(
-                "No AI provider configured. Connect Claude Code, Codex, or Grok Subscription in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENAI_COMPATIBLE_BASE_URL with optional OPENAI_COMPATIBLE_API_KEY, XAI_API_KEY, or OLLAMA_URL."
+                "No AI provider configured. Connect Claude Code, Codex, or Grok Subscription in Settings, or set ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENAI_COMPATIBLE_BASE_URL plus OPENAI_COMPATIBLE_MODEL with optional OPENAI_COMPATIBLE_API_KEY, XAI_API_KEY, or OLLAMA_URL."
             )
         })
     }
@@ -302,14 +302,12 @@ impl AppState {
             }
             _ => ai::build_provider_for_kind(provider_kind, secret),
         };
-        let model = model_for_provider_with_preferences(
-            provider_kind,
-            &self.config.ai.default_model,
-            preferences,
-        );
-        ensure_provider_model(provider_kind, &model)?;
         Ok(ResolvedProviderCandidate {
-            model,
+            model: model_for_provider_with_preferences(
+                provider_kind,
+                &self.config.ai,
+                preferences,
+            )?,
             provider_kind,
             provider,
             source: RuntimeProviderSource::Stored,
@@ -322,18 +320,20 @@ impl AppState {
         preferences: &AiRoutingPreferences,
     ) -> Option<ResolvedProviderCandidate> {
         let credential = env_credential_for_provider(&self.config.ai, provider_kind)?;
-        let model = model_for_provider_with_preferences(
+        let model = match model_for_provider_with_preferences(
             provider_kind,
-            &self.config.ai.default_model,
+            &self.config.ai,
             preferences,
-        );
-        if let Err(error) = ensure_provider_model(provider_kind, &model) {
-            warn!(
-                "Skipping environment {} provider: {error:#}",
-                provider_kind.as_str()
-            );
-            return None;
-        }
+        ) {
+            Ok(model) => model,
+            Err(error) => {
+                warn!(
+                    "Failed to initialize environment {} provider: {error:#}",
+                    provider_kind.as_str()
+                );
+                return None;
+            }
+        };
         Some(ResolvedProviderCandidate {
             model,
             provider_kind,
@@ -345,23 +345,31 @@ impl AppState {
 
 fn model_for_provider_with_preferences(
     provider: ProviderKind,
-    configured_model: &str,
+    config: &AiConfig,
     preferences: &AiRoutingPreferences,
-) -> String {
+) -> anyhow::Result<String> {
     let override_model = preferences
         .provider_models
         .get(&provider)
         .map(String::as_str);
-    ai::resolve_model_for_provider(provider, override_model, configured_model)
-}
-
-fn ensure_provider_model(provider: ProviderKind, model: &str) -> anyhow::Result<()> {
-    if provider == ProviderKind::OpenAiCompatible && model.trim().is_empty() {
-        anyhow::bail!(
-            "OpenAI Compatible provider requires an explicit model. Set the model from the endpoint's /v1/models response in Settings > AI Providers."
-        );
+    if provider == ProviderKind::OpenAiCompatible {
+        let model = override_model
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+            .or(config.openai_compatible_model.as_deref());
+        let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) else {
+            anyhow::bail!(
+                "OpenAI Compatible model is required. Set it in Settings with the provider endpoint or set OPENAI_COMPATIBLE_MODEL."
+            );
+        };
+        return Ok(model.to_string());
     }
-    Ok(())
+
+    Ok(ai::resolve_model_for_provider(
+        provider,
+        override_model,
+        &config.default_model,
+    ))
 }
 
 fn runtime_provider_plan(
@@ -425,7 +433,7 @@ fn provider_is_configured(
     provider_kind: ProviderKind,
 ) -> bool {
     if provider_kind == ProviderKind::OpenAiCompatible
-        && !provider_has_explicit_model(preferences, provider_kind)
+        && !provider_has_explicit_model(config, preferences, provider_kind)
     {
         return false;
     }
@@ -433,6 +441,7 @@ fn provider_is_configured(
 }
 
 fn provider_has_explicit_model(
+    config: &AiConfig,
     preferences: &AiRoutingPreferences,
     provider_kind: ProviderKind,
 ) -> bool {
@@ -440,7 +449,15 @@ fn provider_has_explicit_model(
         .provider_models
         .get(&provider_kind)
         .map(|model| !model.trim().is_empty())
-        .unwrap_or(false)
+        .unwrap_or_else(|| {
+            provider_kind == ProviderKind::OpenAiCompatible
+                && config
+                    .openai_compatible_model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|model| !model.is_empty())
+                    .is_some()
+        })
 }
 
 fn runtime_source_for_provider(
@@ -465,6 +482,11 @@ fn env_credential_for_provider(config: &AiConfig, provider_kind: ProviderKind) -
         ProviderKind::Xai => config.xai_api_key.clone(),
         ProviderKind::OpenAi => config.openai_api_key.clone(),
         ProviderKind::OpenAiCompatible => {
+            config
+                .openai_compatible_model
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())?;
             config
                 .openai_compatible_base_url
                 .as_deref()
@@ -494,6 +516,7 @@ mod tests {
         openai_api_key: Option<&str>,
         openai_compatible_api_key: Option<&str>,
         openai_compatible_base_url: Option<&str>,
+        openai_compatible_model: Option<&str>,
         xai_api_key: Option<&str>,
         ollama_url: Option<&str>,
         default_model: &str,
@@ -503,6 +526,7 @@ mod tests {
             openai_api_key: openai_api_key.map(str::to_string),
             openai_compatible_api_key: openai_compatible_api_key.map(str::to_string),
             openai_compatible_base_url: openai_compatible_base_url.map(str::to_string),
+            openai_compatible_model: openai_compatible_model.map(str::to_string),
             xai_api_key: xai_api_key.map(str::to_string),
             ollama_url: ollama_url.map(str::to_string),
             default_model: default_model.to_string(),
@@ -534,6 +558,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             "claude-sonnet-4-20250514",
         );
         let stored_keys = vec![stored_key("anthropic")];
@@ -561,6 +586,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             "claude-sonnet-4-20250514",
         );
         let stored_keys = vec![stored_key("anthropic")];
@@ -584,6 +610,7 @@ mod tests {
         let config = ai_config(
             None,
             Some("sk-openai"),
+            None,
             None,
             None,
             None,
@@ -623,6 +650,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             "claude-3-7-sonnet",
         );
         let stored_keys = Vec::new();
@@ -644,6 +672,7 @@ mod tests {
     #[test]
     fn runtime_plan_uses_xai_env_provider_for_grok_model() {
         let config = ai_config(
+            None,
             None,
             None,
             None,
@@ -675,6 +704,7 @@ mod tests {
             None,
             Some("sk-custom"),
             Some("http://localhost:1234/v1"),
+            Some("custom-model"),
             None,
             None,
             "custom-model",
@@ -708,6 +738,7 @@ mod tests {
             None,
             None,
             Some("http://localhost:1234/v1"),
+            Some("custom-model"),
             None,
             None,
             "custom-model",
@@ -743,6 +774,7 @@ mod tests {
             Some("http://localhost:1234/v1"),
             None,
             None,
+            None,
             "gpt-4o",
         );
         let stored_keys = Vec::new();
@@ -763,6 +795,7 @@ mod tests {
         let config = ai_config(
             Some("sk-ant-env"),
             Some("sk-openai"),
+            None,
             None,
             None,
             None,

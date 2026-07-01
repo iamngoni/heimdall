@@ -102,6 +102,7 @@ pub struct AiConfig {
     pub openai_api_key: Option<String>,
     pub openai_compatible_api_key: Option<String>,
     pub openai_compatible_base_url: Option<String>,
+    pub openai_compatible_model: Option<String>,
     pub xai_api_key: Option<String>,
     pub ollama_url: Option<String>,
     pub default_model: String,
@@ -226,6 +227,8 @@ impl AiConfig {
                 .or_else(|| env_nonempty("CUSTOM_OPENAI_API_KEY")),
             openai_compatible_base_url: env_nonempty("OPENAI_COMPATIBLE_BASE_URL")
                 .or_else(|| env_nonempty("CUSTOM_OPENAI_BASE_URL")),
+            openai_compatible_model: env_nonempty("OPENAI_COMPATIBLE_MODEL")
+                .or_else(|| env_nonempty("CUSTOM_OPENAI_MODEL")),
             xai_api_key: env_nonempty("XAI_API_KEY"),
             ollama_url: env_nonempty("OLLAMA_URL"),
             default_model: env_nonempty_or("DEFAULT_AI_MODEL", "claude-sonnet-4-20250514"),
@@ -236,7 +239,7 @@ impl AiConfig {
     pub fn has_provider(&self) -> bool {
         self.anthropic_api_key.is_some()
             || self.openai_api_key.is_some()
-            || self.openai_compatible_base_url.is_some()
+            || (self.openai_compatible_base_url.is_some() && self.openai_compatible_model.is_some())
             || self.xai_api_key.is_some()
             || self.ollama_url.is_some()
     }

@@ -296,7 +296,7 @@
                         <section data-settings-panel="providers" {% if initial_settings_tab != 'providers' %}hidden{% endif %}>
                             <header class="mb-6">
                                 <h2 class="font-display text-2xl font-semibold tracking-[-0.02em]" style="color:var(--hm-text-900)">AI Providers</h2>
-                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Pick the model used for each backend. Default is <span style="color:var(--hm-text-900)">{{ ai_config.default_model | default('—') }}</span> when blank.</p>
+                                <p class="mt-1 text-sm" style="color:var(--hm-text-500)">Pick the model used for each backend. Default is <span style="color:var(--hm-text-900)">{{ ai_config.default_model | default('—') }}</span> when blank, except OpenAI Compatible which requires an explicit model.</p>
                             </header>
 
                             {% set ai_provider_catalog = [
@@ -376,7 +376,7 @@
                                                       hx-ext="json-enc"
                                                       hx-swap="none"
                                                       hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('OpenAI Compatible endpoint saved'); setTimeout(function(){ window.location.reload(); }, 300); } else { var msg='Failed to save endpoint'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }"
-                                                      class="mt-3 grid gap-3 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+                                                      class="mt-3 grid gap-3 rounded-xl border p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
                                                       style="background:var(--hm-surface);border-color:var(--hm-border)">
                                                     <input type="hidden" name="provider" value="openai_compatible">
                                                     <input type="hidden" name="label" value="OpenAI Compatible">
@@ -387,6 +387,17 @@
                                                                autocomplete="off"
                                                                spellcheck="false"
                                                                placeholder="http://localhost:1234/v1"
+                                                               class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-[12px] outline-none"
+                                                               style="background:var(--hm-surface-strong);border-color:var(--hm-border);color:var(--hm-text-900)">
+                                                    </label>
+                                                    <label class="block">
+                                                        <span class="text-[11px] font-semibold uppercase tracking-wide" style="color:var(--hm-text-500)">Model</span>
+                                                        <input name="model"
+                                                               required
+                                                               value="{{ provider.model }}"
+                                                               autocomplete="off"
+                                                               spellcheck="false"
+                                                               placeholder="{{ provider.placeholder }}"
                                                                class="mt-1 block w-full rounded-lg border px-3 py-2 font-mono text-[12px] outline-none"
                                                                style="background:var(--hm-surface-strong);border-color:var(--hm-border);color:var(--hm-text-900)">
                                                     </label>
@@ -417,6 +428,7 @@
                                                 {% endif %}
                                             </div>
                                         </div>
+                                        {% if provider.id != 'openai_compatible' %}
                                         <label class="block">
                                             <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide" style="color:var(--hm-text-500)">Model</span>
                                             <input type="text"
@@ -429,6 +441,9 @@
                                                    class="w-full rounded-xl border px-3 py-2 font-mono text-sm outline-none disabled:opacity-50"
                                                    style="background:var(--hm-surface);border-color:var(--hm-border);color:var(--hm-text-900)">
                                         </label>
+                                        {% else %}
+                                        <div></div>
+                                        {% endif %}
                                     </div>
                                     {% endfor %}
                                 </div>
@@ -535,11 +550,11 @@
                                       hx-ext="json-enc"
                                       hx-swap="none"
                                       hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('Key added'); setTimeout(function(){ window.location.reload(); }, 400); }"
-                                      class="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+                                      class="grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
                                     <label class="block">
                                         <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Provider</span>
                                         <select name="provider"
-                                                onchange="this.closest('form').querySelector('input[name=key]').required = this.value !== 'openai_compatible'"
+                                                onchange="const form=this.closest('form'); const custom=this.value === 'openai_compatible'; form.querySelector('input[name=key]').required = !custom; const base=form.querySelector('input[name=base_url]'); if(base) base.required = custom; const model=form.querySelector('input[name=model]'); if(model) model.required = custom;"
                                                 class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm"
                                                 style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)">
                                             <option value="anthropic">Anthropic</option>
@@ -558,6 +573,12 @@
                                     <label class="block">
                                         <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Base URL</span>
                                         <input name="base_url" placeholder="http://localhost:1234/v1"
+                                               class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm font-mono"
+                                               style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-[11px] font-semibold uppercase tracking-[0.18em]" style="color:var(--hm-text-500)">Model</span>
+                                        <input name="model" placeholder="model-id"
                                                class="mt-2 block w-full rounded-xl border px-4 py-2.5 text-sm font-mono"
                                                style="background:var(--hm-surface-muted);border-color:var(--hm-border-strong);color:var(--hm-text-900)"/>
                                     </label>

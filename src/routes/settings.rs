@@ -19,7 +19,7 @@ use crate::ai;
 use crate::ai::ProviderKind;
 use crate::ai::types::{CompletionRequest, Message};
 use crate::middleware::auth::AuthenticatedUser;
-use crate::models::{ApiKey, ApiResponse, HeimdallResult, User};
+use crate::models::{ApiKey, ApiResponse, User};
 use crate::state::{AppState, ClaudeCodePendingLogin, CodexPendingLogin, XaiOAuthPendingLogin};
 
 /// Pending Codex logins are dropped after this many minutes regardless of
@@ -72,8 +72,8 @@ struct CreateApiKeyRequest {
     provider: String,
     key: Option<String>,
     base_url: Option<String>,
-    label: Option<String>,
     model: Option<String>,
+    label: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -340,7 +340,9 @@ fn provider_configured(
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
         ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
-        ProviderKind::OpenAiCompatible => ai_cfg.openai_compatible_base_url.is_some(),
+        ProviderKind::OpenAiCompatible => {
+            ai_cfg.openai_compatible_base_url.is_some() && ai_cfg.openai_compatible_model.is_some()
+        }
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
 }
@@ -432,9 +434,12 @@ fn provider_models_to_json_map(
         .collect()
 }
 
-/// Pull non-empty per-provider model overrides off the form into a map keyed by provider.
-fn provider_models_from_form(body: &UpdateAiRoutingForm) -> BTreeMap<ProviderKind, String> {
-    let mut models = BTreeMap::new();
+/// Merge per-provider model fields into the saved override map. Submitted
+/// blank values clear an override; omitted fields preserve the existing value.
+fn merge_provider_models_from_form(
+    models: &mut BTreeMap<ProviderKind, String>,
+    body: &UpdateAiRoutingForm,
+) {
     let pairs = [
         (ProviderKind::Anthropic, body.model_anthropic.as_deref()),
         (ProviderKind::ClaudeCode, body.model_claude_code.as_deref()),
@@ -453,39 +458,69 @@ fn provider_models_from_form(body: &UpdateAiRoutingForm) -> BTreeMap<ProviderKin
             let trimmed = raw.trim();
             if !trimmed.is_empty() {
                 models.insert(provider, trimmed.to_string());
+            } else {
+                models.remove(&provider);
             }
         }
     }
-    models
 }
 
-async fn save_provider_model_override(
+fn required_openai_compatible_model(model: Option<&str>) -> Result<String, HttpResponse> {
+    let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) else {
+        return Err(HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            "Model is required for OpenAI-compatible providers. Use the id from /v1/models.",
+        )));
+    };
+    Ok(model.to_string())
+}
+
+async fn save_openai_compatible_model(
     state: &AppState,
     user_id: Uuid,
-    provider: ProviderKind,
-    model: Option<&str>,
-) -> HeimdallResult<()> {
-    let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) else {
-        return Ok(());
-    };
-    let Some(user) = state.db.get_user_by_id(user_id).await? else {
-        return Ok(());
+    model: &str,
+) -> Result<(), HttpResponse> {
+    let db_user = match state.db.get_user_by_id(user_id).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            return Err(
+                HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "User not found."))
+            );
+        }
+        Err(error) => {
+            log::error!("Failed to load user before saving OpenAI-compatible model: {error:#}");
+            return Err(
+                HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    500,
+                    "Failed to load provider settings.",
+                )),
+            );
+        }
     };
 
-    let mut provider_models = ai::parse_provider_models(&user.ai_provider_models);
-    provider_models.insert(provider, model.to_string());
+    let mut provider_models = ai::parse_provider_models(&db_user.ai_provider_models);
+    provider_models.insert(ProviderKind::OpenAiCompatible, model.to_string());
     let provider_models_json = ai::serialize_provider_models(&provider_models);
-    state
+
+    match state
         .db
-        .update_user_ai_routing_preferences(
-            user_id,
-            user.preferred_ai_provider.as_deref(),
-            user.ai_fallbacks_enabled,
-            &user.ai_fallback_order,
-            &provider_models_json,
-        )
-        .await?;
-    Ok(())
+        .update_user_ai_provider_models(user_id, &provider_models_json)
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => {
+            Err(HttpResponse::NotFound().json(ApiResponse::<()>::error(404, "User not found.")))
+        }
+        Err(error) => {
+            log::error!("Failed to save OpenAI-compatible model: {error:#}");
+            Err(
+                HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    500,
+                    "Failed to save OpenAI-compatible model.",
+                )),
+            )
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -521,10 +556,17 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
         provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAiCompatible);
     let has_ollama = provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
 
-    let provider_models = db_user
+    let mut provider_models = db_user
         .as_ref()
         .map(|user| ai::parse_provider_models(&user.ai_provider_models))
         .unwrap_or_default();
+    if let Some(model) = ai_cfg.openai_compatible_model.as_deref().map(str::trim)
+        && !model.is_empty()
+    {
+        provider_models
+            .entry(ProviderKind::OpenAiCompatible)
+            .or_insert_with(|| model.to_string());
+    }
 
     let resp = SettingsResponse {
         has_anthropic,
@@ -558,6 +600,20 @@ async fn update_ai_routing(
         .get::<AuthenticatedUser>()
         .cloned()
         .expect("auth middleware ensures user exists");
+
+    let db_user = match state.db.get_user_by_id(user.id).await {
+        Ok(user) => user,
+        Err(error) => {
+            log::error!("Failed to load user for AI routing: {error:#}");
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, "Failed to load provider settings.");
+            }
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to load provider settings.",
+            ));
+        }
+    };
 
     let api_keys = match state.db.list_api_keys_by_user(user.id).await {
         Ok(keys) => keys,
@@ -638,7 +694,11 @@ async fn update_ai_routing(
 
     let fallbacks_enabled = body.fallbacks_enabled.is_some();
     let fallback_order_csv = ai::provider_order_csv(&fallback_order);
-    let provider_models = provider_models_from_form(&body);
+    let mut provider_models = db_user
+        .as_ref()
+        .map(|user| ai::parse_provider_models(&user.ai_provider_models))
+        .unwrap_or_default();
+    merge_provider_models_from_form(&mut provider_models, &body);
     let provider_models_json = ai::serialize_provider_models(&provider_models);
 
     match state
@@ -1164,20 +1224,10 @@ async fn create_api_key(
     } else {
         None
     };
-    let openai_compatible_model = if provider == ProviderKind::OpenAiCompatible.as_str() {
-        match body
-            .model
-            .as_deref()
-            .map(str::trim)
-            .filter(|model| !model.is_empty())
-        {
-            Some(model) => Some(model.to_string()),
-            None => {
-                return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-                    400,
-                    "Model is required for OpenAI-compatible providers. Use the id from /v1/models.",
-                ));
-            }
+    let custom_model = if provider == ProviderKind::OpenAiCompatible.as_str() {
+        match required_openai_compatible_model(body.model.as_deref()) {
+            Ok(model) => Some(model),
+            Err(response) => return response,
         }
     } else {
         None
@@ -1201,6 +1251,13 @@ async fn create_api_key(
         .cloned()
         .expect("auth middleware ensures user exists");
     let user_id = user.id;
+
+    if let Some(model) = custom_model.as_deref()
+        && let Err(response) = save_openai_compatible_model(&state, user_id, model).await
+    {
+        return response;
+    }
+
     let key_hash = hash_key(&secret);
     let encrypted = encrypt_key(&secret, state.encryption_key.as_ref());
     let label_owned = body
@@ -1230,22 +1287,6 @@ async fn create_api_key(
         .await
     {
         Ok(api_key) => {
-            if let Some(model) = openai_compatible_model.as_deref()
-                && let Err(error) = save_provider_model_override(
-                    &state,
-                    user_id,
-                    ProviderKind::OpenAiCompatible,
-                    Some(model),
-                )
-                .await
-            {
-                log::error!("Failed to save OpenAI Compatible model override: {error:#}");
-                return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
-                    500,
-                    "Endpoint saved, but failed to save the OpenAI-compatible model.",
-                ));
-            }
-
             if is_hx_request(&req) {
                 return render_api_key_row(
                     &state,
@@ -1354,29 +1395,13 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
         }
     };
 
-    let openai_compatible_model = if provider == ProviderKind::OpenAiCompatible.as_str() {
-        match body
-            .model
-            .as_deref()
-            .map(str::trim)
-            .filter(|model| !model.is_empty())
-        {
-            Some(model) => Some(model.to_string()),
-            None => {
-                return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
-                    400,
-                    "Model is required for OpenAI-compatible providers. Use the id from /v1/models.",
-                ));
-            }
-        }
-    } else {
-        None
-    };
-
     let model = match provider.as_str() {
         "anthropic" => "claude-sonnet-4-20250514".to_string(),
         "openai" => "gpt-4o-mini".to_string(),
-        "openai_compatible" => openai_compatible_model.expect("validated above"),
+        "openai_compatible" => match required_openai_compatible_model(body.model.as_deref()) {
+            Ok(model) => model,
+            Err(response) => return response,
+        },
         "xai" => "grok-4.3".to_string(),
         "ollama" => "llama3.2".to_string(),
         _ => unreachable!(),
@@ -1453,15 +1478,23 @@ async fn ai_status(state: web::Data<AppState>, req: HttpRequest) -> HttpResponse
         stored_provider_configured(&api_keys, ProviderKind::OpenAiCompatible);
     let stored_ollama = stored_provider_configured(&api_keys, ProviderKind::Ollama);
 
-    let provider_models = db_user
+    let mut provider_models = db_user
         .as_ref()
         .map(|user| ai::parse_provider_models(&user.ai_provider_models))
         .unwrap_or_default();
+    if let Some(model) = ai_cfg.openai_compatible_model.as_deref().map(str::trim)
+        && !model.is_empty()
+    {
+        provider_models
+            .entry(ProviderKind::OpenAiCompatible)
+            .or_insert_with(|| model.to_string());
+    }
 
     let resp = AiStatusResponse {
         env_anthropic: ai_cfg.anthropic_api_key.is_some(),
         env_openai: ai_cfg.openai_api_key.is_some(),
-        env_openai_compatible: ai_cfg.openai_compatible_base_url.is_some(),
+        env_openai_compatible: ai_cfg.openai_compatible_base_url.is_some()
+            && ai_cfg.openai_compatible_model.is_some(),
         env_xai: ai_cfg.xai_api_key.is_some(),
         env_ollama: ai_cfg.ollama_url.is_some(),
         stored_anthropic,

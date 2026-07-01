@@ -1128,10 +1128,17 @@ async fn settings_page(
     let fallback_order =
         page_effective_fallback_order(db_user.as_ref(), ai_cfg, &api_keys, preferred_provider);
     let fallback_order_values = page_provider_order_strings(&fallback_order);
-    let provider_models = db_user
+    let mut provider_models = db_user
         .as_ref()
         .map(|user| ai::parse_provider_models(&user.ai_provider_models))
         .unwrap_or_default();
+    if let Some(model) = ai_cfg.openai_compatible_model.as_deref().map(str::trim)
+        && !model.is_empty()
+    {
+        provider_models
+            .entry(ProviderKind::OpenAiCompatible)
+            .or_insert_with(|| model.to_string());
+    }
     let key_values: Vec<minijinja::Value> = api_keys
         .iter()
         .map(|k| {
@@ -1211,7 +1218,9 @@ fn page_provider_configured(
         ProviderKind::ClaudeCode | ProviderKind::Codex | ProviderKind::XaiOAuth => false,
         ProviderKind::Xai => ai_cfg.xai_api_key.is_some(),
         ProviderKind::OpenAi => ai_cfg.openai_api_key.is_some(),
-        ProviderKind::OpenAiCompatible => ai_cfg.openai_compatible_base_url.is_some(),
+        ProviderKind::OpenAiCompatible => {
+            ai_cfg.openai_compatible_base_url.is_some() && ai_cfg.openai_compatible_model.is_some()
+        }
         ProviderKind::Ollama => ai_cfg.ollama_url.is_some(),
     }
 }

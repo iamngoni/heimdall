@@ -357,6 +357,11 @@ fn env_credential(config: &AiConfig, provider: ProviderKind) -> Option<String> {
         ProviderKind::OpenAi => config.openai_api_key.clone(),
         ProviderKind::OpenAiCompatible => {
             config
+                .openai_compatible_model
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())?;
+            config
                 .openai_compatible_base_url
                 .as_deref()
                 .and_then(|base_url| {
@@ -525,6 +530,7 @@ mod tests {
             openai_api_key: None,
             openai_compatible_api_key: None,
             openai_compatible_base_url: Some("http://localhost:1234/v1".to_string()),
+            openai_compatible_model: Some("custom-model".to_string()),
             xai_api_key: None,
             ollama_url: None,
             default_model: "custom-model".to_string(),
@@ -546,6 +552,7 @@ mod tests {
             openai_api_key: Some("sk-openai-test".to_string()),
             openai_compatible_api_key: None,
             openai_compatible_base_url: None,
+            openai_compatible_model: None,
             xai_api_key: Some("xai-test".to_string()),
             ollama_url: None,
             default_model: "unknown-model".to_string(),

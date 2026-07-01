@@ -328,6 +328,22 @@ impl DatabaseOperations {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn update_user_ai_provider_models(
+        &self,
+        user_id: Uuid,
+        provider_models: &str,
+    ) -> HeimdallResult<bool> {
+        let result = sqlx::query(
+            "UPDATE users SET ai_provider_models = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL",
+        )
+        .bind(provider_models)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to update user AI provider models")?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn update_user_password(
         &self,
         user_id: Uuid,

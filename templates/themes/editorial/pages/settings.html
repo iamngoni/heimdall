@@ -337,7 +337,7 @@
                                 <header class="mb-10 border-b border-ink-900 pb-6">
                                     <p class="section-num">04 · AI Providers</p>
                                     <h2 class="mt-2 font-serif text-[32px] font-normal leading-tight tracking-tightest text-ink-900">Model access</h2>
-                                    <p class="mt-2 max-w-measure text-sm text-ink-600">Pick the model for each provider. Default is <span class="font-mono text-ink-900">{{ ai_config.default_model }}</span> when blank.</p>
+                                    <p class="mt-2 max-w-measure text-sm text-ink-600">Pick the model for each provider. Default is <span class="font-mono text-ink-900">{{ ai_config.default_model }}</span> when blank, except OpenAI Compatible which requires an explicit model.</p>
                                 </header>
 
                                 {% set ai_provider_catalog = [
@@ -414,7 +414,7 @@
                                                           hx-ext="json-enc"
                                                           hx-swap="none"
                                                           hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('OpenAI Compatible endpoint saved'); setTimeout(function(){ window.location.reload(); }, 300); } else { var msg='Failed to save endpoint'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }"
-                                                          class="mt-4 grid gap-4 border-t border-ink-200 pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                                          class="mt-4 grid gap-4 border-t border-ink-200 pt-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
                                                         <input type="hidden" name="provider" value="openai_compatible">
                                                         <input type="hidden" name="label" value="OpenAI Compatible">
                                                         <label class="block">
@@ -424,6 +424,16 @@
                                                                    autocomplete="off"
                                                                    spellcheck="false"
                                                                    placeholder="http://localhost:1234/v1"
+                                                                   class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:border-ink-700">
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Model</span>
+                                                            <input name="model"
+                                                                   required
+                                                                   value="{{ provider.model }}"
+                                                                   autocomplete="off"
+                                                                   spellcheck="false"
+                                                                   placeholder="{{ provider.placeholder }}"
                                                                    class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:border-ink-700">
                                                         </label>
                                                         <label class="block">
@@ -451,6 +461,7 @@
                                                     {% endif %}
                                                 </div>
                                             </div>
+                                            {% if provider.id != 'openai_compatible' %}
                                             <label class="block">
                                                 <span class="mb-2 block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Model</span>
                                                 <input type="text"
@@ -462,6 +473,9 @@
                                                        {% if not provider.enabled %}disabled{% endif %}
                                                        class="w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none transition focus:border-ink-700 disabled:opacity-50">
                                             </label>
+                                            {% else %}
+                                            <div></div>
+                                            {% endif %}
                                         </div>
                                         {% endfor %}
                                     </div>
@@ -571,7 +585,7 @@
                                             <label class="block">
                                                 <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Provider</span>
                                                 <select name="provider"
-                                                        onchange="this.closest('form').querySelector('input[name=key]').required = this.value !== 'openai_compatible'"
+                                                        onchange="const form=this.closest('form'); const custom=this.value === 'openai_compatible'; form.querySelector('input[name=key]').required = !custom; const base=form.querySelector('input[name=base_url]'); if(base) base.required = custom; const model=form.querySelector('input[name=model]'); if(model) model.required = custom;"
                                                         class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
                                                     <option value="anthropic">Anthropic</option>
                                                     <option value="openai">OpenAI</option>
@@ -593,6 +607,10 @@
                                             <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Base URL for OpenAI Compatible</span>
                                             <input name="base_url" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="http://localhost:1234/v1">
                                         </label>
+                                        <label class="block">
+                                            <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Model for OpenAI Compatible</span>
+                                            <input name="model" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="model-id">
+                                        </label>
                                         <div class="flex items-center justify-between gap-3 border-t border-ink-200 pt-4">
                                             <button type="button" onclick="document.getElementById('test-connection-drawer').classList.toggle('hidden')" class="link-editorial font-mono text-[11px] uppercase tracking-[0.16em] text-ink-600">
                                                 Test connection first →
@@ -612,7 +630,7 @@
                                             <label class="block">
                                                 <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Provider</span>
                                                 <select name="provider"
-                                                        onchange="this.closest('form').querySelector('input[name=key]').required = this.value !== 'openai_compatible'"
+                                                        onchange="const form=this.closest('form'); const custom=this.value === 'openai_compatible'; form.querySelector('input[name=key]').required = !custom; const base=form.querySelector('input[name=base_url]'); if(base) base.required = custom; const model=form.querySelector('input[name=model]'); if(model) model.required = custom;"
                                                         class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 text-sm text-ink-900">
                                                     <option value="anthropic">Anthropic</option>
                                                     <option value="openai">OpenAI</option>
@@ -631,7 +649,7 @@
                                             </label>
                                             <label class="block">
                                                 <span class="block font-mono text-[11px] uppercase tracking-[0.16em] text-ink-500">Model</span>
-                                                <input name="model" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="gpt-4o">
+                                                <input name="model" class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400" placeholder="model-id">
                                             </label>
                                             <div class="flex items-end">
                                                 <button type="submit" class="inline-flex items-center justify-center border border-ink-900 bg-white px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-ink-900 hover:text-white">

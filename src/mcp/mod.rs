@@ -2014,6 +2014,22 @@ impl HeimdallMcp {
                 } else {
                     None
                 };
+                let custom_model = if provider == "openai_compatible" {
+                    Some(
+                        req.model
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|model| !model.is_empty())
+                            .ok_or_else(|| {
+                                invalid_params(
+                                    "model is required when provider=openai_compatible".to_string(),
+                                )
+                            })?
+                            .to_string(),
+                    )
+                } else {
+                    None
+                };
                 let secret = if let Some(base_url) = custom_base_url.as_deref() {
                     ai::openai::encode_openai_compatible_secret(key, base_url)
                         .map_err(|error| invalid_params(format!("{error:#}")))?
@@ -2044,6 +2060,29 @@ impl HeimdallMcp {
                     .filter(|label| !label.is_empty())
                     .map(str::to_string)
                     .or_else(|| custom_base_url.clone());
+
+                if let Some(model) = custom_model.as_deref() {
+                    let db_user = self
+                        .state
+                        .db
+                        .get_user_by_id(user.id)
+                        .await
+                        .map_err(|error| {
+                            internal_err(format!("Failed to load user settings: {error}"))
+                        })?
+                        .ok_or_else(|| internal_err("User not found".to_string()))?;
+                    let mut provider_models =
+                        ai::parse_provider_models(&db_user.ai_provider_models);
+                    provider_models.insert(ProviderKind::OpenAiCompatible, model.to_string());
+                    let provider_models_json = ai::serialize_provider_models(&provider_models);
+                    self.state
+                        .db
+                        .update_user_ai_provider_models(user.id, &provider_models_json)
+                        .await
+                        .map_err(|error| {
+                            internal_err(format!("Failed to save OpenAI-compatible model: {error}"))
+                        })?;
+                }
 
                 let created = self
                     .state
