@@ -19,7 +19,7 @@ use crate::ai;
 use crate::ai::ProviderKind;
 use crate::ai::types::{CompletionRequest, Message};
 use crate::middleware::auth::AuthenticatedUser;
-use crate::models::{ApiKey, ApiResponse, User};
+use crate::models::{ApiKey, ApiResponse, HeimdallResult, User};
 use crate::state::{AppState, ClaudeCodePendingLogin, CodexPendingLogin, XaiOAuthPendingLogin};
 
 /// Pending Codex logins are dropped after this many minutes regardless of
@@ -73,6 +73,7 @@ struct CreateApiKeyRequest {
     key: Option<String>,
     base_url: Option<String>,
     label: Option<String>,
+    model: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -456,6 +457,35 @@ fn provider_models_from_form(body: &UpdateAiRoutingForm) -> BTreeMap<ProviderKin
         }
     }
     models
+}
+
+async fn save_provider_model_override(
+    state: &AppState,
+    user_id: Uuid,
+    provider: ProviderKind,
+    model: Option<&str>,
+) -> HeimdallResult<()> {
+    let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) else {
+        return Ok(());
+    };
+    let Some(user) = state.db.get_user_by_id(user_id).await? else {
+        return Ok(());
+    };
+
+    let mut provider_models = ai::parse_provider_models(&user.ai_provider_models);
+    provider_models.insert(provider, model.to_string());
+    let provider_models_json = ai::serialize_provider_models(&provider_models);
+    state
+        .db
+        .update_user_ai_routing_preferences(
+            user_id,
+            user.preferred_ai_provider.as_deref(),
+            user.ai_fallbacks_enabled,
+            &user.ai_fallback_order,
+            &provider_models_json,
+        )
+        .await?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,6 +1164,24 @@ async fn create_api_key(
     } else {
         None
     };
+    let openai_compatible_model = if provider == ProviderKind::OpenAiCompatible.as_str() {
+        match body
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+        {
+            Some(model) => Some(model.to_string()),
+            None => {
+                return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                    400,
+                    "Model is required for OpenAI-compatible providers. Use the id from /v1/models.",
+                ));
+            }
+        }
+    } else {
+        None
+    };
 
     let secret = if let Some(base_url) = custom_base_url.as_deref() {
         match ai::openai::encode_openai_compatible_secret(key, base_url) {
@@ -1182,6 +1230,22 @@ async fn create_api_key(
         .await
     {
         Ok(api_key) => {
+            if let Some(model) = openai_compatible_model.as_deref()
+                && let Err(error) = save_provider_model_override(
+                    &state,
+                    user_id,
+                    ProviderKind::OpenAiCompatible,
+                    Some(model),
+                )
+                .await
+            {
+                log::error!("Failed to save OpenAI Compatible model override: {error:#}");
+                return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                    500,
+                    "Endpoint saved, but failed to save the OpenAI-compatible model.",
+                ));
+            }
+
             if is_hx_request(&req) {
                 return render_api_key_row(
                     &state,
@@ -1290,16 +1354,29 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
         }
     };
 
-    let model = match provider.as_str() {
-        "anthropic" => "claude-sonnet-4-20250514".to_string(),
-        "openai" => "gpt-4o-mini".to_string(),
-        "openai_compatible" => body
+    let openai_compatible_model = if provider == ProviderKind::OpenAiCompatible.as_str() {
+        match body
             .model
             .as_deref()
             .map(str::trim)
             .filter(|model| !model.is_empty())
-            .unwrap_or("gpt-4o")
-            .to_string(),
+        {
+            Some(model) => Some(model.to_string()),
+            None => {
+                return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                    400,
+                    "Model is required for OpenAI-compatible providers. Use the id from /v1/models.",
+                ));
+            }
+        }
+    } else {
+        None
+    };
+
+    let model = match provider.as_str() {
+        "anthropic" => "claude-sonnet-4-20250514".to_string(),
+        "openai" => "gpt-4o-mini".to_string(),
+        "openai_compatible" => openai_compatible_model.expect("validated above"),
         "xai" => "grok-4.3".to_string(),
         "ollama" => "llama3.2".to_string(),
         _ => unreachable!(),

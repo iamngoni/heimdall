@@ -69,7 +69,7 @@ impl ProviderKind {
             Self::XaiOAuth => "grok-build-0.1",
             Self::Xai => "grok-build-0.1",
             Self::OpenAi => "gpt-4o",
-            Self::OpenAiCompatible => "gpt-4o",
+            Self::OpenAiCompatible => "",
             Self::Ollama => "llama3.3",
         }
     }
@@ -190,6 +190,10 @@ pub fn configured_provider_kind(config: &AiConfig) -> Option<ProviderKind> {
 pub fn model_for_provider(provider: ProviderKind, configured_model: &str) -> String {
     let configured_model = configured_model.trim();
 
+    if provider == ProviderKind::OpenAiCompatible {
+        return provider.fallback_model().to_string();
+    }
+
     if !configured_model.is_empty() && provider.matches_model(configured_model) {
         configured_model.to_string()
     } else {
@@ -199,7 +203,8 @@ pub fn model_for_provider(provider: ProviderKind, configured_model: &str) -> Str
 
 /// Decide which model to use for a provider, preferring an explicit user override.
 /// `override_model` takes precedence when non-empty; otherwise falls back to
-/// `model_for_provider`.
+/// `model_for_provider`. OpenAI-compatible providers intentionally have no
+/// inferred default because the model id is endpoint-specific.
 pub fn resolve_model_for_provider(
     provider: ProviderKind,
     override_model: Option<&str>,
@@ -426,7 +431,7 @@ mod tests {
         );
         assert_eq!(
             model_for_provider(ProviderKind::OpenAiCompatible, "claude-sonnet-4-20250514"),
-            "gpt-4o"
+            ""
         );
     }
 
@@ -437,6 +442,14 @@ mod tests {
             "claude-sonnet-4-20250514"
         );
         assert_eq!(model_for_provider(ProviderKind::OpenAi, "   "), "gpt-4o");
+        assert_eq!(
+            model_for_provider(ProviderKind::OpenAiCompatible, "   "),
+            ""
+        );
+        assert_eq!(
+            model_for_provider(ProviderKind::OpenAiCompatible, "gpt-4o"),
+            ""
+        );
     }
 
     #[test]

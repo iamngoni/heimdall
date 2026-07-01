@@ -5,11 +5,12 @@ services:
       dockerfile: Dockerfile
     container_name: heimdall
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "${HEIMDALL_HOST_PORT:-18882}:8080"
       - "127.0.0.1:${XAI_OAUTH_CALLBACK_PORT:-56121}:56121"
     env_file:
       - .env
     environment:
+      APP_PORT: "8080"
       DATABASE_URL: "postgres://${POSTGRES_USER:-heimdall}:${POSTGRES_PASSWORD:-heimdall}@postgres:5432/${POSTGRES_DB:-heimdall}"
       XAI_OAUTH_CALLBACK_BIND_HOST: "0.0.0.0"
     depends_on:
@@ -44,6 +45,7 @@ services:
       MCP_TRANSPORT: http
       MCP_HOST: "0.0.0.0"
       MCP_PORT: "45637"
+      WORKER_ENABLED: "false"
     ports:
       - "${MCP_PORT:-45637}:45637"
     env_file:
@@ -77,7 +79,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-heimdall}
       POSTGRES_DB: ${POSTGRES_DB:-heimdall}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

@@ -302,12 +302,14 @@ impl AppState {
             }
             _ => ai::build_provider_for_kind(provider_kind, secret),
         };
+        let model = model_for_provider_with_preferences(
+            provider_kind,
+            &self.config.ai.default_model,
+            preferences,
+        );
+        ensure_provider_model(provider_kind, &model)?;
         Ok(ResolvedProviderCandidate {
-            model: model_for_provider_with_preferences(
-                provider_kind,
-                &self.config.ai.default_model,
-                preferences,
-            ),
+            model,
             provider_kind,
             provider,
             source: RuntimeProviderSource::Stored,
@@ -320,12 +322,20 @@ impl AppState {
         preferences: &AiRoutingPreferences,
     ) -> Option<ResolvedProviderCandidate> {
         let credential = env_credential_for_provider(&self.config.ai, provider_kind)?;
+        let model = model_for_provider_with_preferences(
+            provider_kind,
+            &self.config.ai.default_model,
+            preferences,
+        );
+        if let Err(error) = ensure_provider_model(provider_kind, &model) {
+            warn!(
+                "Skipping environment {} provider: {error:#}",
+                provider_kind.as_str()
+            );
+            return None;
+        }
         Some(ResolvedProviderCandidate {
-            model: model_for_provider_with_preferences(
-                provider_kind,
-                &self.config.ai.default_model,
-                preferences,
-            ),
+            model,
             provider_kind,
             provider: ai::build_provider_for_kind(provider_kind, credential),
             source: RuntimeProviderSource::Environment,
@@ -343,6 +353,15 @@ fn model_for_provider_with_preferences(
         .get(&provider)
         .map(String::as_str);
     ai::resolve_model_for_provider(provider, override_model, configured_model)
+}
+
+fn ensure_provider_model(provider: ProviderKind, model: &str) -> anyhow::Result<()> {
+    if provider == ProviderKind::OpenAiCompatible && model.trim().is_empty() {
+        anyhow::bail!(
+            "OpenAI Compatible provider requires an explicit model. Set the model from the endpoint's /v1/models response in Settings > AI Providers."
+        );
+    }
+    Ok(())
 }
 
 fn runtime_provider_plan(
@@ -366,6 +385,9 @@ fn runtime_provider_plan(
     }
 
     for provider_kind in provider_order {
+        if !provider_is_configured(config, stored_keys, preferences, provider_kind) {
+            continue;
+        }
         if let Some(source) = runtime_source_for_provider(config, stored_keys, provider_kind) {
             plan.push((provider_kind, source));
         }
@@ -380,28 +402,45 @@ fn selected_primary_provider(
     preferences: &AiRoutingPreferences,
 ) -> Option<ProviderKind> {
     if let Some(provider) = preferences.preferred_provider
-        && provider_is_configured(config, stored_keys, provider)
+        && provider_is_configured(config, stored_keys, preferences, provider)
     {
         return Some(provider);
     }
 
     if let Some(provider) = ai::provider_kind_from_model(&config.default_model)
-        && provider_is_configured(config, stored_keys, provider)
+        && provider_is_configured(config, stored_keys, preferences, provider)
     {
         return Some(provider);
     }
 
     ai::default_provider_order()
         .into_iter()
-        .find(|provider| provider_is_configured(config, stored_keys, *provider))
+        .find(|provider| provider_is_configured(config, stored_keys, preferences, *provider))
 }
 
 fn provider_is_configured(
     config: &AiConfig,
     stored_keys: &[ApiKey],
+    preferences: &AiRoutingPreferences,
     provider_kind: ProviderKind,
 ) -> bool {
+    if provider_kind == ProviderKind::OpenAiCompatible
+        && !provider_has_explicit_model(preferences, provider_kind)
+    {
+        return false;
+    }
     runtime_source_for_provider(config, stored_keys, provider_kind).is_some()
+}
+
+fn provider_has_explicit_model(
+    preferences: &AiRoutingPreferences,
+    provider_kind: ProviderKind,
+) -> bool {
+    preferences
+        .provider_models
+        .get(&provider_kind)
+        .map(|model| !model.trim().is_empty())
+        .unwrap_or(false)
 }
 
 fn runtime_source_for_provider(
@@ -645,7 +684,10 @@ mod tests {
             preferred_provider: Some(ProviderKind::OpenAiCompatible),
             fallbacks_enabled: false,
             fallback_order: ai::default_provider_order(),
-            provider_models: BTreeMap::new(),
+            provider_models: BTreeMap::from([(
+                ProviderKind::OpenAiCompatible,
+                "custom-model".to_string(),
+            )]),
         };
 
         let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
@@ -675,7 +717,10 @@ mod tests {
             preferred_provider: Some(ProviderKind::OpenAiCompatible),
             fallbacks_enabled: false,
             fallback_order: ai::default_provider_order(),
-            provider_models: BTreeMap::new(),
+            provider_models: BTreeMap::from([(
+                ProviderKind::OpenAiCompatible,
+                "custom-model".to_string(),
+            )]),
         };
 
         let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
@@ -687,6 +732,30 @@ mod tests {
                 RuntimeProviderSource::Environment
             )]
         );
+    }
+
+    #[test]
+    fn runtime_plan_skips_openai_compatible_when_model_is_not_explicit() {
+        let config = ai_config(
+            None,
+            None,
+            Some("sk-custom"),
+            Some("http://localhost:1234/v1"),
+            None,
+            None,
+            "gpt-4o",
+        );
+        let stored_keys = Vec::new();
+        let preferences = AiRoutingPreferences {
+            preferred_provider: Some(ProviderKind::OpenAiCompatible),
+            fallbacks_enabled: false,
+            fallback_order: ai::default_provider_order(),
+            provider_models: BTreeMap::new(),
+        };
+
+        let plan = runtime_provider_plan(&config, &stored_keys, &preferences);
+
+        assert!(plan.is_empty());
     }
 
     #[test]

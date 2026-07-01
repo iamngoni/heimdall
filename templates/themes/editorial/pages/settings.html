@@ -344,7 +344,7 @@
                                     {"id": "anthropic", "label": "Anthropic", "blurb": "Claude models for threat modeling and report generation.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_anthropic, "model": ai_config.provider_models.anthropic},
                                     {"id": "claude_code", "label": "Claude Code", "blurb": "Claude billed via your Claude.ai Pro/Max subscription.", "placeholder": "claude-sonnet-4-20250514", "enabled": ai_config.has_claude_code, "model": ai_config.provider_models.claude_code},
                                     {"id": "openai", "label": "OpenAI", "blurb": "Balanced provider for hosted or hybrid deployments.", "placeholder": "gpt-4o", "enabled": ai_config.has_openai, "model": ai_config.provider_models.openai},
-                                    {"id": "openai_compatible", "label": "OpenAI Compatible", "blurb": "Custom OpenAI-compatible endpoint with your own base URL.", "placeholder": "gpt-4o", "enabled": ai_config.has_openai_compatible, "model": ai_config.provider_models.openai_compatible},
+                                    {"id": "openai_compatible", "label": "OpenAI Compatible", "blurb": "Custom OpenAI-compatible endpoint with your own base URL.", "placeholder": "model id from /v1/models", "enabled": ai_config.has_openai_compatible, "model": ai_config.provider_models.openai_compatible},
                                     {"id": "codex", "label": "Codex", "blurb": "OpenAI models through a ChatGPT subscription.", "placeholder": "gpt-5.4", "enabled": ai_config.has_codex, "model": ai_config.provider_models.codex},
                                     {"id": "xai_oauth", "label": "Grok Subscription", "blurb": "Grok models through SuperGrok or X Premium+ OAuth.", "placeholder": "grok-build-0.1", "enabled": ai_config.has_xai_oauth, "model": ai_config.provider_models.xai_oauth},
                                     {"id": "xai", "label": "Grok API", "blurb": "xAI API-key access for Grok and Grok Build.", "placeholder": "grok-build-0.1", "enabled": ai_config.has_xai, "model": ai_config.provider_models.xai},
@@ -414,7 +414,7 @@
                                                           hx-ext="json-enc"
                                                           hx-swap="none"
                                                           hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('OpenAI Compatible endpoint saved'); setTimeout(function(){ window.location.reload(); }, 300); } else { var msg='Failed to save endpoint'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }"
-                                                          class="mt-4 grid gap-4 border-t border-ink-200 pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                                                          class="mt-4 grid gap-4 border-t border-ink-200 pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
                                                         <input type="hidden" name="provider" value="openai_compatible">
                                                         <input type="hidden" name="label" value="OpenAI Compatible">
                                                         <label class="block">
@@ -432,6 +432,16 @@
                                                                    name="key"
                                                                    autocomplete="off"
                                                                    placeholder="sk-..."
+                                                                   class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:border-ink-700">
+                                                        </label>
+                                                        <label class="block">
+                                                            <span class="block font-mono text-[10px] uppercase tracking-[0.14em] text-ink-500">Model</span>
+                                                            <input name="model"
+                                                                   required
+                                                                   autocomplete="off"
+                                                                   spellcheck="false"
+                                                                   value="{{ provider.model }}"
+                                                                   placeholder="{{ provider.placeholder }}"
                                                                    class="mt-2 w-full border-0 border-b border-ink-900 bg-transparent pb-1 font-mono text-sm text-ink-900 placeholder:text-ink-400 outline-none focus:border-ink-700">
                                                         </label>
                                                         <div class="flex items-end">

@@ -24,6 +24,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::ai;
+use crate::ai::ProviderKind;
 use crate::ai::types::{CompletionRequest, Message};
 use crate::integrations::{issues, remediation};
 use crate::models::db_models::{Finding, Repo, User};
@@ -230,6 +231,7 @@ pub struct ManageApiKeysRequest {
     pub provider: Option<String>,
     pub key: Option<String>,
     pub base_url: Option<String>,
+    pub model: Option<String>,
     pub label: Option<String>,
     pub key_id: Option<String>,
 }
@@ -2018,6 +2020,23 @@ impl HeimdallMcp {
                 } else {
                     key.to_string()
                 };
+                let openai_compatible_model = if provider == "openai_compatible" {
+                    Some(
+                        req.model
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|model| !model.is_empty())
+                            .ok_or_else(|| {
+                                invalid_params(
+                                    "model is required when provider=openai_compatible; use the id from /v1/models"
+                                        .to_string(),
+                                )
+                            })?
+                            .to_string(),
+                    )
+                } else {
+                    None
+                };
                 let label = req
                     .label
                     .as_deref()
@@ -2039,6 +2058,28 @@ impl HeimdallMcp {
                     )
                     .await
                     .map_err(|error| internal_err(format!("Failed to create API key: {error}")))?;
+
+                if let Some(model) = openai_compatible_model {
+                    let mut provider_models = ai::parse_provider_models(&user.ai_provider_models);
+                    provider_models.insert(ProviderKind::OpenAiCompatible, model);
+                    let provider_models_json = ai::serialize_provider_models(&provider_models);
+                    self.state
+                        .db
+                        .update_user_ai_routing_preferences(
+                            user.id,
+                            user.preferred_ai_provider.as_deref(),
+                            user.ai_fallbacks_enabled,
+                            &user.ai_fallback_order,
+                            &provider_models_json,
+                        )
+                        .await
+                        .map_err(|error| {
+                            internal_err(format!(
+                                "Endpoint saved, but failed to save OpenAI-compatible model: {error}"
+                            ))
+                        })?;
+                }
+
                 let key_preview = if key.is_empty() {
                     "No API key".to_string()
                 } else {
@@ -2116,16 +2157,28 @@ impl HeimdallMcp {
             }
         };
 
+        let openai_compatible_model = if provider == "openai_compatible" {
+            Some(
+                req.model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|model| !model.is_empty())
+                    .ok_or_else(|| {
+                        invalid_params(
+                            "model is required for openai_compatible; use the id from /v1/models"
+                                .to_string(),
+                        )
+                    })?
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
         let model = match provider.as_str() {
             "anthropic" => "claude-sonnet-4-20250514".to_string(),
             "openai" => "gpt-4o-mini".to_string(),
-            "openai_compatible" => req
-                .model
-                .as_deref()
-                .map(str::trim)
-                .filter(|model| !model.is_empty())
-                .unwrap_or("gpt-4o")
-                .to_string(),
+            "openai_compatible" => openai_compatible_model.expect("validated above"),
             "xai" => "grok-4.3".to_string(),
             "ollama" => "llama3.2".to_string(),
             _ => unreachable!(),
