@@ -12,6 +12,7 @@ RUN npm run build:css
 FROM rust:1.88-bookworm AS builder
 
 WORKDIR /app
+ENV CARGO_BUILD_JOBS=1
 
 # Cache dependencies
 COPY Cargo.toml Cargo.lock* ./
