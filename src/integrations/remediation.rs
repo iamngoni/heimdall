@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
@@ -432,7 +434,10 @@ async fn clone_repository(
     let mut command = Command::new("git");
     command
         .arg("-c")
-        .arg(format!("http.extraheader=AUTHORIZATION: bearer {token}"))
+        .arg(format!(
+            "http.extraheader={}",
+            github_basic_auth_header(token)
+        ))
         .args(["clone", "--depth", "1", "--branch", branch, "--progress"])
         .arg(repo.clone_url())
         .arg(work_dir);
@@ -490,9 +495,10 @@ async fn git_with_header<const N: usize>(
     let mut command = Command::new("git");
     command.arg("-C").arg(work_dir);
     if let Some(token) = token {
-        command
-            .arg("-c")
-            .arg(format!("http.extraheader=AUTHORIZATION: bearer {token}"));
+        command.arg("-c").arg(format!(
+            "http.extraheader={}",
+            github_basic_auth_header(token)
+        ));
     }
     command.args(args);
     run_command(command, token).await
@@ -816,6 +822,17 @@ impl GitHubRepo {
     }
 }
 
+fn github_basic_auth_header(token: &str) -> String {
+    format!(
+        "Authorization: Basic {}",
+        github_basic_auth_credential(token)
+    )
+}
+
+fn github_basic_auth_credential(token: &str) -> String {
+    BASE64.encode(format!("x-access-token:{token}"))
+}
+
 fn safe_relative_path(file_path: &str) -> Result<PathBuf> {
     let path = Path::new(file_path);
     if path.is_absolute() {
@@ -905,6 +922,7 @@ fn redact_secret(value: &str, secret: Option<&str>) -> String {
     let mut value = value.to_string();
     if let Some(secret) = secret.filter(|secret| !secret.is_empty()) {
         value = value.replace(secret, "[redacted]");
+        value = value.replace(&github_basic_auth_credential(secret), "[redacted]");
     }
     value
 }
@@ -986,6 +1004,24 @@ mod tests {
         assert_eq!(
             branch_name_for_finding(&finding),
             "heimdall/fix/12345678-sql-injection-unsafe-query-construction"
+        );
+    }
+
+    #[test]
+    fn builds_github_basic_auth_header_for_git_https() {
+        assert_eq!(
+            github_basic_auth_header("token"),
+            "Authorization: Basic eC1hY2Nlc3MtdG9rZW46dG9rZW4="
+        );
+    }
+
+    #[test]
+    fn redacts_github_basic_auth_credential() {
+        let output = "remote: Authorization: Basic eC1hY2Nlc3MtdG9rZW46dG9rZW4= failed for GitHub";
+
+        assert_eq!(
+            redact_secret(output, Some("token")),
+            "remote: Authorization: Basic [redacted] failed for GitHub"
         );
     }
 }

@@ -1908,6 +1908,19 @@ impl DatabaseOperations {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn delete_api_key_for_user(&self, user_id: Uuid, id: Uuid) -> HeimdallResult<bool> {
+        let result = sqlx::query(
+            "UPDATE api_keys SET deleted_at = now() \
+             WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(id)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to soft-delete user API key")?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn delete_api_keys_by_provider(
         &self,
         user_id: Uuid,

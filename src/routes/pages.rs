@@ -1115,6 +1115,15 @@ async fn settings_page(
     let has_openai_compatible =
         page_provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAiCompatible);
     let has_ollama = page_provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
+    let stored_anthropic = page_stored_provider_configured(&api_keys, ProviderKind::Anthropic);
+    let stored_claude_code = page_stored_provider_configured(&api_keys, ProviderKind::ClaudeCode);
+    let stored_codex = page_stored_provider_configured(&api_keys, ProviderKind::Codex);
+    let stored_xai_oauth = page_stored_provider_configured(&api_keys, ProviderKind::XaiOAuth);
+    let stored_xai = page_stored_provider_configured(&api_keys, ProviderKind::Xai);
+    let stored_openai = page_stored_provider_configured(&api_keys, ProviderKind::OpenAi);
+    let stored_openai_compatible =
+        page_stored_provider_configured(&api_keys, ProviderKind::OpenAiCompatible);
+    let stored_ollama = page_stored_provider_configured(&api_keys, ProviderKind::Ollama);
     let has_any_provider = has_anthropic
         || has_claude_code
         || has_codex
@@ -1181,6 +1190,14 @@ async fn settings_page(
             "has_openai": has_openai,
             "has_openai_compatible": has_openai_compatible,
             "has_ollama": has_ollama,
+            "stored_anthropic": stored_anthropic,
+            "stored_claude_code": stored_claude_code,
+            "stored_codex": stored_codex,
+            "stored_xai_oauth": stored_xai_oauth,
+            "stored_xai": stored_xai,
+            "stored_openai": stored_openai,
+            "stored_openai_compatible": stored_openai_compatible,
+            "stored_ollama": stored_ollama,
             "has_any_provider": has_any_provider,
             "default_model": ai_cfg.default_model,
             "preferred_provider": preferred_provider.map(|provider| provider.as_str()).unwrap_or(""),

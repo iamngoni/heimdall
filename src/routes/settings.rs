@@ -46,6 +46,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .route("/integrations/{provider}/pat", web::post().to(save_pat))
             .route("/api-keys", web::post().to(create_api_key))
             .route("/api-keys/{id}", web::delete().to(delete_api_key))
+            .route(
+                "/ai-providers/{provider}",
+                web::delete().to(disconnect_ai_provider),
+            )
             .route("/codex/authorize", web::get().to(codex_authorize))
             .route("/xai-oauth/authorize", web::get().to(xai_oauth_authorize))
             .route(
@@ -132,6 +136,14 @@ struct SettingsResponse {
     has_openai: bool,
     has_openai_compatible: bool,
     has_ollama: bool,
+    stored_anthropic: bool,
+    stored_claude_code: bool,
+    stored_codex: bool,
+    stored_xai_oauth: bool,
+    stored_xai: bool,
+    stored_openai: bool,
+    stored_openai_compatible: bool,
+    stored_ollama: bool,
     default_model: String,
     preferred_provider: Option<String>,
     fallbacks_enabled: bool,
@@ -465,6 +477,56 @@ fn merge_provider_models_from_form(
     }
 }
 
+fn routing_preferences_without_provider(
+    user: &User,
+    provider: ProviderKind,
+) -> (Option<String>, String, String) {
+    let preferred_provider = user
+        .preferred_ai_provider
+        .as_deref()
+        .and_then(ai::provider_kind_from_name)
+        .filter(|saved| *saved != provider)
+        .map(|saved| saved.as_str().to_string());
+
+    let mut fallback_order = Vec::new();
+    for raw in user.ai_fallback_order.split(',') {
+        if let Some(saved) = ai::provider_kind_from_name(raw)
+            && saved != provider
+        {
+            ai::push_provider_once(&mut fallback_order, saved);
+        }
+    }
+    let fallback_order_csv = ai::provider_order_csv(&fallback_order);
+
+    let mut provider_models = ai::parse_provider_models(&user.ai_provider_models);
+    provider_models.remove(&provider);
+    let provider_models_json = ai::serialize_provider_models(&provider_models);
+
+    (preferred_provider, fallback_order_csv, provider_models_json)
+}
+
+async fn clear_disconnected_provider_preferences(
+    state: &AppState,
+    user_id: Uuid,
+    provider: ProviderKind,
+) -> Result<(), anyhow::Error> {
+    if let Some(user) = state.db.get_user_by_id(user_id).await? {
+        let (preferred_provider, fallback_order_csv, provider_models_json) =
+            routing_preferences_without_provider(&user, provider);
+        state
+            .db
+            .update_user_ai_routing_preferences(
+                user_id,
+                preferred_provider.as_deref(),
+                user.ai_fallbacks_enabled,
+                &fallback_order_csv,
+                &provider_models_json,
+            )
+            .await?;
+    }
+    Ok(())
+}
+
 fn required_openai_compatible_model(model: Option<&str>) -> Result<String, HttpResponse> {
     let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) else {
         return Err(HttpResponse::BadRequest().json(ApiResponse::<()>::error(
@@ -555,6 +617,15 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
     let has_openai_compatible =
         provider_configured(ai_cfg, &api_keys, ProviderKind::OpenAiCompatible);
     let has_ollama = provider_configured(ai_cfg, &api_keys, ProviderKind::Ollama);
+    let stored_anthropic = stored_provider_configured(&api_keys, ProviderKind::Anthropic);
+    let stored_claude_code = stored_provider_configured(&api_keys, ProviderKind::ClaudeCode);
+    let stored_codex = stored_provider_configured(&api_keys, ProviderKind::Codex);
+    let stored_xai_oauth = stored_provider_configured(&api_keys, ProviderKind::XaiOAuth);
+    let stored_xai = stored_provider_configured(&api_keys, ProviderKind::Xai);
+    let stored_openai = stored_provider_configured(&api_keys, ProviderKind::OpenAi);
+    let stored_openai_compatible =
+        stored_provider_configured(&api_keys, ProviderKind::OpenAiCompatible);
+    let stored_ollama = stored_provider_configured(&api_keys, ProviderKind::Ollama);
 
     let mut provider_models = db_user
         .as_ref()
@@ -577,6 +648,14 @@ async fn get_settings(state: web::Data<AppState>, req: HttpRequest) -> HttpRespo
         has_openai,
         has_openai_compatible,
         has_ollama,
+        stored_anthropic,
+        stored_claude_code,
+        stored_codex,
+        stored_xai_oauth,
+        stored_xai,
+        stored_openai,
+        stored_openai_compatible,
+        stored_ollama,
         default_model: ai_cfg.default_model.clone(),
         preferred_provider: preferred_provider.map(|provider| provider.as_str().to_string()),
         fallbacks_enabled: db_user
@@ -1322,7 +1401,13 @@ async fn delete_api_key(
     path: web::Path<Uuid>,
 ) -> HttpResponse {
     let id = path.into_inner();
-    match state.db.delete_api_key(id).await {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    match state.db.delete_api_key_for_user(user.id, id).await {
         Ok(true) => {
             if is_hx_request(&req) {
                 return HttpResponse::Ok().finish();
@@ -1343,6 +1428,73 @@ async fn delete_api_key(
                 .json(ApiResponse::<()>::error(500, "Failed to delete API key."))
         }
     }
+}
+
+/// DELETE /settings/ai-providers/{provider} — disconnect a stored AI provider.
+async fn disconnect_ai_provider(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let raw_provider = path.into_inner();
+    let Some(provider) = ai::provider_kind_from_name(&raw_provider) else {
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+            400,
+            format!("Unsupported AI provider: {raw_provider}"),
+        ));
+    };
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let deleted = match state
+        .db
+        .delete_api_keys_by_provider(user.id, provider.as_str())
+        .await
+    {
+        Ok(deleted) => deleted,
+        Err(error) => {
+            log::error!(
+                "Failed to disconnect {} provider for user {}: {error:#}",
+                provider.as_str(),
+                user.id
+            );
+            return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                500,
+                "Failed to disconnect AI provider.",
+            ));
+        }
+    };
+
+    if deleted == 0 {
+        return HttpResponse::NotFound().json(ApiResponse::<()>::error(
+            404,
+            format!("No stored {} connection was found.", provider.label()),
+        ));
+    }
+
+    if let Err(error) = clear_disconnected_provider_preferences(&state, user.id, provider).await {
+        log::error!(
+            "Disconnected {} provider for user {} but failed to clear routing preferences: {error:#}",
+            provider.as_str(),
+            user.id
+        );
+        return HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+            500,
+            "Provider disconnected, but routing preferences could not be updated.",
+        ));
+    }
+
+    if is_hx_request(&req) {
+        return HttpResponse::Ok().finish();
+    }
+
+    HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({
+        "deleted": deleted,
+        "provider": provider.as_str(),
+    })))
 }
 
 /// POST /settings/test-connection — test an AI provider connection.
@@ -1842,5 +1994,51 @@ async fn update_theme(
             HttpResponse::InternalServerError()
                 .json(ApiResponse::<()>::error(500, "Failed to save theme."))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_user(preferred: Option<&str>, fallback_order: &str, provider_models: &str) -> User {
+        let now = Utc::now();
+        User {
+            id: Uuid::nil(),
+            email: "user@example.com".to_string(),
+            password_hash: "hash".to_string(),
+            display_name: None,
+            avatar_url: None,
+            role: "user".to_string(),
+            theme: "sentinel".to_string(),
+            preferred_ai_provider: preferred.map(str::to_string),
+            ai_fallbacks_enabled: true,
+            ai_fallback_order: fallback_order.to_string(),
+            ai_provider_models: provider_models.to_string(),
+            created_at: now,
+            updated_at: now,
+            deleted_at: None,
+        }
+    }
+
+    #[test]
+    fn removing_provider_clears_routing_and_model_override() {
+        let user = test_user(
+            Some("xai_oauth"),
+            "xai_oauth,codex,openai",
+            r#"{"xai_oauth":"grok-build-0.1","codex":"gpt-5.4"}"#,
+        );
+
+        let (preferred, fallback_order, provider_models) =
+            routing_preferences_without_provider(&user, ProviderKind::XaiOAuth);
+        let provider_models = ai::parse_provider_models(&provider_models);
+
+        assert_eq!(preferred, None);
+        assert_eq!(fallback_order, "codex,openai");
+        assert!(!provider_models.contains_key(&ProviderKind::XaiOAuth));
+        assert_eq!(
+            provider_models.get(&ProviderKind::Codex),
+            Some(&"gpt-5.4".to_string())
+        );
     }
 }
