@@ -1548,7 +1548,7 @@ async fn test_connection(req: HttpRequest, body: web::Json<TestConnectionRequest
     };
 
     let model = match provider.as_str() {
-        "anthropic" => "claude-sonnet-4-20250514".to_string(),
+        "anthropic" => "claude-sonnet-5".to_string(),
         "openai" => "gpt-4o-mini".to_string(),
         "openai_compatible" => match required_openai_compatible_model(body.model.as_deref()) {
             Ok(model) => model,

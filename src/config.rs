@@ -231,7 +231,7 @@ impl AiConfig {
                 .or_else(|| env_nonempty("CUSTOM_OPENAI_MODEL")),
             xai_api_key: env_nonempty("XAI_API_KEY"),
             ollama_url: env_nonempty("OLLAMA_URL"),
-            default_model: env_nonempty_or("DEFAULT_AI_MODEL", "claude-sonnet-4-20250514"),
+            default_model: env_nonempty_or("DEFAULT_AI_MODEL", "claude-sonnet-5"),
         }
     }
 

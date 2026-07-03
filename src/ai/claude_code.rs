@@ -530,32 +530,6 @@ fn generate_login_state() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-/// Returns `true` for newer Claude models whose API rejects `temperature`.
-/// Same heuristic as [`crate::ai::claude`]: extract the trailing
-/// `major-minor` pair and check `>= (4, 7)`.
-fn model_supports_custom_temperature(model: &str) -> bool {
-    let m = model.trim().to_ascii_lowercase();
-    let m = m.split('/').next_back().unwrap_or(&m);
-    let segments: Vec<&str> = m.split('-').collect();
-    let mut major: Option<u32> = None;
-    let mut minor: Option<u32> = None;
-    for window in segments.windows(2).rev() {
-        let (a, b) = (window[0], window[1]);
-        if a.len() <= 2
-            && b.len() <= 2
-            && let (Ok(maj), Ok(min)) = (a.parse::<u32>(), b.parse::<u32>())
-        {
-            major = Some(maj);
-            minor = Some(min);
-            break;
-        }
-    }
-    match (major, minor) {
-        (Some(maj), Some(min)) => (maj, min) < (4, 7),
-        _ => true,
-    }
-}
-
 fn build_messages_body(request: &CompletionRequest) -> Value {
     let user_system = request
         .messages
@@ -594,12 +568,6 @@ fn build_messages_body(request: &CompletionRequest) -> Value {
         "system": system,
         "messages": messages,
     });
-
-    if model_supports_custom_temperature(&request.model)
-        && let Some(temperature) = request.temperature
-    {
-        body["temperature"] = json!(temperature);
-    }
 
     if let Some(tools) = request.tools.as_ref() {
         let tool_payload = tools
@@ -843,12 +811,13 @@ mod tests {
         let messages = body.get("messages").and_then(Value::as_array).unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
+        assert!(body.get("temperature").is_none());
     }
 
     #[test]
-    fn build_messages_body_drops_temperature_for_4_7_plus() {
+    fn build_messages_body_omits_temperature_for_claude_code() {
         let request = CompletionRequest {
-            model: "claude-opus-4-7".to_string(),
+            model: "claude-sonnet-5".to_string(),
             messages: vec![crate::ai::types::Message {
                 role: "user".to_string(),
                 content: "Hi.".to_string(),

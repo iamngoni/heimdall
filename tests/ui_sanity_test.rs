@@ -7,10 +7,91 @@ use actix_web::{
 };
 use heimdall::models::db_models::FindingEvidence;
 use heimdall::routes;
+use heimdall::templates::TemplateEngine;
+use serde_json::json;
 use uuid::Uuid;
 
 fn bearer(token: &str) -> (header::HeaderName, String) {
     (header::AUTHORIZATION, format!("Bearer {token}"))
+}
+
+#[actix_rt::test]
+async fn settings_page_renders_compact_openai_compatible_editor() {
+    let engine = TemplateEngine::new("templates/themes/sentinel");
+    let body = engine
+        .render(
+            "pages/settings.html",
+            json!({
+                "current_theme": "sentinel",
+                "available_themes": ["sentinel", "oatmeal", "editorial"],
+                "integration_error": null,
+                "user": {
+                    "email": "ui@example.com",
+                    "display_name": "UI Test",
+                },
+                "user_initial": "U",
+                "integrations": {
+                    "github": { "connected": false, "scopes": [], "token_source": null, "updated_at": null },
+                    "gitlab": { "connected": false, "scopes": [], "token_source": null, "updated_at": null },
+                    "bitbucket": { "connected": false, "scopes": [], "token_source": null, "updated_at": null },
+                },
+                "api_keys": [],
+                "ai_config": {
+                    "default_model": "gpt-5.4",
+                    "fallback_order": ["openai_compatible", "codex", "claude_code"],
+                    "fallback_order_csv": "openai_compatible,codex,claude_code",
+                    "fallbacks_enabled": true,
+                    "has_any_provider": true,
+                    "preferred_provider": "openai_compatible",
+                    "has_anthropic": false,
+                    "has_claude_code": true,
+                    "has_codex": true,
+                    "has_xai_oauth": false,
+                    "has_xai": false,
+                    "has_openai": false,
+                    "has_openai_compatible": true,
+                    "has_ollama": false,
+                    "stored_anthropic": false,
+                    "stored_claude_code": true,
+                    "stored_codex": true,
+                    "stored_xai_oauth": false,
+                    "stored_xai": false,
+                    "stored_openai": false,
+                    "stored_openai_compatible": true,
+                    "stored_ollama": false,
+                    "provider_models": {
+                        "anthropic": "",
+                        "claude_code": "claude-sonnet-5",
+                        "codex": "gpt-5.4",
+                        "xai_oauth": "",
+                        "xai": "",
+                        "openai": "",
+                        "openai_compatible": "mlx-community/Ornith-Llama-3-8B",
+                        "ollama": "",
+                    },
+                },
+            }),
+        )
+        .expect("settings page should render");
+
+    assert!(body.contains("OpenAI Compatible"));
+    assert!(body.contains("explicit model id."));
+    assert!(body.contains(
+        "lg:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1.35fr)_minmax(180px,0.9fr)_auto]"
+    ));
+    let endpoint_form_start = body
+        .find("hx-post=\"/api/settings/api-keys\"")
+        .expect("endpoint form should be rendered");
+    let endpoint_form_end = body[endpoint_form_start..]
+        .find("</form>")
+        .map(|offset| endpoint_form_start + offset)
+        .expect("endpoint form should close");
+    let endpoint_form = &body[endpoint_form_start..endpoint_form_end];
+    assert_eq!(endpoint_form.matches("name=\"model\"").count(), 1);
+    assert!(!body.contains("name=\"model_openai_compatible\""));
+    assert_eq!(body.matches("Save endpoint").count(), 1);
+    assert!(body.contains("Local only"));
+    assert!(body.contains("Paste-back"));
 }
 
 #[actix_rt::test]

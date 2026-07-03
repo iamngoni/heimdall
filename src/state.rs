@@ -559,7 +559,7 @@ mod tests {
             None,
             None,
             None,
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-5",
         );
         let stored_keys = vec![stored_key("anthropic")];
         let preferences = AiRoutingPreferences {
@@ -587,7 +587,7 @@ mod tests {
             None,
             None,
             None,
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-5",
         );
         let stored_keys = vec![stored_key("anthropic")];
         let preferences = AiRoutingPreferences {

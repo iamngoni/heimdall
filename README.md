@@ -260,7 +260,7 @@ Set **at least one** environment provider, or connect Claude Code/Codex/Grok Sub
 | `XAI_OAUTH_CLIENT_ID` | Grok Subscription | Optional xAI OAuth client id; defaults to the bundled loopback client |
 | `XAI_OAUTH_CLIENT_SECRET` | Grok Subscription | Optional xAI OAuth client secret for hosted/confidential clients |
 | `OLLAMA_URL` | Ollama | Ollama server URL (e.g. `http://localhost:11434`) |
-| `DEFAULT_AI_MODEL` | — | Override default model (default: `claude-sonnet-4-20250514`) |
+| `DEFAULT_AI_MODEL` | — | Override default model (default: `claude-sonnet-5`) |
 
 Every LLM call records which provider and model was actually used (visible in `agent_tool_calls`), so you always know which provider served each request — especially useful when fallback kicks in.
 

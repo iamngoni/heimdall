@@ -35,12 +35,14 @@ impl ClaudeProvider {
 }
 
 /// Returns true when the Claude model still accepts a `temperature` parameter.
-/// Anthropic deprecated `temperature` on the newer generation (`claude-opus-4-7`
-/// is the first one where it returns 400). Older models still accept it.
+/// Anthropic deprecated `temperature` on newer models (`claude-opus-4-7`
+/// and Claude 5+ return 400 for non-default sampling parameters). Older models
+/// still accept it.
 ///
 /// Heuristic: parse the trailing `<major>-<minor>` version from the model id
 /// (e.g. `claude-opus-4-7` → `(4, 7)`). If we can extract a version and it's
-/// `>= (4, 7)`, the model rejects custom temperatures.
+/// `>= (4, 7)`, or if the model is major version 5+, the model rejects custom
+/// temperatures.
 fn model_supports_custom_temperature(model: &str) -> bool {
     let m = model.trim().to_ascii_lowercase();
     let m = m.split('/').next_back().unwrap_or(&m);
@@ -64,7 +66,19 @@ fn model_supports_custom_temperature(model: &str) -> bool {
     }
     match (major, minor) {
         (Some(maj), Some(min)) => (maj, min) < (4, 7),
-        _ => true,
+        _ => {
+            let major_only = segments.iter().rev().find_map(|segment| {
+                if segment.len() <= 2 {
+                    segment.parse::<u32>().ok()
+                } else {
+                    None
+                }
+            });
+            match major_only {
+                Some(maj) => maj < 5,
+                None => true,
+            }
+        }
     }
 }
 
@@ -309,6 +323,7 @@ mod tests {
             "claude-opus-4-7",
             "claude-opus-4-7-20260101",
             "claude-sonnet-4-7",
+            "claude-sonnet-5",
             "claude-haiku-4-7",
             "claude-opus-5-0",
             "claude-sonnet-5-2",

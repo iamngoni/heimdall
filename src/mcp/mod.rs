@@ -2215,7 +2215,7 @@ impl HeimdallMcp {
         };
 
         let model = match provider.as_str() {
-            "anthropic" => "claude-sonnet-4-20250514".to_string(),
+            "anthropic" => "claude-sonnet-5".to_string(),
             "openai" => "gpt-4o-mini".to_string(),
             "openai_compatible" => openai_compatible_model.expect("validated above"),
             "xai" => "grok-4.3".to_string(),

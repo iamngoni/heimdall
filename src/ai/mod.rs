@@ -63,8 +63,8 @@ impl ProviderKind {
 
     pub fn fallback_model(self) -> &'static str {
         match self {
-            Self::Anthropic => "claude-sonnet-4-20250514",
-            Self::ClaudeCode => "claude-sonnet-4-20250514",
+            Self::Anthropic => "claude-sonnet-5",
+            Self::ClaudeCode => "claude-sonnet-5",
             Self::Codex => "gpt-5.4",
             Self::XaiOAuth => "grok-build-0.1",
             Self::Xai => "grok-build-0.1",
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn infers_provider_from_model_name() {
         assert_eq!(
-            provider_kind_from_model("claude-sonnet-4-20250514"),
+            provider_kind_from_model("claude-sonnet-5"),
             Some(ProviderKind::Anthropic)
         );
         assert_eq!(
@@ -415,27 +415,27 @@ mod tests {
     #[test]
     fn falls_back_to_provider_safe_model_when_default_model_mismatches() {
         assert_eq!(
-            model_for_provider(ProviderKind::OpenAi, "claude-sonnet-4-20250514"),
+            model_for_provider(ProviderKind::OpenAi, "claude-sonnet-5"),
             "gpt-4o"
         );
         assert_eq!(
-            model_for_provider(ProviderKind::Codex, "claude-sonnet-4-20250514"),
+            model_for_provider(ProviderKind::Codex, "claude-sonnet-5"),
             "gpt-5.4"
         );
         assert_eq!(
-            model_for_provider(ProviderKind::Anthropic, "claude-sonnet-4-20250514"),
-            "claude-sonnet-4-20250514"
+            model_for_provider(ProviderKind::Anthropic, "claude-sonnet-5"),
+            "claude-sonnet-5"
         );
         assert_eq!(
-            model_for_provider(ProviderKind::Xai, "claude-sonnet-4-20250514"),
+            model_for_provider(ProviderKind::Xai, "claude-sonnet-5"),
             "grok-build-0.1"
         );
         assert_eq!(
-            model_for_provider(ProviderKind::XaiOAuth, "claude-sonnet-4-20250514"),
+            model_for_provider(ProviderKind::XaiOAuth, "claude-sonnet-5"),
             "grok-build-0.1"
         );
         assert_eq!(
-            model_for_provider(ProviderKind::OpenAiCompatible, "claude-sonnet-4-20250514"),
+            model_for_provider(ProviderKind::OpenAiCompatible, "claude-sonnet-5"),
             ""
         );
     }
@@ -444,7 +444,7 @@ mod tests {
     fn falls_back_to_provider_safe_model_when_default_model_is_blank() {
         assert_eq!(
             model_for_provider(ProviderKind::Anthropic, ""),
-            "claude-sonnet-4-20250514"
+            "claude-sonnet-5"
         );
         assert_eq!(model_for_provider(ProviderKind::OpenAi, "   "), "gpt-4o");
         assert_eq!(
@@ -490,7 +490,7 @@ mod tests {
             resolve_model_for_provider(
                 ProviderKind::OpenAi,
                 Some("gpt-4o-mini"),
-                "claude-sonnet-4-20250514"
+                "claude-sonnet-5"
             ),
             "gpt-4o-mini"
         );
@@ -500,7 +500,7 @@ mod tests {
     fn resolve_model_falls_back_when_override_blank() {
         assert_eq!(
             resolve_model_for_provider(ProviderKind::Anthropic, Some("   "), ""),
-            "claude-sonnet-4-20250514"
+            "claude-sonnet-5"
         );
         assert_eq!(
             resolve_model_for_provider(ProviderKind::OpenAi, None, ""),
