@@ -101,11 +101,47 @@ struct TyrContextBudgets {
 pub struct ThreatModelOutput {
     pub summary: String,
     #[serde(default)]
+    pub scope: Option<ThreatModelScope>,
+    #[serde(default)]
+    pub assumptions: Vec<ThreatAssumption>,
+    #[serde(default)]
     pub boundaries: Vec<TrustBoundary>,
     #[serde(default)]
     pub surfaces: Vec<AttackSurface>,
     #[serde(default)]
     pub data_flows: Vec<DataFlow>,
+    #[serde(default)]
+    pub threats: Vec<Threat>,
+    #[serde(default)]
+    pub mitigations: Vec<ThreatMitigation>,
+    #[serde(default)]
+    pub validation_plan: Vec<ValidationPlanItem>,
+    #[serde(default)]
+    pub assurance_claims: Vec<AssuranceClaim>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreatModelScope {
+    pub subject: String,
+    pub system_type: String,
+    #[serde(default)]
+    pub in_scope: Vec<String>,
+    #[serde(default)]
+    pub out_of_scope: Vec<String>,
+    #[serde(default)]
+    pub assets: Vec<String>,
+    #[serde(default)]
+    pub entry_points: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreatAssumption {
+    pub statement: String,
+    pub why_it_matters: String,
+    pub how_to_validate: String,
+    pub stale_if: String,
+    #[serde(default)]
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,6 +169,61 @@ pub struct DataFlow {
     pub source: String,
     pub sink: String,
     pub sensitive_data: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Threat {
+    pub name: String,
+    pub description: String,
+    pub related_surface: Option<String>,
+    #[serde(default)]
+    pub stride: Vec<String>,
+    pub likelihood: String,
+    pub impact: String,
+    pub risk_level: String,
+    pub risk_treatment: String,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    #[serde(default)]
+    pub mitre_attack: Vec<MitreAttackMapping>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MitreAttackMapping {
+    pub tactic: String,
+    pub technique_id: Option<String>,
+    pub technique: Option<String>,
+    pub confidence: String,
+    pub rationale: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThreatMitigation {
+    pub threat: String,
+    pub action: String,
+    pub risk_treatment: String,
+    pub status: String,
+    pub validation: String,
+    pub owner: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationPlanItem {
+    pub target: String,
+    pub method: String,
+    pub expected_evidence: String,
+    pub automation: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssuranceClaim {
+    pub claim: String,
+    #[serde(default)]
+    pub evidence: Vec<String>,
+    #[serde(default)]
+    pub gaps: Vec<String>,
+    pub confidence: String,
 }
 
 impl TyrStage {
@@ -322,13 +413,17 @@ impl TyrStage {
             "completed",
             "Threat model generated",
             Some(&format!(
-                "Identified {} trust boundaries, {} attack surfaces, {} data flows.",
-                threat_model.boundaries.len(),
+                "Identified {} threats, {} attack surfaces, {} trust boundaries, {} data flows.",
+                threat_model.threats.len(),
                 threat_model.surfaces.len(),
+                threat_model.boundaries.len(),
                 threat_model.data_flows.len(),
             )),
             Some(80),
             Some(&serde_json::json!({
+                "threats": threat_model.threats.len(),
+                "mitigations": threat_model.mitigations.len(),
+                "validation_plan": threat_model.validation_plan.len(),
                 "surfaces": threat_model.surfaces.len(),
                 "boundaries": threat_model.boundaries.len(),
                 "data_flows": threat_model.data_flows.len(),
@@ -353,13 +448,17 @@ impl TyrStage {
             "completed",
             "Threat model refined",
             Some(&format!(
-                "Final model: {} trust boundaries, {} attack surfaces, {} data flows.",
-                threat_model.boundaries.len(),
+                "Final model: {} threats, {} mitigations, {} validation items, {} attack surfaces.",
+                threat_model.threats.len(),
+                threat_model.mitigations.len(),
+                threat_model.validation_plan.len(),
                 threat_model.surfaces.len(),
-                threat_model.data_flows.len(),
             )),
             Some(90),
             Some(&serde_json::json!({
+                "threats": threat_model.threats.len(),
+                "mitigations": threat_model.mitigations.len(),
+                "validation_plan": threat_model.validation_plan.len(),
                 "surfaces": threat_model.surfaces.len(),
                 "boundaries": threat_model.boundaries.len(),
                 "data_flows": threat_model.data_flows.len(),
@@ -368,9 +467,19 @@ impl TyrStage {
         .await;
 
         // Store in DB
+        let scope_json = threat_model
+            .scope
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()?;
+        let assumptions_json = serde_json::to_value(&threat_model.assumptions)?;
         let boundaries_json = serde_json::to_value(&threat_model.boundaries)?;
         let surfaces_json = serde_json::to_value(&threat_model.surfaces)?;
         let data_flows_json = serde_json::to_value(&threat_model.data_flows)?;
+        let threats_json = serde_json::to_value(&threat_model.threats)?;
+        let mitigations_json = serde_json::to_value(&threat_model.mitigations)?;
+        let validation_plan_json = serde_json::to_value(&threat_model.validation_plan)?;
+        let assurance_claims_json = serde_json::to_value(&threat_model.assurance_claims)?;
 
         self.record_event(
             Some("threat-model-store"),
@@ -387,9 +496,15 @@ impl TyrStage {
                 self.scan_id,
                 self.repo_id,
                 Some(&threat_model.summary),
+                scope_json.as_ref(),
+                Some(&assumptions_json),
                 Some(&boundaries_json),
                 Some(&surfaces_json),
                 Some(&data_flows_json),
+                Some(&threats_json),
+                Some(&mitigations_json),
+                Some(&validation_plan_json),
+                Some(&assurance_claims_json),
             )
             .await?;
 
@@ -404,11 +519,12 @@ impl TyrStage {
         .await;
 
         info!(
-            "[{}] Tyr complete: {} boundaries, {} surfaces, {} data flows",
+            "[{}] Tyr complete: {} threats, {} mitigations, {} validation items, {} surfaces",
             self.scan_id,
-            threat_model.boundaries.len(),
+            threat_model.threats.len(),
+            threat_model.mitigations.len(),
+            threat_model.validation_plan.len(),
             threat_model.surfaces.len(),
-            threat_model.data_flows.len(),
         );
 
         Ok(threat_model)
@@ -1158,6 +1274,23 @@ impl TyrStage {
                  {\n\
                    \"summary\": \"string — 2-3 paragraphs: what this application does, its architecture, \
                      overall security posture, and the most significant risks\",\n\
+                   \"scope\": {\n\
+                     \"subject\": \"string — repository/application being modeled\",\n\
+                     \"system_type\": \"string — web app, API, CLI, library, service, etc.\",\n\
+                     \"in_scope\": [\"string — component, workflow, or asset included in this model\"],\n\
+                     \"out_of_scope\": [\"string — explicit exclusion or unavailable context\"],\n\
+                     \"assets\": [\"string — security-sensitive assets such as tokens, repos, users, code, PII\"],\n\
+                     \"entry_points\": [\"string — externally or internally reachable entry points\"]\n\
+                   },\n\
+                   \"assumptions\": [\n\
+                     {\n\
+                       \"statement\": \"string — assumption the model depends on\",\n\
+                       \"why_it_matters\": \"string — security impact if wrong\",\n\
+                       \"how_to_validate\": \"string — concrete future check\",\n\
+                       \"stale_if\": \"string — event that should trigger review\",\n\
+                       \"evidence\": [\"string — file, endpoint, dependency, or observed fact\"]\n\
+                     }\n\
+                   ],\n\
                    \"boundaries\": [\n\
                      {\n\
                        \"name\": \"string — descriptive name\",\n\
@@ -1185,17 +1318,68 @@ impl TyrStage {
                        \"sink\": \"string — where data is consumed or stored\",\n\
                        \"sensitive_data\": \"string — what sensitive data is in this flow\"\n\
                      }\n\
+                   ],\n\
+                   \"threats\": [\n\
+                     {\n\
+                       \"name\": \"string — specific threat statement\",\n\
+                       \"description\": \"string — what can go wrong and how it could happen\",\n\
+                       \"related_surface\": \"string or null — matching attack surface name if applicable\",\n\
+                       \"stride\": [\"spoofing|tampering|repudiation|information_disclosure|denial_of_service|elevation_of_privilege\"],\n\
+                       \"likelihood\": \"critical|high|medium|low\",\n\
+                       \"impact\": \"critical|high|medium|low\",\n\
+                       \"risk_level\": \"critical|high|medium|low\",\n\
+                       \"risk_treatment\": \"mitigate|accept|transfer|eliminate|monitor\",\n\
+                       \"evidence\": [\"string — concrete code, route, config, or data-flow evidence\"],\n\
+                       \"mitre_attack\": [\n\
+                         {\n\
+                           \"tactic\": \"string — MITRE ATT&CK tactic when strongly supported\",\n\
+                           \"technique_id\": \"string or null — e.g. T1190, only when known and supported\",\n\
+                           \"technique\": \"string or null — ATT&CK technique name when known\",\n\
+                           \"confidence\": \"high|medium|low\",\n\
+                           \"rationale\": \"string — why this mapping is useful and evidence-backed\"\n\
+                         }\n\
+                       ]\n\
+                     }\n\
+                   ],\n\
+                   \"mitigations\": [\n\
+                     {\n\
+                       \"threat\": \"string — threat name this action addresses\",\n\
+                       \"action\": \"string — concrete countermeasure or risk decision\",\n\
+                       \"risk_treatment\": \"mitigate|accept|transfer|eliminate|monitor\",\n\
+                       \"status\": \"proposed|existing|missing|needs_validation\",\n\
+                       \"validation\": \"string — how to verify the action worked\",\n\
+                       \"owner\": \"string or null — team/component owner if inferable\"\n\
+                     }\n\
+                   ],\n\
+                   \"validation_plan\": [\n\
+                     {\n\
+                       \"target\": \"string — threat, mitigation, or assumption being tested\",\n\
+                       \"method\": \"string — test, review, log check, attack simulation, config check, etc.\",\n\
+                       \"expected_evidence\": \"string — artifact that proves success\",\n\
+                       \"automation\": \"string — existing/proposed automation or manual if none\",\n\
+                       \"status\": \"proposed|existing|missing\"\n\
+                     }\n\
+                   ],\n\
+                   \"assurance_claims\": [\n\
+                     {\n\
+                       \"claim\": \"string — high-level security claim the model supports\",\n\
+                       \"evidence\": [\"string — findings, controls, files, tests, or architecture facts\"],\n\
+                       \"gaps\": [\"string — missing evidence or unresolved concern\"],\n\
+                       \"confidence\": \"high|medium|low\"\n\
+                     }\n\
                    ]\n\
                  }\n\n\
                  Additional rules:\n\
-                 - The top-level object MUST contain all 4 keys: summary, boundaries, surfaces, data_flows.\n\
-                 - If you have no entries for boundaries, surfaces, or data_flows, use [] for that key.\n\
+                 - The top-level object MUST contain all keys shown above.\n\
+                 - If you have no entries for an array section, use [] for that key.\n\
+                 - STRIDE is the primary threat taxonomy. MITRE ATT&CK is optional secondary enrichment: \
+                   include mitre_attack mappings only when the tactic/technique is evidence-backed by this codebase.\n\
+                 - Do not force MITRE ATT&CK mappings. Empty mitre_attack arrays are better than speculative mappings.\n\
                  - Do NOT rename keys. Forbidden alternatives include: trust_boundaries, attack_surfaces, \
                    security_concerns, architectural_improvements, code_review_notes, and security_summary.\n\
-                 - Do NOT add any extra top-level keys.\n\
                  - Do NOT emit markdown fences, headings, prose, or explanation.\n\
                  - line must be a number or null.\n\
-                 - risk_level must be exactly one of: critical, high, medium, low.\n\n\
+                 - risk_level, likelihood, and impact must be exactly one of: critical, high, medium, low.\n\n\
                  Return ONLY the JSON object.",
             budgets.total_chars,
         );
@@ -1217,7 +1401,7 @@ impl TyrStage {
                 },
             ],
             tools: None,
-            max_tokens: Some(8192),
+            max_tokens: Some(12_000),
             temperature: Some(0.0),
         }
     }
@@ -1369,16 +1553,20 @@ impl TyrStage {
              2. Check every public export — if an exported function handles untrusted input \
                 but has no corresponding attack surface, ADD it.\n\
              3. Re-evaluate risk_level for each surface using the call chain depth and \
-                connectivity data.\n\
-             4. Remove any surfaces you now believe are false positives.\n\
-             5. Return the COMPLETE refined threat model (not just changes).\n\n\
+                 connectivity data.\n\
+             4. Update threats, mitigations, validation_plan, and assurance_claims so they remain \
+                consistent with the refined surfaces, boundaries, and data flows.\n\
+             5. Use MITRE ATT&CK only as a secondary check: add mappings when a tactic or technique \
+                is clearly supported, and leave mitre_attack empty when it is speculative.\n\
+             6. Remove any surfaces or threats you now believe are false positives.\n\
+             7. Return the COMPLETE refined threat model (not just changes).\n\n\
              Response contract:\n\
              - Return a SINGLE JSON object and nothing else.\n\
-             - The top-level object MUST contain exactly these keys: \
-               summary, boundaries, surfaces, data_flows.\n\
+             - The top-level object MUST contain these keys: \
+               summary, scope, assumptions, boundaries, surfaces, data_flows, threats, mitigations, validation_plan, assurance_claims.\n\
              - Do NOT use alternate keys such as trust_boundaries, attack_surfaces, \
                security_concerns, architectural_improvements, or code_review_notes.\n\
-             - If a section has no entries, return an empty array for that section.\n\
+             - If an array section has no entries, return an empty array for that section.\n\
              - Do not wrap the JSON in markdown fences.\n\
              - Do not add explanatory text before or after the JSON.",
             budgets.total_chars,
@@ -1414,7 +1602,7 @@ impl TyrStage {
                     },
                 ],
                 tools: None,
-                max_tokens: Some(8192),
+                max_tokens: Some(12_000),
                 temperature: Some(0.1),
             })
             .await
@@ -1495,17 +1683,24 @@ impl TyrStage {
             "Convert the following threat model response into a JSON object using Heimdall's exact schema.\n\n\
              Requirements:\n\
              - Preserve only information present in the raw response.\n\
-             - Do not add markdown, headings, or commentary.\n\
-             - Use this exact schema:\n\
-               {{\n\
-                 \"summary\": string,\n\
-                 \"boundaries\": [{{\"name\": string, \"description\": string, \"from_zone\": string, \"to_zone\": string}}],\n\
-                 \"surfaces\": [{{\"name\": string, \"description\": string, \"endpoint\": string|null, \"file\": string|null, \"line\": number|null, \"risk_level\": \"critical\"|\"high\"|\"medium\"|\"low\"}}],\n\
-                 \"data_flows\": [{{\"name\": string, \"description\": string, \"source\": string, \"sink\": string, \"sensitive_data\": string}}]\n\
-               }}\n\
-             - If a field is unknown, use null for optional fields or an empty array when nothing is present.\n\
-             - Return ONLY the JSON object.\n\n\
-             Raw response:\n{}\n",
+	             - Do not add markdown, headings, or commentary.\n\
+	             - Use this exact schema:\n\
+	               {{\n\
+	                 \"summary\": string,\n\
+	                 \"scope\": {{\"subject\": string, \"system_type\": string, \"in_scope\": [string], \"out_of_scope\": [string], \"assets\": [string], \"entry_points\": [string]}} | null,\n\
+	                 \"assumptions\": [{{\"statement\": string, \"why_it_matters\": string, \"how_to_validate\": string, \"stale_if\": string, \"evidence\": [string]}}],\n\
+	                 \"boundaries\": [{{\"name\": string, \"description\": string, \"from_zone\": string, \"to_zone\": string}}],\n\
+	                 \"surfaces\": [{{\"name\": string, \"description\": string, \"endpoint\": string|null, \"file\": string|null, \"line\": number|null, \"risk_level\": \"critical\"|\"high\"|\"medium\"|\"low\"}}],\n\
+	                 \"data_flows\": [{{\"name\": string, \"description\": string, \"source\": string, \"sink\": string, \"sensitive_data\": string}}],\n\
+	                 \"threats\": [{{\"name\": string, \"description\": string, \"related_surface\": string|null, \"stride\": [string], \"likelihood\": \"critical\"|\"high\"|\"medium\"|\"low\", \"impact\": \"critical\"|\"high\"|\"medium\"|\"low\", \"risk_level\": \"critical\"|\"high\"|\"medium\"|\"low\", \"risk_treatment\": \"mitigate\"|\"accept\"|\"transfer\"|\"eliminate\"|\"monitor\", \"evidence\": [string], \"mitre_attack\": [{{\"tactic\": string, \"technique_id\": string|null, \"technique\": string|null, \"confidence\": \"high\"|\"medium\"|\"low\", \"rationale\": string}}]}}],\n\
+	                 \"mitigations\": [{{\"threat\": string, \"action\": string, \"risk_treatment\": \"mitigate\"|\"accept\"|\"transfer\"|\"eliminate\"|\"monitor\", \"status\": \"proposed\"|\"existing\"|\"missing\"|\"needs_validation\", \"validation\": string, \"owner\": string|null}}],\n\
+	                 \"validation_plan\": [{{\"target\": string, \"method\": string, \"expected_evidence\": string, \"automation\": string, \"status\": \"proposed\"|\"existing\"|\"missing\"}}],\n\
+	                 \"assurance_claims\": [{{\"claim\": string, \"evidence\": [string], \"gaps\": [string], \"confidence\": \"high\"|\"medium\"|\"low\"}}]\n\
+	               }}\n\
+	             - If a field is unknown, use null for optional fields or an empty array when nothing is present.\n\
+	             - Preserve ATT&CK mappings only when present or strongly implied by the raw response; do not invent technique IDs.\n\
+	             - Return ONLY the JSON object.\n\n\
+	             Raw response:\n{}\n",
             truncate_text(raw, 24_000)
         );
 
@@ -1525,7 +1720,7 @@ impl TyrStage {
                     },
                 ],
                 tools: None,
-                max_tokens: Some(4096),
+                max_tokens: Some(8192),
                 temperature: Some(0.0),
             })
             .await
@@ -1594,9 +1789,15 @@ impl TyrStage {
                 "Heimdall continued without a structured Tyr threat model because the model response could not be parsed or repaired automatically. Parser error: {}",
                 parse_error
             ),
+            scope: None,
+            assumptions: Vec::new(),
             boundaries: Vec::new(),
             surfaces: Vec::new(),
             data_flows: Vec::new(),
+            threats: Vec::new(),
+            mitigations: Vec::new(),
+            validation_plan: Vec::new(),
+            assurance_claims: Vec::new(),
         }
     }
 
@@ -1610,6 +1811,19 @@ impl TyrStage {
             &["summary", "overview", "description", "analysis_summary"],
         )
         .unwrap_or_else(|| "Threat model synthesized from non-standard provider output.".into());
+
+        let scope = object
+            .get("scope")
+            .or_else(|| object.get("subject"))
+            .or_else(|| object.get("system_scope"))
+            .filter(|value| !value.is_null())
+            .map(normalize_scope)
+            .transpose()?;
+
+        let assumptions = first_array(object, &["assumptions", "model_assumptions"])
+            .map(|values| normalize_assumptions(values))
+            .transpose()?
+            .unwrap_or_default();
 
         let boundaries = first_array(object, &["boundaries", "trust_boundaries"])
             .map(|values| normalize_boundaries(values))
@@ -1629,11 +1843,44 @@ impl TyrStage {
             .transpose()?
             .unwrap_or_default();
 
+        let threats = first_array(object, &["threats", "risks", "potential_threats"])
+            .map(|values| normalize_threats(values))
+            .transpose()?
+            .unwrap_or_default();
+
+        let mitigations = first_array(
+            object,
+            &["mitigations", "countermeasures", "actions", "remediations"],
+        )
+        .map(|values| normalize_mitigations(values))
+        .transpose()?
+        .unwrap_or_default();
+
+        let validation_plan =
+            first_array(object, &["validation_plan", "validation", "verification"])
+                .map(|values| normalize_validation_plan(values))
+                .transpose()?
+                .unwrap_or_default();
+
+        let assurance_claims = first_array(
+            object,
+            &["assurance_claims", "assurance", "security_claims"],
+        )
+        .map(|values| normalize_assurance_claims(values))
+        .transpose()?
+        .unwrap_or_default();
+
         Ok(ThreatModelOutput {
             summary,
+            scope,
+            assumptions,
             boundaries,
             surfaces,
             data_flows,
+            threats,
+            mitigations,
+            validation_plan,
+            assurance_claims,
         })
     }
 
@@ -1849,6 +2096,197 @@ fn normalize_risk_level(value: Option<String>) -> String {
     }
 }
 
+fn normalize_confidence(value: Option<String>) -> String {
+    match value
+        .unwrap_or_else(|| "medium".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "high" => "high".to_string(),
+        "low" => "low".to_string(),
+        _ => "medium".to_string(),
+    }
+}
+
+fn normalize_risk_treatment(value: Option<String>) -> String {
+    match value
+        .unwrap_or_else(|| "mitigate".to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .replace('-', "_")
+        .as_str()
+    {
+        "accept" | "accepted" => "accept".to_string(),
+        "transfer" | "transferred" => "transfer".to_string(),
+        "eliminate" | "avoid" | "remove" => "eliminate".to_string(),
+        "monitor" | "watch" => "monitor".to_string(),
+        _ => "mitigate".to_string(),
+    }
+}
+
+fn normalize_item_status(value: Option<String>, default: &str) -> String {
+    match value
+        .unwrap_or_else(|| default.to_string())
+        .trim()
+        .to_ascii_lowercase()
+        .replace('-', "_")
+        .as_str()
+    {
+        "existing" | "implemented" | "present" => "existing".to_string(),
+        "missing" | "absent" => "missing".to_string(),
+        "needs_validation" | "needs validation" | "unverified" => "needs_validation".to_string(),
+        "proposed" | "planned" | "manual" => "proposed".to_string(),
+        other if other == default => default.to_string(),
+        _ => default.to_string(),
+    }
+}
+
+fn value_to_string_vec(value: &serde_json::Value) -> Vec<String> {
+    match value {
+        serde_json::Value::Array(values) => values.iter().filter_map(value_to_string).collect(),
+        other => value_to_string(other).into_iter().collect(),
+    }
+}
+
+fn string_array_field(
+    object: &serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Vec<String> {
+    keys.iter()
+        .find_map(|key| object.get(*key).map(value_to_string_vec))
+        .unwrap_or_default()
+}
+
+fn array_or_single_field<'a>(
+    object: &'a serde_json::Map<String, serde_json::Value>,
+    keys: &[&str],
+) -> Option<Vec<&'a serde_json::Value>> {
+    keys.iter().find_map(|key| {
+        let value = object.get(*key)?;
+        match value {
+            serde_json::Value::Array(values) => Some(values.iter().collect()),
+            serde_json::Value::Null => Some(Vec::new()),
+            other => Some(vec![other]),
+        }
+    })
+}
+
+fn normalize_stride(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .filter_map(|value| {
+            let normalized = value
+                .trim()
+                .to_ascii_lowercase()
+                .replace(' ', "_")
+                .replace('-', "_");
+            match normalized.as_str() {
+                "spoofing" | "s" => Some("spoofing".to_string()),
+                "tampering" | "t" => Some("tampering".to_string()),
+                "repudiation" | "r" => Some("repudiation".to_string()),
+                "information_disclosure" | "information_disclosure_" | "i" => {
+                    Some("information_disclosure".to_string())
+                }
+                "denial_of_service" | "dos" | "d" => Some("denial_of_service".to_string()),
+                "elevation_of_privilege" | "privilege_escalation" | "e" => {
+                    Some("elevation_of_privilege".to_string())
+                }
+                other if other.contains("spoof") => Some("spoofing".to_string()),
+                other if other.contains("tamper") => Some("tampering".to_string()),
+                other if other.contains("repudiat") => Some("repudiation".to_string()),
+                other if other.contains("disclosure") => Some("information_disclosure".to_string()),
+                other if other.contains("denial") || other.contains("service") => {
+                    Some("denial_of_service".to_string())
+                }
+                other if other.contains("privilege") => Some("elevation_of_privilege".to_string()),
+                _ => None,
+            }
+        })
+        .fold(Vec::new(), |mut acc, item| {
+            if !acc.contains(&item) {
+                acc.push(item);
+            }
+            acc
+        })
+}
+
+fn normalize_scope(value: &serde_json::Value) -> Result<ThreatModelScope, String> {
+    match value {
+        serde_json::Value::String(text) => Ok(ThreatModelScope {
+            subject: text.trim().to_string(),
+            system_type: "unknown".to_string(),
+            in_scope: Vec::new(),
+            out_of_scope: Vec::new(),
+            assets: Vec::new(),
+            entry_points: Vec::new(),
+        }),
+        serde_json::Value::Object(object) => {
+            let subject = first_string(object, &["subject", "name", "application", "repo"])
+                .unwrap_or_else(|| "Modeled system".to_string());
+            let system_type = first_string(object, &["system_type", "type", "architecture"])
+                .unwrap_or_else(|| "unknown".to_string());
+
+            Ok(ThreatModelScope {
+                subject,
+                system_type,
+                in_scope: string_array_field(object, &["in_scope", "included", "components"]),
+                out_of_scope: string_array_field(object, &["out_of_scope", "excluded", "limits"]),
+                assets: string_array_field(
+                    object,
+                    &["assets", "protected_assets", "sensitive_assets"],
+                ),
+                entry_points: string_array_field(
+                    object,
+                    &["entry_points", "entrypoints", "inputs"],
+                ),
+            })
+        }
+        _ => Err("Unsupported scope entry in non-standard Tyr output".to_string()),
+    }
+}
+
+fn normalize_assumptions(values: &[serde_json::Value]) -> Result<Vec<ThreatAssumption>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(ThreatAssumption {
+                statement: text.trim().to_string(),
+                why_it_matters: "Assumption affects the threat model's accuracy.".to_string(),
+                how_to_validate: "Review implementation and runtime configuration.".to_string(),
+                stale_if: "Architecture, infrastructure, or authentication behavior changes."
+                    .to_string(),
+                evidence: Vec::new(),
+            }),
+            serde_json::Value::Object(object) => {
+                let statement = first_string(object, &["statement", "assumption", "name", "title"])
+                    .unwrap_or_else(|| "Unspecified assumption".to_string());
+                Ok(ThreatAssumption {
+                    statement,
+                    why_it_matters: first_string(object, &["why_it_matters", "impact", "risk"])
+                        .unwrap_or_else(|| {
+                            "Assumption affects the threat model's accuracy.".to_string()
+                        }),
+                    how_to_validate: first_string(
+                        object,
+                        &["how_to_validate", "validation", "verification"],
+                    )
+                    .unwrap_or_else(|| {
+                        "Review implementation and runtime configuration.".to_string()
+                    }),
+                    stale_if: first_string(object, &["stale_if", "review_when", "trigger"])
+                        .unwrap_or_else(|| {
+                            "Architecture, infrastructure, or authentication behavior changes."
+                                .to_string()
+                        }),
+                    evidence: string_array_field(object, &["evidence", "references", "files"]),
+                })
+            }
+            _ => Err("Unsupported assumption entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
 fn normalize_boundaries(values: &[serde_json::Value]) -> Result<Vec<TrustBoundary>, String> {
     values
         .iter()
@@ -1969,6 +2407,233 @@ fn normalize_data_flows(values: &[serde_json::Value]) -> Result<Vec<DataFlow>, S
         .collect()
 }
 
+fn normalize_mitre_attack(
+    values: Vec<&serde_json::Value>,
+) -> Result<Vec<MitreAttackMapping>, String> {
+    values
+        .into_iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(MitreAttackMapping {
+                tactic: text.trim().to_string(),
+                technique_id: None,
+                technique: None,
+                confidence: "low".to_string(),
+                rationale: "Mapping provided without structured detail.".to_string(),
+            }),
+            serde_json::Value::Object(object) => {
+                let tactic = first_string(object, &["tactic", "attack_tactic", "phase"])
+                    .unwrap_or_else(|| "unknown".to_string());
+                Ok(MitreAttackMapping {
+                    tactic,
+                    technique_id: first_string(
+                        object,
+                        &["technique_id", "id", "attack_id", "mitre_id"],
+                    ),
+                    technique: first_string(object, &["technique", "name", "attack_technique"]),
+                    confidence: normalize_confidence(first_string(
+                        object,
+                        &["confidence", "mapping_confidence"],
+                    )),
+                    rationale: first_string(object, &["rationale", "reason", "evidence"])
+                        .unwrap_or_else(|| "Mapping was present in provider output.".to_string()),
+                })
+            }
+            _ => Err("Unsupported MITRE ATT&CK mapping in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
+fn normalize_threats(values: &[serde_json::Value]) -> Result<Vec<Threat>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(Threat {
+                name: text.trim().to_string(),
+                description: text.trim().to_string(),
+                related_surface: None,
+                stride: Vec::new(),
+                likelihood: "medium".to_string(),
+                impact: "medium".to_string(),
+                risk_level: "medium".to_string(),
+                risk_treatment: "mitigate".to_string(),
+                evidence: Vec::new(),
+                mitre_attack: Vec::new(),
+            }),
+            serde_json::Value::Object(object) => {
+                let description = first_string(
+                    object,
+                    &["description", "detail", "scenario", "what_can_go_wrong"],
+                )
+                .unwrap_or_else(|| "Threat identified by provider output.".to_string());
+                let name = first_string(object, &["name", "title", "threat", "risk"])
+                    .unwrap_or_else(|| description.clone());
+                let stride = normalize_stride(string_array_field(
+                    object,
+                    &["stride", "stride_categories", "categories"],
+                ));
+                let likelihood = normalize_risk_level(first_string(
+                    object,
+                    &["likelihood", "probability", "exploitability"],
+                ));
+                let impact = normalize_risk_level(first_string(object, &["impact", "damage"]));
+                let risk_level =
+                    normalize_risk_level(first_string(object, &["risk_level", "severity", "risk"]));
+                let mitre_attack = array_or_single_field(
+                    object,
+                    &[
+                        "mitre_attack",
+                        "mitre",
+                        "attack_mappings",
+                        "attck",
+                        "attack",
+                    ],
+                )
+                .map(normalize_mitre_attack)
+                .transpose()?
+                .unwrap_or_default();
+
+                Ok(Threat {
+                    name,
+                    description,
+                    related_surface: first_string(
+                        object,
+                        &["related_surface", "surface", "attack_surface"],
+                    ),
+                    stride,
+                    likelihood,
+                    impact,
+                    risk_level,
+                    risk_treatment: normalize_risk_treatment(first_string(
+                        object,
+                        &["risk_treatment", "treatment", "decision"],
+                    )),
+                    evidence: string_array_field(object, &["evidence", "references", "files"]),
+                    mitre_attack,
+                })
+            }
+            _ => Err("Unsupported threat entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
+fn normalize_mitigations(values: &[serde_json::Value]) -> Result<Vec<ThreatMitigation>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(ThreatMitigation {
+                threat: "Unspecified threat".to_string(),
+                action: text.trim().to_string(),
+                risk_treatment: "mitigate".to_string(),
+                status: "proposed".to_string(),
+                validation: "Verify the mitigation through code review or security testing."
+                    .to_string(),
+                owner: None,
+            }),
+            serde_json::Value::Object(object) => {
+                let action = first_string(
+                    object,
+                    &["action", "mitigation", "countermeasure", "recommendation"],
+                )
+                .unwrap_or_else(|| "Define a concrete mitigation.".to_string());
+                Ok(ThreatMitigation {
+                    threat: first_string(object, &["threat", "threat_name", "risk"])
+                        .unwrap_or_else(|| "Unspecified threat".to_string()),
+                    action,
+                    risk_treatment: normalize_risk_treatment(first_string(
+                        object,
+                        &["risk_treatment", "treatment", "decision"],
+                    )),
+                    status: normalize_item_status(
+                        first_string(object, &["status", "state"]),
+                        "proposed",
+                    ),
+                    validation: first_string(
+                        object,
+                        &["validation", "how_to_validate", "verification"],
+                    )
+                    .unwrap_or_else(|| {
+                        "Verify the mitigation through code review or security testing.".to_string()
+                    }),
+                    owner: first_string(object, &["owner", "team", "component"]),
+                })
+            }
+            _ => Err("Unsupported mitigation entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
+fn normalize_validation_plan(
+    values: &[serde_json::Value],
+) -> Result<Vec<ValidationPlanItem>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(ValidationPlanItem {
+                target: text.trim().to_string(),
+                method: text.trim().to_string(),
+                expected_evidence: "Evidence that the target was checked successfully.".to_string(),
+                automation: "manual".to_string(),
+                status: "proposed".to_string(),
+            }),
+            serde_json::Value::Object(object) => {
+                let target =
+                    first_string(object, &["target", "threat", "mitigation", "assumption"])
+                        .unwrap_or_else(|| "Unspecified validation target".to_string());
+                Ok(ValidationPlanItem {
+                    target,
+                    method: first_string(object, &["method", "test", "check", "validation"])
+                        .unwrap_or_else(|| "Manual security review".to_string()),
+                    expected_evidence: first_string(
+                        object,
+                        &["expected_evidence", "evidence", "proof"],
+                    )
+                    .unwrap_or_else(|| {
+                        "Evidence that the target was checked successfully.".to_string()
+                    }),
+                    automation: first_string(object, &["automation", "automated_by", "tool"])
+                        .unwrap_or_else(|| "manual".to_string()),
+                    status: normalize_item_status(
+                        first_string(object, &["status", "state"]),
+                        "proposed",
+                    ),
+                })
+            }
+            _ => Err("Unsupported validation entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
+fn normalize_assurance_claims(values: &[serde_json::Value]) -> Result<Vec<AssuranceClaim>, String> {
+    values
+        .iter()
+        .map(|value| match value {
+            serde_json::Value::String(text) => Ok(AssuranceClaim {
+                claim: text.trim().to_string(),
+                evidence: Vec::new(),
+                gaps: Vec::new(),
+                confidence: "medium".to_string(),
+            }),
+            serde_json::Value::Object(object) => {
+                let claim = first_string(object, &["claim", "statement", "title"])
+                    .unwrap_or_else(|| "Unspecified assurance claim".to_string());
+                Ok(AssuranceClaim {
+                    claim,
+                    evidence: string_array_field(object, &["evidence", "supporting_evidence"]),
+                    gaps: string_array_field(
+                        object,
+                        &["gaps", "missing_evidence", "open_questions"],
+                    ),
+                    confidence: normalize_confidence(first_string(
+                        object,
+                        &["confidence", "level"],
+                    )),
+                })
+            }
+            _ => Err("Unsupported assurance claim entry in non-standard Tyr output".to_string()),
+        })
+        .collect()
+}
+
 /// Internal struct for Phase 1 reconnaissance results.
 struct ReconOutput {
     file_count: usize,
@@ -2011,45 +2676,63 @@ You have been given detailed reconnaissance data about the codebase including:
 
 ## Requirements
 
-1. **Trust Boundaries** — identify EVERY point where data crosses between trust zones. \
+1. **Scope and Subject** — describe what is being modeled, what evidence was available, \
+   which components are in scope, which are out of scope, and which assets/entry points matter most.
+
+2. **Assumptions** — state assumptions that future reviewers can challenge. \
+   Each assumption must include why it matters, how to validate it, and what event would make it stale.
+
+3. **Trust Boundaries** — identify EVERY point where data crosses between trust zones. \
    Be specific: \"user browser → API server\" is better than \"external → internal\". \
    Include internal boundaries too (e.g., API server → database, server → external API).
 
-2. **Attack Surfaces** — list EVERY surface reachable by untrusted input. This includes:
+4. **Attack Surfaces** — list EVERY surface reachable by untrusted input. This includes:
    - API endpoints (especially those handling auth, file uploads, user data)
    - WebSocket/SSE connections
    - Webhook handlers
-   - File upload/download handlers
-   - Admin panels and privileged endpoints
-   - Deserialization points
-   - OAuth callback handlers
-   - Search/query interfaces
+	   - File upload/download handlers
+	   - Admin panels and privileged endpoints
+	   - Deserialization points
+	   - OAuth callback handlers
+	   - Search/query interfaces
    - Any code that processes user-controlled data
    For each surface, explain what STRIDE threats apply and reference the actual file/endpoint.
 
-3. **Data Flows** — trace how sensitive data moves through the system:
+5. **Data Flows** — trace how sensitive data moves through the system:
    - Credentials (passwords, API keys, tokens)
    - PII (emails, names, addresses)
    - Session data
-   - Financial data
+	   - Financial data
    - Secrets and encryption keys
    - Any data that crosses a trust boundary
+
+6. **Threats and Countermeasures** — list concrete threats, the STRIDE category/categories, \
+   likelihood, impact, risk treatment, mitigation actions, and verification steps.
+
+7. **Validation and Assurance** — include a validation plan and assurance claims backed by \
+   code, configuration, routes, data flows, tests, or explicit gaps.
+
+8. **MITRE ATT&CK Secondary Check** — STRIDE is the primary framework. Use MITRE ATT&CK \
+   only to enrich threats where the codebase evidence clearly supports a tactic or technique. \
+   Never force technique IDs or mappings; use empty mitre_attack arrays when uncertain.
 
 ## Quality Standards
 - Reference actual files and endpoints from the codebase — do NOT invent paths
 - Be concrete and specific — \"SQL injection in /api/repos via unparameterized query\" \
   not \"potential injection vulnerabilities\"
 - Every surface must have a risk_level reflecting real exploitability, not theoretical risk
+- Every threat should point to evidence, a related surface when possible, and an actionable mitigation or risk decision
+- Every mitigation should say how success will be validated
 - Aim for completeness — missing a real attack surface is worse than including a low-risk one
 - If the codebase has strong security controls, acknowledge them in the summary
 
 ## Output Contract
 - Output must be a SINGLE raw JSON object
-- The top-level keys must be exactly: summary, boundaries, surfaces, data_flows
-- boundaries, surfaces, and data_flows must always be present, even when empty
+- The top-level keys must be: summary, scope, assumptions, boundaries, surfaces, data_flows, threats, mitigations, validation_plan, assurance_claims
+- Array sections must always be present, even when empty
 - Do NOT use alternate keys such as trust_boundaries, attack_surfaces, security_concerns, architectural_improvements, or code_review_notes
 - Do NOT add markdown, headings, or commentary before or after the JSON
-- risk_level must be exactly one of: critical, high, medium, low";
+- risk_level, likelihood, and impact must be exactly one of: critical, high, medium, low";
 
 const TYR_REFINEMENT_PROMPT: &str = "\
 You are Tyr, the threat model engine of Heimdall security scanner, in REFINEMENT mode. \
@@ -2063,8 +2746,10 @@ You now have:
 Your job is to:
 - ADD attack surfaces for any call chain that reaches a risky sink but isn't covered
 - ADD trust boundaries for any uncovered zone transitions
+- ADD or update threats, mitigations, validation_plan, and assurance_claims based on the refined evidence
 - REMOVE surfaces you now believe are false positives
 - ADJUST risk_level based on actual code connectivity (more callers = higher exposure)
+- KEEP MITRE ATT&CK mappings only when evidence supports them; remove speculative mappings
 - KEEP surfaces from the initial model that are still valid
 - Ensure every surface references a REAL file from the codebase
 
@@ -2072,11 +2757,12 @@ Quality bar:
 - Every entry_point → risky_sink chain should have a corresponding attack surface
 - Every public function handling untrusted input should have a surface
 - risk_level should reflect actual exploitability: connected + exposed = higher risk
+- Threats, mitigations, validations, and assurance claims should stay aligned with the final surface/data-flow set
 
-Return the COMPLETE refined model (all boundaries, surfaces, data_flows), not just deltas. \
+Return the COMPLETE refined model, not just deltas. \
 Use the same JSON schema as the initial model. \
 Do NOT use alternate keys such as trust_boundaries, attack_surfaces, security_concerns, architectural_improvements, or code_review_notes. \
-boundaries, surfaces, and data_flows must always be present, even when empty. \
+Array sections must always be present, even when empty. \
 Return ONLY the JSON object.";
 
 const TYR_JSON_REPAIR_PROMPT: &str = "\
@@ -2088,7 +2774,7 @@ Your job is to convert a raw threat-model response into the exact JSON schema He
 - Do not invent facts not present in the raw response.
 - If optional location fields are unknown, use null.
 - If a section is missing, use an empty array.
-- Normalize risk_level to one of: critical, high, medium, low.";
+- Normalize risk_level, likelihood, and impact to one of: critical, high, medium, low.";
 
 fn json_parse_candidates(raw: &str) -> Vec<String> {
     let trimmed = raw.trim();
@@ -2254,9 +2940,121 @@ mod tests {
         let parsed = super::TyrStage::parse_threat_model_output(raw).unwrap();
 
         assert_eq!(parsed.summary, "ok");
+        assert!(parsed.scope.is_none());
+        assert!(parsed.assumptions.is_empty());
         assert!(parsed.boundaries.is_empty());
         assert!(parsed.surfaces.is_empty());
         assert!(parsed.data_flows.is_empty());
+        assert!(parsed.threats.is_empty());
+        assert!(parsed.mitigations.is_empty());
+        assert!(parsed.validation_plan.is_empty());
+        assert!(parsed.assurance_claims.is_empty());
+    }
+
+    #[test]
+    fn parses_expanded_threat_model_with_attack_mapping() {
+        let raw = r#"{
+            "summary": "Heimdall scans code repositories.",
+            "scope": {
+                "subject": "Heimdall",
+                "system_type": "web application",
+                "in_scope": ["API server"],
+                "out_of_scope": ["production network"],
+                "assets": ["repository code", "OAuth tokens"],
+                "entry_points": ["/api/repos"]
+            },
+            "assumptions": [
+                {
+                    "statement": "OAuth callbacks terminate at the app server.",
+                    "why_it_matters": "Callback handling defines token exposure.",
+                    "how_to_validate": "Review deployed callback URL configuration.",
+                    "stale_if": "OAuth provider settings change.",
+                    "evidence": ["src/routes/settings.rs"]
+                }
+            ],
+            "boundaries": [],
+            "surfaces": [
+                {
+                    "name": "Repository import API",
+                    "description": "Untrusted repository metadata enters the service.",
+                    "endpoint": "/api/repos",
+                    "file": "src/routes/repos.rs",
+                    "line": null,
+                    "risk_level": "high"
+                }
+            ],
+            "data_flows": [],
+            "threats": [
+                {
+                    "name": "Token misuse through exposed import endpoint",
+                    "description": "A caller could trigger privileged repository operations.",
+                    "related_surface": "Repository import API",
+                    "stride": ["Elevation of Privilege", "Information Disclosure"],
+                    "likelihood": "medium",
+                    "impact": "high",
+                    "risk_level": "high",
+                    "risk_treatment": "mitigate",
+                    "evidence": ["src/routes/repos.rs"],
+                    "mitre_attack": [
+                        {
+                            "tactic": "Initial Access",
+                            "technique_id": "T1190",
+                            "technique": "Exploit Public-Facing Application",
+                            "confidence": "medium",
+                            "rationale": "The surface is reachable and handles privileged imports."
+                        }
+                    ]
+                }
+            ],
+            "mitigations": [
+                {
+                    "threat": "Token misuse through exposed import endpoint",
+                    "action": "Require authenticated ownership checks before import.",
+                    "risk_treatment": "mitigate",
+                    "status": "existing",
+                    "validation": "Run ownership-boundary route tests.",
+                    "owner": "repos"
+                }
+            ],
+            "validation_plan": [
+                {
+                    "target": "Repository import API",
+                    "method": "Authz integration test",
+                    "expected_evidence": "Outsider requests are rejected.",
+                    "automation": "cargo test",
+                    "status": "existing"
+                }
+            ],
+            "assurance_claims": [
+                {
+                    "claim": "Repository imports require ownership checks.",
+                    "evidence": ["authz tests"],
+                    "gaps": [],
+                    "confidence": "high"
+                }
+            ]
+        }"#;
+
+        let parsed = super::TyrStage::parse_threat_model_output(raw).unwrap();
+
+        assert_eq!(parsed.scope.as_ref().unwrap().subject, "Heimdall");
+        assert_eq!(parsed.assumptions.len(), 1);
+        assert_eq!(parsed.surfaces.len(), 1);
+        assert_eq!(parsed.threats.len(), 1);
+        assert_eq!(
+            parsed.threats[0].stride,
+            vec![
+                "elevation_of_privilege".to_string(),
+                "information_disclosure".to_string()
+            ]
+        );
+        assert_eq!(
+            parsed.threats[0].mitre_attack[0].technique_id.as_deref(),
+            Some("T1190")
+        );
+        assert_eq!(parsed.mitigations.len(), 1);
+        assert_eq!(parsed.validation_plan.len(), 1);
+        assert_eq!(parsed.assurance_claims[0].confidence, "high");
     }
 
     #[test]

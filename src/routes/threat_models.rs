@@ -34,9 +34,15 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 #[derive(Debug, Deserialize)]
 struct UpdateThreatModelRequest {
     summary: Option<String>,
+    scope: Option<serde_json::Value>,
+    assumptions: Option<serde_json::Value>,
     boundaries: Option<serde_json::Value>,
     surfaces: Option<serde_json::Value>,
     data_flows: Option<serde_json::Value>,
+    threats: Option<serde_json::Value>,
+    mitigations: Option<serde_json::Value>,
+    validation_plan: Option<serde_json::Value>,
+    assurance_claims: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,6 +122,24 @@ async fn update_threat_model(
         return HttpResponse::InternalServerError()
             .json(ApiResponse::<()>::error(500, format!("{e}")));
     }
+    if let Some(ref scope) = body.scope
+        && let Err(e) = state
+            .db
+            .update_threat_model_field(id, "scope_json", scope)
+            .await
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
+    }
+    if let Some(ref assumptions) = body.assumptions
+        && let Err(e) = state
+            .db
+            .update_threat_model_field(id, "assumptions_json", assumptions)
+            .await
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
+    }
     if let Some(ref boundaries) = body.boundaries
         && let Err(e) = state
             .db
@@ -138,6 +162,42 @@ async fn update_threat_model(
         && let Err(e) = state
             .db
             .update_threat_model_field(id, "data_flows_json", data_flows)
+            .await
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
+    }
+    if let Some(ref threats) = body.threats
+        && let Err(e) = state
+            .db
+            .update_threat_model_field(id, "threats_json", threats)
+            .await
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
+    }
+    if let Some(ref mitigations) = body.mitigations
+        && let Err(e) = state
+            .db
+            .update_threat_model_field(id, "mitigations_json", mitigations)
+            .await
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
+    }
+    if let Some(ref validation_plan) = body.validation_plan
+        && let Err(e) = state
+            .db
+            .update_threat_model_field(id, "validation_plan_json", validation_plan)
+            .await
+    {
+        return HttpResponse::InternalServerError()
+            .json(ApiResponse::<()>::error(500, format!("{e}")));
+    }
+    if let Some(ref assurance_claims) = body.assurance_claims
+        && let Err(e) = state
+            .db
+            .update_threat_model_field(id, "assurance_claims_json", assurance_claims)
             .await
     {
         return HttpResponse::InternalServerError()

@@ -1050,18 +1050,56 @@ async fn threat_model_page(
         }
     };
 
+    let scope = threat_model
+        .scope_json
+        .clone()
+        .unwrap_or(serde_json::Value::Null);
+
+    let assumptions: Vec<serde_json::Value> = threat_model
+        .assumptions_json
+        .clone()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
     let boundaries: Vec<serde_json::Value> = threat_model
         .boundaries_json
+        .clone()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
     let surfaces: Vec<serde_json::Value> = threat_model
         .surfaces_json
+        .clone()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
     let data_flows: Vec<serde_json::Value> = threat_model
         .data_flows_json
+        .clone()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    let threats: Vec<serde_json::Value> = threat_model
+        .threats_json
+        .clone()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    let mitigations: Vec<serde_json::Value> = threat_model
+        .mitigations_json
+        .clone()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    let validation_plan: Vec<serde_json::Value> = threat_model
+        .validation_plan_json
+        .clone()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    let assurance_claims: Vec<serde_json::Value> = threat_model
+        .assurance_claims_json
+        .clone()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
@@ -1084,9 +1122,15 @@ async fn threat_model_page(
             "model_version": threat_model.model_version,
             "updated_at": threat_model.updated_at.format("%Y-%m-%d %H:%M").to_string(),
         })),
+        scope => minijinja::Value::from_serialize(&scope),
+        assumptions => minijinja::Value::from_serialize(&assumptions),
         boundaries => minijinja::Value::from_serialize(&boundaries),
         surfaces => minijinja::Value::from_serialize(&surfaces),
         data_flows => minijinja::Value::from_serialize(&data_flows),
+        threats => minijinja::Value::from_serialize(&threats),
+        mitigations => minijinja::Value::from_serialize(&mitigations),
+        validation_plan => minijinja::Value::from_serialize(&validation_plan),
+        assurance_claims => minijinja::Value::from_serialize(&assurance_claims),
     };
 
     render_html(&state, "pages/threat_model.html", &user_theme(&req), ctx)

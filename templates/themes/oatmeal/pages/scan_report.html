@@ -575,6 +575,48 @@
   <div class="tm-summary"><p>{{ threat_model.summary }}</p></div>
   {% endif %}
 
+  {% if threat_model.scope and threat_model.scope.subject %}
+  <div class="tm-block">
+    <h3>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v10H3z"/><path d="M5 6h6M5 9h4"/></svg>
+      Scope
+    </h3>
+    <div class="tm-table">
+      <div class="tm-row">
+        <div class="tm-key">
+          {{ threat_model.scope.subject }}
+          {% if threat_model.scope.system_type %}<span class="meta">{{ threat_model.scope.system_type }}</span>{% endif %}
+        </div>
+        <div class="tm-val">
+          {% if threat_model.scope.assets and threat_model.scope.assets|length > 0 %}<span class="secondary">Assets: {% for item in threat_model.scope.assets %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+          {% if threat_model.scope.entry_points and threat_model.scope.entry_points|length > 0 %}<span class="secondary">Entry points: {% for item in threat_model.scope.entry_points %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if threat_model.assumptions and threat_model.assumptions|length > 0 %}
+  <div class="tm-block">
+    <h3>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2l6 11H2L8 2z"/><path d="M8 6v3M8 11h.01"/></svg>
+      Assumptions
+    </h3>
+    <div class="tm-table">
+      {% for a in threat_model.assumptions %}
+      <div class="tm-row">
+        <div class="tm-key">{{ a.statement | default("Assumption") }}</div>
+        <div class="tm-val">
+          {% if a.why_it_matters %}{{ a.why_it_matters }}{% endif %}
+          {% if a.how_to_validate %}<span class="secondary">Validate: {{ a.how_to_validate }}</span>{% endif %}
+          {% if a.stale_if %}<span class="secondary">Stale if: {{ a.stale_if }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if threat_model.boundaries and threat_model.boundaries|length > 0 %}
   <div class="tm-block">
     <h3>
@@ -619,6 +661,33 @@
   </div>
   {% endif %}
 
+  {% if threat_model.threats and threat_model.threats|length > 0 %}
+  <div class="tm-block">
+    <h3>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4l5-2z"/><path d="M6 8l1.5 1.5L10.5 6"/></svg>
+      Threats
+    </h3>
+    <div class="tm-table">
+      {% for t in threat_model.threats %}
+      <div class="tm-row">
+        <div class="tm-key">
+          {{ t.name | default("Threat") }}
+          {% if t.related_surface %}<span class="meta">{{ t.related_surface }}</span>{% endif %}
+        </div>
+        <div class="tm-val">
+          {% if t.risk_level %}<span class="risk-chip {{ t.risk_level }}">{{ t.risk_level }}</span>{% endif %}
+          {% if t.description %}<span class="secondary">{{ t.description }}</span>{% endif %}
+          {% if t.stride and t.stride|length > 0 %}<span class="secondary">STRIDE: {% for item in t.stride %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+          {% if t.mitre_attack and t.mitre_attack|length > 0 %}
+          <span class="secondary">ATT&amp;CK: {% for m in t.mitre_attack %}{{ m.tactic }}{% if m.technique_id %} {{ m.technique_id }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if threat_model.data_flows and threat_model.data_flows|length > 0 %}
   <div class="tm-block">
     <h3>
@@ -635,6 +704,66 @@
         <div class="tm-val">
           {% if d.description %}{{ d.description }}{% endif %}
           {% if d.sensitive_data %}<span class="secondary">Sensitive data: {{ d.sensitive_data }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if threat_model.mitigations and threat_model.mitigations|length > 0 %}
+  <div class="tm-block">
+    <h3>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8l3 3 7-7"/></svg>
+      Mitigations
+    </h3>
+    <div class="tm-table">
+      {% for m in threat_model.mitigations %}
+      <div class="tm-row">
+        <div class="tm-key">{{ m.threat | default("Threat") }}{% if m.status %}<span class="meta">{{ m.status }}</span>{% endif %}</div>
+        <div class="tm-val">
+          {% if m.action %}{{ m.action }}{% endif %}
+          {% if m.validation %}<span class="secondary">Validate: {{ m.validation }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if threat_model.validation_plan and threat_model.validation_plan|length > 0 %}
+  <div class="tm-block">
+    <h3>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 3h8v10H4z"/><path d="M6 6h4M6 9h3"/></svg>
+      Validation Plan
+    </h3>
+    <div class="tm-table">
+      {% for v in threat_model.validation_plan %}
+      <div class="tm-row">
+        <div class="tm-key">{{ v.target | default("Validation") }}{% if v.status %}<span class="meta">{{ v.status }}</span>{% endif %}</div>
+        <div class="tm-val">
+          {% if v.method %}{{ v.method }}{% endif %}
+          {% if v.expected_evidence %}<span class="secondary">{{ v.expected_evidence }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if threat_model.assurance_claims and threat_model.assurance_claims|length > 0 %}
+  <div class="tm-block">
+    <h3>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5"/><path d="M6 8l1.5 1.5L10 6.5"/></svg>
+      Assurance Claims
+    </h3>
+    <div class="tm-table">
+      {% for c in threat_model.assurance_claims %}
+      <div class="tm-row">
+        <div class="tm-key">{{ c.claim | default("Claim") }}{% if c.confidence %}<span class="meta">{{ c.confidence }} confidence</span>{% endif %}</div>
+        <div class="tm-val">
+          {% if c.evidence and c.evidence|length > 0 %}<span class="secondary">Evidence: {% for item in c.evidence %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+          {% if c.gaps and c.gaps|length > 0 %}<span class="secondary">Gaps: {% for item in c.gaps %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
         </div>
       </div>
       {% endfor %}

@@ -547,16 +547,22 @@ fn extract_grounded_excerpt(content: &str, line_start: i32, line_end: Option<i32
 fn normalize_threat_model_field(field: &str) -> Option<&'static str> {
     match field {
         "summary" => Some("summary"),
+        "scope" | "scope_json" => Some("scope_json"),
+        "assumptions" | "assumptions_json" => Some("assumptions_json"),
         "boundaries" | "boundaries_json" => Some("boundaries_json"),
         "surfaces" | "surfaces_json" => Some("surfaces_json"),
         "data_flows" | "data_flows_json" => Some("data_flows_json"),
+        "threats" | "threats_json" => Some("threats_json"),
+        "mitigations" | "mitigations_json" => Some("mitigations_json"),
+        "validation_plan" | "validation_plan_json" => Some("validation_plan_json"),
+        "assurance_claims" | "assurance_claims_json" => Some("assurance_claims_json"),
         _ => None,
     }
 }
 
 fn json_value_input_schema(_gen: &mut schemars::SchemaGenerator) -> schemars::Schema {
     serde_json::from_value(serde_json::json!({
-        "description": "JSON value to store in the threat model field. Use a string for summary, and an object or array for boundaries, surfaces, and data_flows.",
+        "description": "JSON value to store in the threat model field. Use a string for summary, an object for scope, and arrays for assumptions, boundaries, surfaces, data_flows, threats, mitigations, validation_plan, and assurance_claims.",
         "oneOf": [
             { "type": "string" },
             { "type": "number" },
@@ -1482,7 +1488,7 @@ impl HeimdallMcp {
         };
         let field = normalize_threat_model_field(req.field.trim()).ok_or_else(|| {
             invalid_params(
-                "field must be one of: summary, boundaries, surfaces, data_flows".to_string(),
+                "field must be one of: summary, scope, assumptions, boundaries, surfaces, data_flows, threats, mitigations, validation_plan, assurance_claims".to_string(),
             )
         })?;
 

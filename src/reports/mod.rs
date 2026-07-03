@@ -263,9 +263,15 @@ fn render_finding(f: &Finding, patches: &[PatchWithFilePath], display_index: usi
 fn render_threat_model(tm: &ThreatModel) -> Value {
     json!({
         "summary": tm.summary.clone(),
+        "scope": tm.scope_json.clone().unwrap_or(Value::Null),
+        "assumptions": tm.assumptions_json.clone().unwrap_or(Value::Array(Vec::new())),
         "boundaries": tm.boundaries_json.clone().unwrap_or(Value::Array(Vec::new())),
         "surfaces":   tm.surfaces_json.clone().unwrap_or(Value::Array(Vec::new())),
         "data_flows": tm.data_flows_json.clone().unwrap_or(Value::Array(Vec::new())),
+        "threats": tm.threats_json.clone().unwrap_or(Value::Array(Vec::new())),
+        "mitigations": tm.mitigations_json.clone().unwrap_or(Value::Array(Vec::new())),
+        "validation_plan": tm.validation_plan_json.clone().unwrap_or(Value::Array(Vec::new())),
+        "assurance_claims": tm.assurance_claims_json.clone().unwrap_or(Value::Array(Vec::new())),
         "model_version": tm.model_version,
     })
 }

@@ -47,15 +47,76 @@
 
                     <div class="grid gap-16 xl:grid-cols-[minmax(0,1.55fr)_320px]">
                         <div class="space-y-16">
-                            {% if threat_model.summary %}
-                            <section>
-                                <div class="border-b border-ink-200 pb-4">
-                                    <p class="section-num">01 · Summary</p>
+	                            {% if threat_model.summary %}
+	                            <section>
+	                                <div class="border-b border-ink-200 pb-4">
+	                                    <p class="section-num">01 · Summary</p>
                                     <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Overview</h2>
                                 </div>
-                                <p class="mt-6 max-w-measure whitespace-pre-wrap text-base leading-8 text-ink-700">{{ threat_model.summary }}</p>
-                            </section>
-                            {% endif %}
+	                                <p class="mt-6 max-w-measure whitespace-pre-wrap text-base leading-8 text-ink-700">{{ threat_model.summary }}</p>
+	                            </section>
+	                            {% endif %}
+
+	                            {% if scope and scope.subject %}
+	                            <section>
+	                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+	                                    <div>
+	                                        <p class="section-num">Scope</p>
+	                                        <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">{{ scope.subject }}</h2>
+	                                        {% if scope.system_type %}<p class="mt-2 text-sm text-ink-500">{{ scope.system_type }}</p>{% endif %}
+	                                    </div>
+	                                </div>
+	                                <div class="mt-6 grid gap-8 md:grid-cols-2">
+	                                    {% if scope.in_scope and scope.in_scope|length > 0 %}
+	                                    <div>
+	                                        <h3 class="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-400">In Scope</h3>
+	                                        <ul class="mt-3 space-y-2 text-sm text-ink-600">{% for item in scope.in_scope %}<li>{{ item }}</li>{% endfor %}</ul>
+	                                    </div>
+	                                    {% endif %}
+	                                    {% if scope.assets and scope.assets|length > 0 %}
+	                                    <div>
+	                                        <h3 class="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-400">Assets</h3>
+	                                        <ul class="mt-3 space-y-2 text-sm text-ink-600">{% for item in scope.assets %}<li>{{ item }}</li>{% endfor %}</ul>
+	                                    </div>
+	                                    {% endif %}
+	                                    {% if scope.entry_points and scope.entry_points|length > 0 %}
+	                                    <div>
+	                                        <h3 class="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-400">Entry Points</h3>
+	                                        <ul class="mt-3 space-y-2 text-sm text-ink-600">{% for item in scope.entry_points %}<li>{{ item }}</li>{% endfor %}</ul>
+	                                    </div>
+	                                    {% endif %}
+	                                    {% if scope.out_of_scope and scope.out_of_scope|length > 0 %}
+	                                    <div>
+	                                        <h3 class="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-400">Out of Scope</h3>
+	                                        <ul class="mt-3 space-y-2 text-sm text-ink-600">{% for item in scope.out_of_scope %}<li>{{ item }}</li>{% endfor %}</ul>
+	                                    </div>
+	                                    {% endif %}
+	                                </div>
+	                            </section>
+	                            {% endif %}
+
+	                            {% if assumptions|length > 0 %}
+	                            <section>
+	                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+	                                    <div>
+	                                        <p class="section-num">Assumptions</p>
+	                                        <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Review triggers</h2>
+	                                        <p class="mt-2 text-sm text-ink-500">Checks that keep the model current.</p>
+	                                    </div>
+	                                    <span class="font-mono text-xs tracking-wide text-ink-500">{{ assumptions|length }}</span>
+	                                </div>
+	                                <ul class="divide-y divide-ink-200">
+	                                    {% for assumption in assumptions %}
+	                                    <li class="py-6">
+	                                        <h3 class="text-base text-ink-900">{{ assumption.statement }}</h3>
+	                                        <p class="mt-3 text-sm leading-7 text-ink-600">{{ assumption.why_it_matters }}</p>
+	                                        <p class="mt-2 text-sm text-ink-500">Validate: {{ assumption.how_to_validate }}</p>
+	                                        <p class="mt-1 text-sm text-ink-500">Stale if: {{ assumption.stale_if }}</p>
+	                                    </li>
+	                                    {% endfor %}
+	                                </ul>
+	                            </section>
+	                            {% endif %}
 
                             <section>
                                 <div class="flex items-end justify-between border-b border-ink-200 pb-4">
@@ -174,9 +235,116 @@
                                     <p class="text-sm text-ink-900">No data flows captured</p>
                                     <p class="mx-auto mt-1 max-w-sm text-sm text-ink-400">Movement of sensitive data between components wasn't detected.</p>
                                 </div>
-                                {% endif %}
-                            </section>
-                        </div>
+	                                {% endif %}
+	                            </section>
+
+	                            <section>
+	                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+	                                    <div>
+	                                        <p class="section-num">Threats</p>
+	                                        <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">What can go wrong</h2>
+	                                        <p class="mt-2 text-sm text-ink-500">STRIDE is primary. ATT&amp;CK appears only as supporting evidence.</p>
+	                                    </div>
+	                                    <span class="font-mono text-xs tracking-wide text-ink-500">{{ threats|length }}</span>
+	                                </div>
+	                                {% if threats|length > 0 %}
+	                                <ul class="divide-y divide-ink-200">
+	                                    {% for threat in threats %}
+	                                    <li class="grid grid-cols-[56px_1fr] gap-5 py-6">
+	                                        <span class="font-mono text-[11px] tracking-[0.18em] text-ink-400">{{ "%02d"|format(loop.index) }}</span>
+	                                        <div>
+	                                            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+	                                                <div class="max-w-measure">
+	                                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+	                                                        <h3 class="text-base text-ink-900">{{ threat.name }}</h3>
+	                                                        {% with severity=threat.risk_level %}
+	                                                            {% include "partials/severity_badge.html" %}
+	                                                        {% endwith %}
+	                                                    </div>
+	                                                    <p class="mt-3 text-sm leading-7 text-ink-600">{{ threat.description }}</p>
+	                                                    {% if threat.stride and threat.stride|length > 0 %}
+	                                                    <p class="mt-2 font-mono text-xs text-ink-500">{% for category in threat.stride %}{{ category|replace("_", " ")|title }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+	                                                    {% endif %}
+	                                                    {% if threat.mitre_attack and threat.mitre_attack|length > 0 %}
+	                                                    <div class="mt-3 space-y-2">
+	                                                        {% for mapping in threat.mitre_attack %}
+	                                                        <p class="font-mono text-xs text-ink-500">ATT&amp;CK: {{ mapping.tactic }}{% if mapping.technique_id %} · {{ mapping.technique_id }}{% endif %}{% if mapping.technique %} · {{ mapping.technique }}{% endif %} · {{ mapping.confidence }}</p>
+	                                                        {% endfor %}
+	                                                    </div>
+	                                                    {% endif %}
+	                                                </div>
+	                                                <dl class="space-y-1 font-mono text-xs text-ink-500 lg:min-w-[220px]">
+	                                                    {% if threat.related_surface %}<div><span class="text-ink-400">Surface</span> {{ threat.related_surface }}</div>{% endif %}
+	                                                    <div><span class="text-ink-400">Likelihood</span> {{ threat.likelihood }}</div>
+	                                                    <div><span class="text-ink-400">Impact</span> {{ threat.impact }}</div>
+	                                                    <div><span class="text-ink-400">Treatment</span> {{ threat.risk_treatment }}</div>
+	                                                </dl>
+	                                            </div>
+	                                        </div>
+	                                    </li>
+	                                    {% endfor %}
+	                                </ul>
+	                                {% else %}
+	                                <div class="border-y border-ink-200 py-12 text-center">
+	                                    <p class="text-sm text-ink-900">No threats captured</p>
+	                                    <p class="mx-auto mt-1 max-w-sm text-sm text-ink-400">Threats appear when the model can tie risk scenarios to observed scope, surfaces, and flows.</p>
+	                                </div>
+	                                {% endif %}
+	                            </section>
+
+	                            {% if mitigations|length > 0 %}
+	                            <section>
+	                                <div class="flex items-end justify-between border-b border-ink-200 pb-4">
+	                                    <div>
+	                                        <p class="section-num">Mitigations</p>
+	                                        <h2 class="mt-2 font-serif text-2xl font-normal tracking-tight text-ink-900">Risk decisions</h2>
+	                                    </div>
+	                                    <span class="font-mono text-xs tracking-wide text-ink-500">{{ mitigations|length }}</span>
+	                                </div>
+	                                <ul class="divide-y divide-ink-200">
+	                                    {% for mitigation in mitigations %}
+	                                    <li class="py-6">
+	                                        <h3 class="text-base text-ink-900">{{ mitigation.threat }}</h3>
+	                                        <p class="mt-3 text-sm leading-7 text-ink-600">{{ mitigation.action }}</p>
+	                                        <p class="mt-2 text-sm text-ink-500">Validate: {{ mitigation.validation }}</p>
+	                                    </li>
+	                                    {% endfor %}
+	                                </ul>
+	                            </section>
+	                            {% endif %}
+
+	                            {% if validation_plan|length > 0 or assurance_claims|length > 0 %}
+	                            <section class="grid gap-12 lg:grid-cols-2">
+	                                {% if validation_plan|length > 0 %}
+	                                <div>
+	                                    <p class="section-num">Validation Plan</p>
+	                                    <div class="mt-4 divide-y divide-ink-200 border-y border-ink-200">
+	                                        {% for item in validation_plan %}
+	                                        <div class="py-4">
+	                                            <h3 class="text-sm text-ink-900">{{ item.target }}</h3>
+	                                            <p class="mt-2 text-sm leading-6 text-ink-600">{{ item.method }}</p>
+	                                            <p class="mt-1 text-xs text-ink-500">{{ item.expected_evidence }}</p>
+	                                        </div>
+	                                        {% endfor %}
+	                                    </div>
+	                                </div>
+	                                {% endif %}
+	                                {% if assurance_claims|length > 0 %}
+	                                <div>
+	                                    <p class="section-num">Assurance Claims</p>
+	                                    <div class="mt-4 divide-y divide-ink-200 border-y border-ink-200">
+	                                        {% for claim in assurance_claims %}
+	                                        <div class="py-4">
+	                                            <h3 class="text-sm text-ink-900">{{ claim.claim }}</h3>
+	                                            <p class="mt-1 text-xs text-ink-500">{{ claim.confidence }} confidence</p>
+	                                        </div>
+	                                        {% endfor %}
+	                                    </div>
+	                                </div>
+	                                {% endif %}
+	                            </section>
+	                            {% endif %}
+	                        </div>
 
                         <aside class="space-y-16">
                             <section>
@@ -194,20 +362,28 @@
                                         <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Scan Status</dt>
                                         <dd class="mt-1 text-sm capitalize text-ink-700">{{ scan.status|replace("_", " ") }}</dd>
                                     </div>
-                                    <div class="py-3">
-                                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Linked Findings</dt>
-                                        <dd class="mt-1 text-sm text-ink-700">{{ scan.finding_count }} findings</dd>
-                                    </div>
-                                </dl>
-                            </section>
+	                                    <div class="py-3">
+	                                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Linked Findings</dt>
+	                                        <dd class="mt-1 text-sm text-ink-700">{{ scan.finding_count }} findings</dd>
+	                                    </div>
+	                                    <div class="py-3">
+	                                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Modeled Threats</dt>
+	                                        <dd class="mt-1 text-sm text-ink-700">{{ threats|length }} threats</dd>
+	                                    </div>
+	                                    <div class="py-3">
+	                                        <dt class="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-400">Validation Items</dt>
+	                                        <dd class="mt-1 text-sm text-ink-700">{{ validation_plan|length }} checks</dd>
+	                                    </div>
+	                                </dl>
+	                            </section>
 
                             <section>
                                 <p class="section-num">Review Guidance</p>
                                 <div class="mt-4 space-y-4 text-sm leading-7 text-ink-600">
-                                    <p>Use this model to validate whether the most severe findings line up with the real attack surface and trust boundaries.</p>
-                                    <p>When a surface looks overstated, compare it directly with the corresponding finding before triaging it as confirmed.</p>
-                                    <p>Boundary and data-flow gaps usually indicate missing authentication, secret handling, or untrusted user input paths.</p>
-                                </div>
+	                                    <p>Use this model to validate whether the most severe findings line up with the real attack surface and trust boundaries.</p>
+	                                    <p>When a surface looks overstated, compare it directly with the corresponding finding before triaging it as confirmed.</p>
+	                                    <p>Assumption and validation gaps show where the model needs fresh evidence after architecture, infrastructure, or feature changes.</p>
+	                                </div>
                             </section>
                         </aside>
                     </div>

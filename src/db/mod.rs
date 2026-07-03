@@ -43,10 +43,17 @@ pub struct DatabaseOperations {
 pub fn runtime_schema_updates_sql() -> &'static str {
     "ALTER TABLE users \
          ADD COLUMN IF NOT EXISTS preferred_ai_provider TEXT, \
-         ADD COLUMN IF NOT EXISTS ai_fallbacks_enabled BOOLEAN NOT NULL DEFAULT FALSE, \
-         ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama', \
-         ADD COLUMN IF NOT EXISTS ai_provider_models TEXT NOT NULL DEFAULT '{}';
-     ALTER TABLE finding_events ADD COLUMN IF NOT EXISTS metadata JSONB;
+	         ADD COLUMN IF NOT EXISTS ai_fallbacks_enabled BOOLEAN NOT NULL DEFAULT FALSE, \
+	         ADD COLUMN IF NOT EXISTS ai_fallback_order TEXT NOT NULL DEFAULT 'codex,openai,anthropic,ollama', \
+	         ADD COLUMN IF NOT EXISTS ai_provider_models TEXT NOT NULL DEFAULT '{}';
+	     ALTER TABLE threat_models \
+	         ADD COLUMN IF NOT EXISTS scope_json JSONB, \
+	         ADD COLUMN IF NOT EXISTS assumptions_json JSONB, \
+	         ADD COLUMN IF NOT EXISTS threats_json JSONB, \
+	         ADD COLUMN IF NOT EXISTS mitigations_json JSONB, \
+	         ADD COLUMN IF NOT EXISTS validation_plan_json JSONB, \
+	         ADD COLUMN IF NOT EXISTS assurance_claims_json JSONB;
+	     ALTER TABLE finding_events ADD COLUMN IF NOT EXISTS metadata JSONB;
      CREATE TABLE IF NOT EXISTS remediation_runs (
          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
          finding_id UUID NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
@@ -880,28 +887,46 @@ impl DatabaseOperations {
         scan_id: Uuid,
         repo_id: Uuid,
         summary: Option<&str>,
+        scope_json: Option<&serde_json::Value>,
+        assumptions_json: Option<&serde_json::Value>,
         boundaries_json: Option<&serde_json::Value>,
         surfaces_json: Option<&serde_json::Value>,
         data_flows_json: Option<&serde_json::Value>,
+        threats_json: Option<&serde_json::Value>,
+        mitigations_json: Option<&serde_json::Value>,
+        validation_plan_json: Option<&serde_json::Value>,
+        assurance_claims_json: Option<&serde_json::Value>,
     ) -> HeimdallResult<ThreatModel> {
         sqlx::query_as::<_, ThreatModel>(
             "INSERT INTO threat_models \
-             (scan_id, repo_id, summary, boundaries_json, surfaces_json, data_flows_json) \
-             VALUES ($1, $2, $3, $4, $5, $6) \
+             (scan_id, repo_id, summary, scope_json, assumptions_json, boundaries_json, surfaces_json, data_flows_json, threats_json, mitigations_json, validation_plan_json, assurance_claims_json) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) \
              ON CONFLICT (scan_id) DO UPDATE SET \
              summary = EXCLUDED.summary, \
+             scope_json = EXCLUDED.scope_json, \
+             assumptions_json = EXCLUDED.assumptions_json, \
              boundaries_json = EXCLUDED.boundaries_json, \
              surfaces_json = EXCLUDED.surfaces_json, \
              data_flows_json = EXCLUDED.data_flows_json, \
+             threats_json = EXCLUDED.threats_json, \
+             mitigations_json = EXCLUDED.mitigations_json, \
+             validation_plan_json = EXCLUDED.validation_plan_json, \
+             assurance_claims_json = EXCLUDED.assurance_claims_json, \
              updated_at = NOW() \
              RETURNING *",
         )
         .bind(scan_id)
         .bind(repo_id)
         .bind(summary)
+        .bind(scope_json)
+        .bind(assumptions_json)
         .bind(boundaries_json)
         .bind(surfaces_json)
         .bind(data_flows_json)
+        .bind(threats_json)
+        .bind(mitigations_json)
+        .bind(validation_plan_json)
+        .bind(assurance_claims_json)
         .fetch_one(&self.pool)
         .await
         .context("Failed to create threat model")
@@ -2164,6 +2189,12 @@ impl DatabaseOperations {
         // Only allow known fields to prevent SQL injection
         let query = match field {
             "summary" => "UPDATE threat_models SET summary = $1, updated_at = now() WHERE id = $2",
+            "scope_json" => {
+                "UPDATE threat_models SET scope_json = $1, updated_at = now() WHERE id = $2"
+            }
+            "assumptions_json" => {
+                "UPDATE threat_models SET assumptions_json = $1, updated_at = now() WHERE id = $2"
+            }
             "boundaries_json" => {
                 "UPDATE threat_models SET boundaries_json = $1, updated_at = now() WHERE id = $2"
             }
@@ -2172,6 +2203,18 @@ impl DatabaseOperations {
             }
             "data_flows_json" => {
                 "UPDATE threat_models SET data_flows_json = $1, updated_at = now() WHERE id = $2"
+            }
+            "threats_json" => {
+                "UPDATE threat_models SET threats_json = $1, updated_at = now() WHERE id = $2"
+            }
+            "mitigations_json" => {
+                "UPDATE threat_models SET mitigations_json = $1, updated_at = now() WHERE id = $2"
+            }
+            "validation_plan_json" => {
+                "UPDATE threat_models SET validation_plan_json = $1, updated_at = now() WHERE id = $2"
+            }
+            "assurance_claims_json" => {
+                "UPDATE threat_models SET assurance_claims_json = $1, updated_at = now() WHERE id = $2"
             }
             _ => anyhow::bail!("Unknown threat model field: {field}"),
         };

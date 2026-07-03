@@ -536,9 +536,15 @@ pub fn heimdall_schema() -> SchemaDef {
                 .references("repos", "id")
                 .on_delete(OnDelete::Cascade);
             t.text("summary");
+            t.jsonb("scope_json");
+            t.jsonb("assumptions_json");
             t.jsonb("boundaries_json");
             t.jsonb("surfaces_json");
             t.jsonb("data_flows_json");
+            t.jsonb("threats_json");
+            t.jsonb("mitigations_json");
+            t.jsonb("validation_plan_json");
+            t.jsonb("assurance_claims_json");
             t.int("model_version").not_null().default_int(1);
             t.uuid("edited_by")
                 .references("users", "id")

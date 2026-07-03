@@ -83,6 +83,12 @@ async fn setup() -> Option<Setup> {
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         )
         .await
         .expect("Failed to create test threat model");

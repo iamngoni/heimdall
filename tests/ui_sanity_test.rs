@@ -16,6 +16,117 @@ fn bearer(token: &str) -> (header::HeaderName, String) {
 }
 
 #[actix_rt::test]
+async fn threat_model_pages_render_expanded_lifecycle_sections() {
+    let ctx = json!({
+        "user": {
+            "email": "ui@example.com",
+            "display_name": "UI Test",
+        },
+        "user_initial": "U",
+        "repo": {
+            "id": Uuid::now_v7().to_string(),
+            "name": "heimdall",
+        },
+        "scan": {
+            "id": Uuid::now_v7().to_string(),
+            "status": "completed",
+            "finding_count": 2,
+        },
+        "scan_id": Uuid::now_v7().to_string(),
+        "threat_model": {
+            "id": Uuid::now_v7().to_string(),
+            "summary": "Repository scanner threat model.",
+            "model_version": 1,
+            "updated_at": "2026-07-03 20:00",
+        },
+        "scope": {
+            "subject": "heimdall",
+            "system_type": "web application",
+            "in_scope": ["scan orchestration"],
+            "out_of_scope": ["production network"],
+            "assets": ["OAuth tokens"],
+            "entry_points": ["/api/repos"],
+        },
+        "assumptions": [{
+            "statement": "OAuth callbacks terminate in the app.",
+            "why_it_matters": "Token handling depends on this boundary.",
+            "how_to_validate": "Review callback configuration.",
+            "stale_if": "OAuth provider settings change.",
+        }],
+        "boundaries": [{
+            "name": "Browser to API",
+            "description": "User requests enter the server.",
+            "from_zone": "browser",
+            "to_zone": "api",
+        }],
+        "surfaces": [{
+            "name": "Repository import",
+            "description": "Imports user-selected repositories.",
+            "endpoint": "/api/repos",
+            "file": "src/routes/repos.rs",
+            "line": null,
+            "risk_level": "high",
+        }],
+        "data_flows": [{
+            "name": "OAuth token storage",
+            "description": "Provider tokens are stored for repository access.",
+            "source": "oauth provider",
+            "sink": "database",
+            "sensitive_data": "access tokens",
+        }],
+        "threats": [{
+            "name": "Token misuse through import endpoint",
+            "description": "A caller could trigger privileged repository operations.",
+            "related_surface": "Repository import",
+            "stride": ["elevation_of_privilege"],
+            "likelihood": "medium",
+            "impact": "high",
+            "risk_level": "high",
+            "risk_treatment": "mitigate",
+            "mitre_attack": [{
+                "tactic": "Initial Access",
+                "technique_id": "T1190",
+                "technique": "Exploit Public-Facing Application",
+                "confidence": "medium",
+            }],
+        }],
+        "mitigations": [{
+            "threat": "Token misuse through import endpoint",
+            "action": "Require ownership checks before import.",
+            "risk_treatment": "mitigate",
+            "status": "existing",
+            "validation": "Run authorization boundary tests.",
+            "owner": "repos",
+        }],
+        "validation_plan": [{
+            "target": "Repository import",
+            "method": "Authorization integration test",
+            "expected_evidence": "Cross-user requests are rejected.",
+            "automation": "cargo test",
+            "status": "existing",
+        }],
+        "assurance_claims": [{
+            "claim": "Repository imports enforce ownership.",
+            "evidence": ["authz tests"],
+            "gaps": [],
+            "confidence": "high",
+        }],
+    });
+
+    for theme in ["sentinel", "oatmeal", "editorial"] {
+        let engine = TemplateEngine::new(&format!("templates/themes/{theme}"));
+        let body = engine
+            .render("pages/threat_model.html", ctx.clone())
+            .unwrap_or_else(|error| panic!("{theme} threat model should render: {error}"));
+
+        assert!(body.contains("Threats"));
+        assert!(body.contains("ATT&amp;CK"));
+        assert!(body.contains("Validation"));
+        assert!(body.contains("Assurance"));
+    }
+}
+
+#[actix_rt::test]
 async fn settings_page_renders_compact_openai_compatible_editor() {
     let engine = TemplateEngine::new("templates/themes/sentinel");
     let body = engine
