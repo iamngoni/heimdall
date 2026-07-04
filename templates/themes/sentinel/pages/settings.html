@@ -507,7 +507,7 @@
                                     {"id": "claude_code", "label": "Claude Code", "blurb": "Claude.ai subscription through paste-back OAuth.", "placeholder": "claude-sonnet-5", "swatch": "bg-orange-600", "initial": "C", "enabled": ai_config.has_claude_code, "stored": ai_config.stored_claude_code, "model": ai_config.provider_models.claude_code, "mode": "Paste-back"},
                                     {"id": "openai", "label": "OpenAI", "blurb": "Hosted OpenAI API models for scans and remediation.", "placeholder": "gpt-4o", "swatch": "bg-emerald-600", "initial": "O", "enabled": ai_config.has_openai, "stored": ai_config.stored_openai, "model": ai_config.provider_models.openai, "mode": "API key"},
                                     {"id": "openai_compatible", "label": "OpenAI Compatible", "blurb": "Custom /v1 endpoint with an explicit model id.", "placeholder": "model id from /v1/models", "swatch": "bg-cyan-700", "initial": "OC", "enabled": ai_config.has_openai_compatible, "stored": ai_config.stored_openai_compatible, "model": ai_config.provider_models.openai_compatible, "mode": "Endpoint"},
-                                    {"id": "codex", "label": "Codex", "blurb": "ChatGPT subscription through a local callback.", "placeholder": "gpt-5.4", "swatch": "bg-blue-600", "initial": "C", "enabled": ai_config.has_codex, "stored": ai_config.stored_codex, "model": ai_config.provider_models.codex, "mode": "Local only"},
+                                    {"id": "codex", "label": "Codex", "blurb": "ChatGPT subscription through local callback paste-back.", "placeholder": "gpt-5.4", "swatch": "bg-blue-600", "initial": "C", "enabled": ai_config.has_codex, "stored": ai_config.stored_codex, "model": ai_config.provider_models.codex, "mode": "Paste-back"},
                                     {"id": "xai_oauth", "label": "Grok Subscription", "blurb": "SuperGrok or X Premium+ through OAuth.", "placeholder": "grok-build-0.1", "swatch": "bg-slate-900", "initial": "G", "enabled": ai_config.has_xai_oauth, "stored": ai_config.stored_xai_oauth, "model": ai_config.provider_models.xai_oauth, "mode": "OAuth"},
                                     {"id": "xai", "label": "Grok API", "blurb": "xAI API-key access for Grok and Grok Build.", "placeholder": "grok-build-0.1", "swatch": "bg-zinc-700", "initial": "G", "enabled": ai_config.has_xai, "stored": ai_config.stored_xai, "model": ai_config.provider_models.xai, "mode": "API key"},
                                     {"id": "ollama", "label": "Ollama", "blurb": "Local models for self-hosted, private deployments.", "placeholder": "llama3.3", "swatch": "bg-violet-600", "initial": "L", "enabled": ai_config.has_ollama, "stored": ai_config.stored_ollama, "model": ai_config.provider_models.ollama, "mode": "Local"}
@@ -539,21 +539,44 @@
                                                     </div>
                                                     <p class="mt-1 text-xs leading-5 text-slate-500">{{ provider.blurb }}</p>
                                                     {% if provider.id == "codex" %}
-                                                    <a href="/api/settings/codex/authorize"
-                                                       hx-boost="false"
-                                                       class="mt-2 inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50">
-                                                        {{ 'Reconnect ChatGPT' if ai_config.has_codex else 'Connect ChatGPT' }}
-                                                    </a>
-                                                    {% if provider.stored %}
-                                                    <button type="button"
-                                                            hx-delete="/api/settings/ai-providers/{{ provider.id }}"
-                                                            hx-confirm="Disconnect {{ provider.label }}?"
-                                                            hx-swap="none"
-                                                            hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('{{ provider.label }} disconnected'); setTimeout(function(){ window.location.reload(); }, 300); } else { window.HeimdallUI.error('Failed to disconnect {{ provider.label }}'); }"
-                                                            class="ml-2 mt-2 inline-flex rounded-md border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-medium text-rose-700 transition hover:bg-rose-50">
-                                                        Disconnect
-                                                    </button>
-                                                    {% endif %}
+                                                    <div class="mt-2 flex flex-wrap items-start gap-2">
+                                                        <a href="/api/settings/codex/authorize"
+                                                           target="_blank"
+                                                           rel="noopener"
+                                                           hx-boost="false"
+                                                           class="inline-flex rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-50">
+                                                            {{ 'Reconnect ChatGPT' if ai_config.has_codex else 'Connect ChatGPT' }}
+                                                        </a>
+                                                        {% if provider.stored %}
+                                                        <button type="button"
+                                                                hx-delete="/api/settings/ai-providers/{{ provider.id }}"
+                                                                hx-confirm="Disconnect {{ provider.label }}?"
+                                                                hx-swap="none"
+                                                                hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('{{ provider.label }} disconnected'); setTimeout(function(){ window.location.reload(); }, 300); } else { window.HeimdallUI.error('Failed to disconnect {{ provider.label }}'); }"
+                                                                class="inline-flex rounded-md border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-medium text-rose-700 transition hover:bg-rose-50">
+                                                            Disconnect
+                                                        </button>
+                                                        {% endif %}
+                                                        <details class="text-[11px]">
+                                                            <summary class="cursor-pointer rounded-md border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 transition hover:bg-slate-50">Paste callback URL</summary>
+                                                            <form hx-post="/api/settings/codex/exchange"
+                                                                  hx-target="#codex-feedback"
+                                                                  hx-swap="innerHTML"
+                                                                  class="mt-2 flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3"
+                                                                  style="min-width:300px">
+                                                                <input type="text"
+                                                                       name="code"
+                                                                       autocomplete="off"
+                                                                       spellcheck="false"
+                                                                       placeholder="http://localhost:1455/auth/callback?code=..."
+                                                                       required
+                                                                       class="w-full rounded border border-slate-200 px-2 py-1.5 font-mono text-[12px] outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100">
+                                                                <button type="submit"
+                                                                        class="self-start rounded-md bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-slate-800">Exchange code</button>
+                                                            </form>
+                                                        </details>
+                                                    </div>
+                                                    <div id="codex-feedback" class="mt-2"></div>
                                                     {% elif provider.id == "xai_oauth" %}
                                                     <a href="/api/settings/xai-oauth/authorize"
                                                        hx-boost="false"

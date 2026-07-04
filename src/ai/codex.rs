@@ -375,7 +375,8 @@ pub struct CodexAuthorizationRequest {
 
 /// Build an OpenAI authorize URL for the Codex OAuth flow. The caller is
 /// responsible for storing `state` → `code_verifier` and matching them up when
-/// the redirect callback fires on `http://localhost:{callback_port}/auth/callback`.
+/// the redirect callback fires on `http://localhost:{callback_port}/auth/callback`
+/// or when a hosted user pastes that callback URL back into Settings.
 pub fn prepare_codex_authorization(
     callback_port: u16,
 ) -> HeimdallResult<CodexAuthorizationRequest> {
@@ -495,6 +496,61 @@ fn build_authorize_url(
         .append_pair("state", state)
         .append_pair("originator", CODEX_ORIGINATOR);
     Ok(url.to_string())
+}
+
+/// Codex browser redirects land on a fixed localhost callback URL. Hosted
+/// Heimdall cannot receive that browser request directly, so users can paste
+/// the full callback URL back into Settings. Accept the full URL, `code#state`,
+/// or a bare code plus separately supplied state.
+pub fn split_pasted_callback(pasted: &str) -> (String, Option<String>) {
+    let trimmed = pasted.trim();
+    if trimmed.is_empty() {
+        return (String::new(), None);
+    }
+
+    if let Ok(url) = reqwest::Url::parse(trimmed) {
+        let mut code = None;
+        let mut state = None;
+        for (key, value) in url.query_pairs() {
+            match key.as_ref() {
+                "code" => code = Some(value.trim().to_string()),
+                "state" => state = Some(value.trim().to_string()),
+                _ => {}
+            }
+        }
+        if code.is_some() || state.is_some() {
+            return (
+                code.unwrap_or_default(),
+                state.filter(|value| !value.is_empty()),
+            );
+        }
+    }
+
+    let after_code = trimmed
+        .rsplit_once("code=")
+        .map(|(_, tail)| tail)
+        .unwrap_or(trimmed);
+
+    let (code_part, query_tail) = after_code
+        .split_once('&')
+        .map(|(code, tail)| (code, Some(tail)))
+        .unwrap_or((after_code, None));
+
+    let query_state = query_tail.and_then(|tail| {
+        tail.split('&').find_map(|pair| {
+            let (key, value) = pair.split_once('=')?;
+            (key == "state" && !value.trim().is_empty()).then(|| value.trim().to_string())
+        })
+    });
+
+    let mut parts = code_part.splitn(2, '#');
+    let code = parts.next().unwrap_or("").trim().to_string();
+    let hash_state = parts
+        .next()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    (code, query_state.or(hash_state))
 }
 
 fn generate_pkce() -> PkceCodes {
@@ -868,6 +924,31 @@ mod tests {
         assert!(body.get("tools").is_none());
         assert!(body.get("tool_choice").is_none());
         assert!(body.get("parallel_tool_calls").is_none());
+    }
+
+    #[test]
+    fn split_pasted_callback_handles_localhost_url() {
+        let pasted = "http://localhost:1455/auth/callback?code=ac_qL-7BzQw.token&scope=openid+profile&state=egi_bt-I1CvhSppw3";
+        let (code, state) = split_pasted_callback(pasted);
+
+        assert_eq!(code, "ac_qL-7BzQw.token");
+        assert_eq!(state.as_deref(), Some("egi_bt-I1CvhSppw3"));
+    }
+
+    #[test]
+    fn split_pasted_callback_handles_code_hash_state() {
+        let (code, state) = split_pasted_callback("ac_abc123#state_456");
+
+        assert_eq!(code, "ac_abc123");
+        assert_eq!(state.as_deref(), Some("state_456"));
+    }
+
+    #[test]
+    fn split_pasted_callback_handles_bare_code() {
+        let (code, state) = split_pasted_callback("ac_bare_code");
+
+        assert_eq!(code, "ac_bare_code");
+        assert!(state.is_none());
     }
 
     #[test]

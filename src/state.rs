@@ -124,7 +124,8 @@ pub struct AppState {
     /// Local TCP port serving the Codex OAuth callback. The OpenAI OAuth
     /// client only accepts `http://localhost:1455/auth/callback` or
     /// `http://localhost:1457/auth/callback` as redirect URIs, so this value
-    /// is bound at startup and used when constructing the authorize URL.
+    /// is used when constructing the authorize URL and exchanging pasted
+    /// callback URLs from hosted deployments.
     pub codex_callback_port: u16,
     /// Pending Codex OAuth logins awaiting their redirect callback.
     pub codex_logins: Arc<Mutex<HashMap<String, CodexPendingLogin>>>,

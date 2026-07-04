@@ -264,7 +264,22 @@ Set **at least one** environment provider, or connect Claude Code/Codex/Grok Sub
 
 Every LLM call records which provider and model was actually used (visible in `agent_tool_calls`), so you always know which provider served each request — especially useful when fallback kicks in.
 
-Users can also add API keys through the Settings UI after registration. The OpenAI Compatible provider stores a custom base URL, explicit model id, and optional API key, and can be selected independently in provider routing. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`. Grok Subscription connects through xAI OAuth for SuperGrok / X Premium+; local deployments default to `/callback` on `127.0.0.1:56121`, while hosted deployments should set `XAI_OAUTH_REDIRECT_URI` to the public callback path `/api/settings/xai-oauth/callback` on the Heimdall domain.
+Users can also add API keys through the Settings UI after registration. The OpenAI Compatible provider stores a custom base URL, explicit model id, and optional API key, and can be selected independently in provider routing. Claude Code connects through a Claude.ai OAuth copy/paste flow and bills compatible Anthropic requests to the user's Claude.ai subscription. Codex connects through OpenAI/ChatGPT OAuth on the fixed local callback path `/auth/callback` served on port `1455` or `1457`; on hosted Heimdall, copy the returned `http://localhost:1455/auth/callback?...` URL from the browser and paste it back into Settings so the server can exchange it against the pending login. Grok Subscription connects through xAI OAuth for SuperGrok / X Premium+; local deployments default to `/callback` on `127.0.0.1:56121`, while hosted deployments should set `XAI_OAUTH_REDIRECT_URI` to the public callback path `/api/settings/xai-oauth/callback` on the Heimdall domain.
+
+#### Settings Login Options
+
+Settings login options are not automatic just because the user is already logged in to ChatGPT, Claude.ai, xAI, or a local model server. Heimdall only marks a provider as connected after the final step below succeeds and the provider shows as Active/Ready in Settings.
+
+| Provider | What the user does | Hosted Heimdall behavior | Connected when |
+|----------|--------------------|--------------------------|----------------|
+| Claude Code | Click **Connect Claude.ai**, approve in the opened tab, then paste the returned `code#state` value into **Paste code**. | Always paste-back. The browser approval does not call Heimdall directly. | The paste-back exchange succeeds and Settings refreshes. |
+| Codex | Click **Connect ChatGPT**, approve in the opened tab, then either let the local callback complete or paste the returned localhost callback URL into **Paste callback URL**. | The browser is expected to land on `http://localhost:1455/auth/callback?...` or `http://localhost:1457/auth/callback?...`. Copy that full URL from the address bar and paste it back into hosted Settings. | The pasted callback URL matches the pending login state and exchanges successfully. |
+| Grok Subscription | Click **Connect Grok** and approve the xAI OAuth grant. | If `XAI_OAUTH_REDIRECT_URI` is set, xAI returns to the hosted Heimdall callback. If it is unset, the flow uses the local loopback callback. | The xAI callback returns successfully and the account has OAuth/API entitlement. |
+| Anthropic/OpenAI/Grok API | Paste the provider API key in Settings or configure the matching environment variable. | No browser OAuth step. The key is stored per user when saved in Settings, or server-wide when configured in the environment. | The key is saved and the provider appears as Active/Ready. |
+| OpenAI Compatible | Enter the base URL, explicit model id, and optional API key. | Heimdall does not discover the model id automatically; the entered model must be supported by the endpoint. | The endpoint details are saved. |
+| Ollama | Configure `OLLAMA_URL` for the server. | The Heimdall server must be able to reach the Ollama host; the user's browser location does not matter. | The server has a reachable Ollama URL. |
+
+Copy/paste OAuth values are short lived. If a user waits too long, changes account, or opens the approval flow from a different Heimdall login, the exchange is rejected and they should click Connect again from Settings.
 
 Grok has two distinct providers:
 

@@ -29,9 +29,9 @@ pub fn init(cfg: &mut ServiceConfig) {
     pages::init_public(cfg);
 
     // Codex OAuth redirect target. The OpenAI client only allows
-    // http://localhost:1455/auth/callback (or 1457), so the path is fixed.
-    // Anonymous: the OAuth `state` param matches the request back to a
-    // pending login stored at /api/settings/codex/authorize time.
+    // http://localhost:1455/auth/callback (or 1457), so hosted users can also
+    // paste that localhost callback URL into /api/settings/codex/exchange.
+    // Anonymous callbacks still rely on OAuth `state` matching a pending login.
     cfg.route("/auth/callback", web::get().to(settings::codex_callback));
 
     // xAI/Grok OAuth redirect targets. Local mode uses the loopback callback;

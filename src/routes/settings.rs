@@ -51,6 +51,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
                 web::delete().to(disconnect_ai_provider),
             )
             .route("/codex/authorize", web::get().to(codex_authorize))
+            .route("/codex/exchange", web::post().to(codex_exchange))
             .route("/xai-oauth/authorize", web::get().to(xai_oauth_authorize))
             .route(
                 "/claude-code/authorize",
@@ -952,6 +953,127 @@ pub async fn codex_callback(
                     &format!("{error:#}"),
                     &pending.return_url,
                 ))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CodexExchangeForm {
+    /// Full `http://localhost:1455/auth/callback?...` URL, `code#state`, or
+    /// bare authorization code pasted after the browser returns from OpenAI.
+    code: String,
+    /// Optional explicit state when only a bare code is pasted.
+    #[serde(default)]
+    state: Option<String>,
+}
+
+/// POST /settings/codex/exchange — complete Codex OAuth from a pasted
+/// localhost callback URL. This is the hosted Heimdall path: the browser may
+/// be redirected to the user's localhost, but this server still has the
+/// pending state and PKCE verifier needed to exchange the code.
+async fn codex_exchange(
+    state: web::Data<AppState>,
+    req: HttpRequest,
+    body: web::Form<CodexExchangeForm>,
+) -> HttpResponse {
+    let user = req
+        .extensions()
+        .get::<AuthenticatedUser>()
+        .cloned()
+        .expect("auth middleware ensures user exists");
+
+    let (parsed_code, parsed_state) = ai::codex::split_pasted_callback(&body.code);
+    let supplied_state = body
+        .state
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let state_value = supplied_state.or(parsed_state);
+
+    let Some(state_param) = state_value.as_deref().filter(|s| !s.is_empty()) else {
+        let message = "Paste the full localhost callback URL from the OpenAI browser tab.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, message));
+    };
+
+    if parsed_code.is_empty() {
+        let message = "The pasted Codex authorization code is empty.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, message));
+    }
+
+    let mut wrong_user = false;
+    let pending = {
+        let mut logins = state.codex_logins.lock().await;
+        let now = Utc::now();
+        logins.retain(|_, entry| entry.expires_at > now);
+        match logins.get(state_param) {
+            Some(pending) if pending.user_id != user.id => {
+                wrong_user = true;
+                None
+            }
+            Some(_) => logins.remove(state_param),
+            None => None,
+        }
+    };
+
+    if wrong_user {
+        let message = "This Codex login belongs to a different account.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::Forbidden().json(ApiResponse::<()>::error(403, message));
+    }
+
+    let Some(pending) = pending else {
+        let message = "Codex login session expired or was not initiated by this server. \
+             Please click Connect again from Settings.";
+        if is_hx_request(&req) {
+            return inline_feedback_html(false, message);
+        }
+        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, message));
+    };
+
+    match ai::codex::complete_codex_login(
+        state.db.clone(),
+        state.encryption_key,
+        pending.user_id,
+        &pending.code_verifier,
+        state.codex_callback_port,
+        &parsed_code,
+    )
+    .await
+    {
+        Ok(tokens) => {
+            if is_hx_request(&req) {
+                let body =
+                    "<div class=\"rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700\" \
+                     hx-get=\"/settings\" hx-trigger=\"load delay:1.25s\" hx-target=\"body\" hx-push-url=\"true\">\
+                     Connected via ChatGPT. Refreshing settings...\
+                     </div>"
+                        .to_string();
+                return HttpResponse::Ok()
+                    .content_type("text/html; charset=utf-8")
+                    .body(body);
+            }
+            HttpResponse::Ok()
+                .content_type("text/html; charset=utf-8")
+                .body(ai::codex::login_success_html(&tokens, &pending.return_url))
+        }
+        Err(error) => {
+            log::error!("Codex OAuth exchange failed: {error:#}");
+            let message = format!("Codex connection failed: {error:#}");
+            if is_hx_request(&req) {
+                return inline_feedback_html(false, &message);
+            }
+            HttpResponse::BadRequest()
+                .content_type("text/html; charset=utf-8")
+                .body(ai::codex::login_error_html(&message, &pending.return_url))
         }
     }
 }

@@ -201,8 +201,9 @@ async fn settings_page_renders_compact_openai_compatible_editor() {
     assert_eq!(endpoint_form.matches("name=\"model\"").count(), 1);
     assert!(!body.contains("name=\"model_openai_compatible\""));
     assert_eq!(body.matches("Save endpoint").count(), 1);
-    assert!(body.contains("Local only"));
     assert!(body.contains("Paste-back"));
+    assert!(body.contains("hx-post=\"/api/settings/codex/exchange\""));
+    assert!(body.contains("Paste callback URL"));
 }
 
 #[actix_rt::test]
