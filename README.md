@@ -333,6 +333,7 @@ Current state:
 |----------|---------|-------------|
 | `WORKER_ENABLED` | `true` | Enable/disable the background scan worker |
 | `WORKER_POLL_INTERVAL_SECS` | `5` | How often the worker polls for queued scans |
+| `SCAN_MAX_ACTIVE_JOBS_PER_USER` | `2` | Maximum active scan jobs for a single user; there is no global active scan cap |
 | `WORKER_STALE_TIMEOUT_MINS` | `10` | Timeout for stale/stuck scans |
 
 ### Logging
@@ -562,9 +563,10 @@ Heimdall includes a background scan worker that polls for queued scans and execu
 |----------|---------|-------------|
 | `WORKER_ENABLED` | `true` | Enable/disable the background scan worker |
 | `WORKER_POLL_INTERVAL_SECS` | `5` | How often the worker polls for queued scans |
+| `SCAN_MAX_ACTIVE_JOBS_PER_USER` | `2` | Maximum active scan jobs for a single user; there is no global active scan cap |
 | `WORKER_STALE_TIMEOUT_MINS` | `10` | Timeout for stale/stuck scans |
 
-When a scan is triggered via `POST /repos/{id}/scan`, it is queued in the database. The worker picks it up, runs the full pipeline, and updates status in real-time via SSE. Users can cancel running scans via `POST /api/scans/{id}/cancel`, which signals the cancellation token — the pipeline stops gracefully at the next stage boundary.
+When a scan is triggered via `POST /repos/{id}/scan`, it is queued in the database. The worker picks it up, runs the full pipeline, and updates status in real-time via SSE. The worker can process any number of users' scans concurrently, but only claims up to `SCAN_MAX_ACTIVE_JOBS_PER_USER` jobs for the same user at once. Users can cancel running scans via `POST /api/scans/{id}/cancel`, which signals the cancellation token — the pipeline stops gracefully at the next stage boundary.
 
 ## Findings
 

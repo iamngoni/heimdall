@@ -1768,22 +1768,62 @@ impl DatabaseOperations {
     // Scan jobs (extended)
     // -----------------------------------------------------------------------
 
-    pub async fn claim_next_scan_job(&self, worker_id: &str) -> HeimdallResult<Option<ScanJob>> {
+    pub async fn claim_next_scan_job(
+        &self,
+        worker_id: &str,
+        max_active_jobs_per_user: i64,
+    ) -> HeimdallResult<Option<ScanJob>> {
         sqlx::query_as::<_, ScanJob>(
-            "UPDATE scan_jobs \
-             SET status = 'claimed', worker_id = $1, claimed_at = now() \
-             WHERE id = ( \
-               SELECT id FROM scan_jobs \
-               WHERE status = 'pending' \
-                 AND (run_after IS NULL OR run_after <= now()) \
-                 AND attempts < max_attempts \
-               ORDER BY priority DESC, created_at ASC \
-               LIMIT 1 \
-               FOR UPDATE SKIP LOCKED \
+            "WITH next_user AS ( \
+                SELECT r.user_id \
+                FROM scan_jobs sj \
+                JOIN scans s ON s.id = sj.scan_id \
+                JOIN repos r ON r.id = s.repo_id \
+                WHERE sj.status = 'pending' \
+                  AND (sj.run_after IS NULL OR sj.run_after <= now()) \
+                  AND sj.attempts < sj.max_attempts \
+                  AND ( \
+                    SELECT COUNT(*) \
+                    FROM scan_jobs active_sj \
+                    JOIN scans active_s ON active_s.id = active_sj.scan_id \
+                    JOIN repos active_r ON active_r.id = active_s.repo_id \
+                    WHERE active_r.user_id = r.user_id \
+                      AND active_sj.status IN ('claimed', 'running') \
+                  ) < $2 \
+                ORDER BY sj.priority DESC, sj.created_at ASC \
+                LIMIT 1 \
+             ), locked_user AS ( \
+                SELECT user_id \
+                FROM next_user \
+                WHERE pg_try_advisory_xact_lock(hashtextextended(user_id::text, 0)) \
+             ), eligible AS ( \
+                SELECT sj.id \
+                FROM scan_jobs sj \
+                JOIN scans s ON s.id = sj.scan_id \
+                JOIN repos r ON r.id = s.repo_id \
+                JOIN locked_user lu ON lu.user_id = r.user_id \
+                WHERE sj.status = 'pending' \
+                  AND (sj.run_after IS NULL OR sj.run_after <= now()) \
+                  AND sj.attempts < sj.max_attempts \
+                  AND ( \
+                    SELECT COUNT(*) \
+                    FROM scan_jobs active_sj \
+                    JOIN scans active_s ON active_s.id = active_sj.scan_id \
+                    JOIN repos active_r ON active_r.id = active_s.repo_id \
+                    WHERE active_r.user_id = lu.user_id \
+                      AND active_sj.status IN ('claimed', 'running') \
+                  ) < $2 \
+                ORDER BY sj.priority DESC, sj.created_at ASC \
+                LIMIT 1 \
+                FOR UPDATE OF sj SKIP LOCKED \
              ) \
+             UPDATE scan_jobs \
+             SET status = 'claimed', worker_id = $1, claimed_at = now(), updated_at = now() \
+             WHERE id = (SELECT id FROM eligible) \
              RETURNING *",
         )
         .bind(worker_id)
+        .bind(max_active_jobs_per_user)
         .fetch_optional(&self.pool)
         .await
         .context("Failed to claim scan job")
@@ -1841,7 +1881,7 @@ impl DatabaseOperations {
         sqlx::query(
             "UPDATE scan_jobs SET \
                 status = 'dead', updated_at = now(), completed_at = now() \
-             WHERE status IN ('claimed', 'running') \
+             WHERE status = 'claimed' \
                AND claimed_at < now() - make_interval(mins => $1) \
                AND attempts >= max_attempts",
         )
@@ -1854,7 +1894,7 @@ impl DatabaseOperations {
             "UPDATE scan_jobs SET \
                 status = 'pending', worker_id = NULL, claimed_at = NULL, \
                 started_at = NULL, updated_at = now() \
-             WHERE status IN ('claimed', 'running') \
+             WHERE status = 'claimed' \
                AND claimed_at < now() - make_interval(mins => $1) \
                AND attempts < max_attempts",
         )

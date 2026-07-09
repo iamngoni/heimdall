@@ -24,25 +24,35 @@ pub struct ScanWorker {
     poll_interval: Duration,
     stale_check_interval: Duration,
     stale_timeout_minutes: i32,
+    max_active_jobs_per_user: i64,
 }
 
 impl ScanWorker {
     pub fn new(state: Arc<AppState>, poll_interval: Duration, stale_timeout_minutes: i32) -> Self {
         let worker_id = format!("worker-{}", Uuid::now_v7());
+        let max_active_jobs_per_user = std::env::var("SCAN_MAX_ACTIVE_JOBS_PER_USER")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(2);
         Self {
             worker_id,
             state,
             poll_interval,
             stale_check_interval: Duration::from_secs(60),
             stale_timeout_minutes,
+            max_active_jobs_per_user,
         }
     }
 
     /// Main worker loop. Runs indefinitely, polling for scan jobs.
     pub async fn run(self: Arc<Self>) {
         info!(
-            "Scan worker '{}' started (poll={:?}, stale_timeout={}min)",
-            self.worker_id, self.poll_interval, self.stale_timeout_minutes
+            "Scan worker '{}' started (poll={:?}, stale_timeout={}min, max_active_per_user={})",
+            self.worker_id,
+            self.poll_interval,
+            self.stale_timeout_minutes,
+            self.max_active_jobs_per_user
         );
 
         let mut last_stale_check = Instant::now();
@@ -54,15 +64,25 @@ impl ScanWorker {
                 last_stale_check = Instant::now();
             }
 
-            // Try to claim a job
-            match self.state.db.claim_next_scan_job(&self.worker_id).await {
+            // Try to claim a job. Each claimed job is processed in its own task;
+            // concurrency is controlled by the per-user claim gate in the database.
+            match self
+                .state
+                .db
+                .claim_next_scan_job(&self.worker_id, self.max_active_jobs_per_user)
+                .await
+            {
                 Ok(Some(job)) => {
                     info!(
                         "[{}] Claimed job {} for scan {}",
                         self.worker_id, job.id, job.scan_id
                     );
-                    self.process_job(job.id, job.scan_id, job.attempts, job.max_attempts)
-                        .await;
+                    let worker = Arc::clone(&self);
+                    tokio::spawn(async move {
+                        worker
+                            .process_job(job.id, job.scan_id, job.attempts, job.max_attempts)
+                            .await;
+                    });
                 }
                 Ok(None) => {
                     tokio::time::sleep(self.poll_interval).await;
