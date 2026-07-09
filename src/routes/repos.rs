@@ -894,6 +894,11 @@ struct GitHubRepo {
 }
 
 #[derive(Debug, Deserialize)]
+struct GitHubSearchResponse {
+    items: Vec<GitHubRepo>,
+}
+
+#[derive(Debug, Deserialize)]
 struct GitLabProject {
     path_with_namespace: String,
     http_url_to_repo: String,
@@ -944,6 +949,7 @@ enum RemoteFetchError {
 // Cap the total pages we'll follow per listing as a safety stop against
 // runaway pagination loops or pathological accounts.
 const REMOTE_REPO_MAX_PAGES: usize = 50;
+const GITHUB_SEARCH_REPO_LIMIT: usize = 50;
 
 fn parse_next_link(link_header: &str) -> Option<String> {
     for part in link_header.split(',') {
@@ -1151,68 +1157,172 @@ async fn fetch_bitbucket_repos(
     Ok(all_repos)
 }
 
+fn github_authenticated_get<'a>(
+    client: &'a reqwest::Client,
+    token: &'a str,
+    url: &'a str,
+) -> reqwest::RequestBuilder {
+    client
+        .get(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("User-Agent", "Heimdall")
+        .header("Accept", "application/vnd.github+json")
+}
+
+fn github_search_query(query: &str, user_login: &str) -> String {
+    let trimmed = query.trim();
+    let has_qualifier = trimmed.contains("user:")
+        || trimmed.contains("org:")
+        || trimmed.contains("repo:")
+        || trimmed.contains("in:");
+    let has_fork_qualifier = trimmed.contains("fork:");
+
+    let base = if has_qualifier {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed} in:name,description user:{user_login}")
+    };
+
+    if has_fork_qualifier {
+        base
+    } else {
+        format!("{base} fork:true")
+    }
+}
+
+fn github_search_repos_url(query: &str, user_login: &str) -> String {
+    let mut url = reqwest::Url::parse("https://api.github.com/search/repositories")
+        .expect("static GitHub search URL is valid");
+    url.query_pairs_mut()
+        .append_pair("q", &github_search_query(query, user_login))
+        .append_pair("sort", "updated")
+        .append_pair("order", "desc")
+        .append_pair("per_page", &GITHUB_SEARCH_REPO_LIMIT.to_string());
+    url.to_string()
+}
+
+fn parse_github_full_name_query(query: &str) -> Option<(&str, &str)> {
+    let trimmed = query.trim().trim_end_matches(".git");
+    if trimmed.contains(char::is_whitespace) {
+        return None;
+    }
+    let (owner, repo) = trimmed.split_once('/')?;
+    let owner = owner.trim();
+    let repo = repo.trim();
+    (!owner.is_empty() && !repo.is_empty() && !repo.contains('/')).then_some((owner, repo))
+}
+
+fn github_repo_url(owner: &str, repo: &str) -> String {
+    format!("https://api.github.com/repos/{owner}/{repo}")
+}
+
+fn github_repo_to_remote(repo: GitHubRepo) -> RemoteRepo {
+    RemoteRepo {
+        full_name: repo.full_name,
+        clone_url: repo.clone_url,
+        description: repo.description,
+        default_branch: repo.default_branch.unwrap_or_else(|| "main".to_string()),
+        language: repo.language,
+        private: repo.private,
+    }
+}
+
+async fn handle_github_error(
+    status: reqwest::StatusCode,
+    response: reqwest::Response,
+    context: &str,
+) -> RemoteFetchError {
+    let body = response.text().await.unwrap_or_default();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        error!("[github] {context} auth failed ({status}): {body}");
+        RemoteFetchError::Auth(format!(
+            "{} needs to be reconnected before repositories can be loaded.",
+            provider_display_name("github")
+        ))
+    } else {
+        RemoteFetchError::Other(format!(
+            "{} {context} API error ({status}): {body}",
+            provider_display_name("github")
+        ))
+    }
+}
+
+async fn fetch_github_search_repos(
+    client: &reqwest::Client,
+    token: &str,
+    user_login: &str,
+    query: &str,
+) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
+    let url = github_search_repos_url(query, user_login);
+    info!(
+        "[github] searching repos query_len={} limit={GITHUB_SEARCH_REPO_LIMIT}",
+        query.len()
+    );
+    let resp = github_authenticated_get(client, token, &url)
+        .send()
+        .await
+        .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitHub search: {e}")))?;
+    let status = resp.status();
+    info!("[github] search repos API response: {status}");
+    if !status.is_success() {
+        return Err(handle_github_error(status, resp, "search").await);
+    }
+
+    let parsed: GitHubSearchResponse = resp
+        .json()
+        .await
+        .map_err(|e| RemoteFetchError::Other(format!("Failed to parse search results: {e}")))?;
+    Ok(parsed
+        .items
+        .into_iter()
+        .map(github_repo_to_remote)
+        .collect())
+}
+
+async fn fetch_github_repo_by_full_name(
+    client: &reqwest::Client,
+    token: &str,
+    owner: &str,
+    repo: &str,
+) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
+    let url = github_repo_url(owner, repo);
+    info!("[github] fetching exact repo owner={owner} repo={repo}");
+    let resp = github_authenticated_get(client, token, &url)
+        .send()
+        .await
+        .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitHub repository: {e}")))?;
+    let status = resp.status();
+    info!("[github] exact repo API response: {status}");
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(Vec::new());
+    }
+    if !status.is_success() {
+        return Err(handle_github_error(status, resp, "exact repo").await);
+    }
+
+    let parsed: GitHubRepo = resp
+        .json()
+        .await
+        .map_err(|e| RemoteFetchError::Other(format!("Failed to parse repository: {e}")))?;
+    Ok(vec![github_repo_to_remote(parsed)])
+}
+
 async fn fetch_github_repos(
     client: &reqwest::Client,
     token: &str,
+    user_login: &str,
+    query: Option<&str>,
 ) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
-    let mut next_url: Option<String> =
-        Some("https://api.github.com/user/repos?sort=updated&per_page=100".to_string());
-    let mut all = Vec::new();
-    let mut pages = 0usize;
-    while let Some(url) = next_url.take() {
-        if pages >= REMOTE_REPO_MAX_PAGES {
-            error!("[github] pagination exceeded {REMOTE_REPO_MAX_PAGES} pages, stopping");
-            break;
+    match query.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(query) => {
+            if let Some((owner, repo)) = parse_github_full_name_query(query) {
+                fetch_github_repo_by_full_name(client, token, owner, repo).await
+            } else {
+                fetch_github_search_repos(client, token, user_login, query).await
+            }
         }
-        pages += 1;
-        info!("[github] listing repos page={pages}");
-        let resp = client
-            .get(&url)
-            .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "Heimdall")
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await
-            .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitHub: {e}")))?;
-        let status = resp.status();
-        info!("[github] repos API response: {status}");
-        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-            let body = resp.text().await.unwrap_or_default();
-            error!("[github] auth failed ({status}): {body}");
-            return Err(RemoteFetchError::Auth(format!(
-                "{} needs to be reconnected before repositories can be loaded.",
-                provider_display_name("github")
-            )));
-        }
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RemoteFetchError::Other(format!(
-                "{} API error ({status}): {body}",
-                provider_display_name("github")
-            )));
-        }
-        let next = resp
-            .headers()
-            .get(reqwest::header::LINK)
-            .and_then(|h| h.to_str().ok())
-            .and_then(parse_next_link);
-        let parsed: Vec<GitHubRepo> = resp
-            .json()
-            .await
-            .map_err(|e| RemoteFetchError::Other(format!("Failed to parse repositories: {e}")))?;
-        for repo in parsed {
-            all.push(RemoteRepo {
-                full_name: repo.full_name,
-                clone_url: repo.clone_url,
-                description: repo.description,
-                default_branch: repo.default_branch.unwrap_or_else(|| "main".to_string()),
-                language: repo.language,
-                private: repo.private,
-            });
-        }
-        next_url = next;
+        None => Ok(Vec::new()),
     }
-    Ok(all)
 }
 
 async fn fetch_gitlab_repos(
@@ -1348,6 +1458,8 @@ async fn list_remote_repos(
                     "No {} connection found. Connect your account first.",
                     provider_display_name(provider)
                 )),
+                None,
+                None,
             );
         }
         Err(e) => {
@@ -1358,9 +1470,25 @@ async fn list_remote_repos(
                 &[],
                 Some(&connected_urls),
                 Some(&format!("Failed to load integration: {e}")),
+                None,
+                None,
             );
         }
     };
+
+    let query_value = query.q.as_deref().map(str::trim).unwrap_or_default();
+    if query_value.is_empty() {
+        return render_remote_repo_list(
+            &state,
+            &theme,
+            provider,
+            &[],
+            Some(&connected_urls),
+            None,
+            Some("Search repositories"),
+            Some("Type a repository name or paste owner/repo to search your connected account."),
+        );
+    }
 
     let token = match connection_access_token(&state, &conn) {
         Ok(token) => token,
@@ -1372,6 +1500,8 @@ async fn list_remote_repos(
                 &[],
                 Some(&connected_urls),
                 Some(&message),
+                None,
+                None,
             );
         }
     };
@@ -1401,6 +1531,8 @@ async fn list_remote_repos(
             Some(
                 "Bitbucket App Passwords require your account email for authentication. Please re-save your credentials in Settings with your Bitbucket account email.",
             ),
+            None,
+            None,
         );
     }
 
@@ -1409,7 +1541,9 @@ async fn list_remote_repos(
     // iterates per workspace because cross-workspace `/2.0/repositories` was
     // sunset (CHANGE-2770).
     let result = match provider {
-        "github" => fetch_github_repos(&client, &token).await,
+        "github" => {
+            fetch_github_repos(&client, &token, &conn.provider_user_id, query.q.as_deref()).await
+        }
         "gitlab" => fetch_gitlab_repos(&client, &token).await,
         "bitbucket" => fetch_bitbucket_repos(&client, &conn, &token).await,
         _ => unreachable!(),
@@ -1417,13 +1551,19 @@ async fn list_remote_repos(
 
     match result {
         Ok(repos) => {
-            let filtered = filter_remote_repos(repos, query.q.as_deref());
+            let filtered = if provider == "github" {
+                repos
+            } else {
+                filter_remote_repos(repos, query.q.as_deref())
+            };
             render_remote_repo_list(
                 &state,
                 &theme,
                 provider,
                 &filtered,
                 Some(&connected_urls),
+                None,
+                None,
                 None,
             )
         }
@@ -1435,6 +1575,8 @@ async fn list_remote_repos(
                 &[],
                 Some(&connected_urls),
                 Some(&message),
+                None,
+                None,
             )
         }
     }
@@ -1515,6 +1657,8 @@ fn render_remote_repo_list(
     repos: &[RemoteRepo],
     connected_urls: Option<&HashSet<String>>,
     error_message: Option<&str>,
+    empty_title: Option<&str>,
+    empty_message: Option<&str>,
 ) -> HttpResponse {
     let repo_values: Vec<minijinja::Value> = repos
         .iter()
@@ -1538,6 +1682,8 @@ fn render_remote_repo_list(
         provider_name => provider_display_name(provider),
         repos => repo_values,
         error_message => error_message,
+        empty_title => empty_title.unwrap_or("No repositories matched"),
+        empty_message => empty_message.unwrap_or("Try a shorter search term, or use Git URL if the repository still does not appear."),
     };
 
     match state
@@ -1640,7 +1786,9 @@ fn repo_created_response(req: &HttpRequest, repo: &crate::models::db_models::Rep
 
 #[cfg(test)]
 mod tests {
-    use super::parse_next_link;
+    use super::{
+        github_repo_url, github_search_repos_url, parse_github_full_name_query, parse_next_link,
+    };
 
     #[test]
     fn parses_github_style_link_header() {
@@ -1669,5 +1817,41 @@ mod tests {
     #[test]
     fn empty_header_yields_none() {
         assert_eq!(parse_next_link(""), None);
+    }
+
+    #[test]
+    fn github_search_repos_url_uses_remote_search_query() {
+        let url = reqwest::Url::parse(&github_search_repos_url("kanvoya", "iamngoni")).unwrap();
+        let params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+
+        assert_eq!(url.path(), "/search/repositories");
+        assert_eq!(
+            params.get("q").map(String::as_str),
+            Some("kanvoya in:name,description user:iamngoni fork:true")
+        );
+        assert_eq!(params.get("sort").map(String::as_str), Some("updated"));
+        assert_eq!(params.get("order").map(String::as_str), Some("desc"));
+    }
+
+    #[test]
+    fn parses_exact_github_full_name_queries() {
+        assert_eq!(
+            parse_github_full_name_query("ModestNerds-Co/reroute"),
+            Some(("ModestNerds-Co", "reroute"))
+        );
+        assert_eq!(
+            parse_github_full_name_query("iamngoni/kanvoya.git"),
+            Some(("iamngoni", "kanvoya"))
+        );
+        assert_eq!(parse_github_full_name_query("kanvoya"), None);
+        assert_eq!(parse_github_full_name_query("owner/repo/extra"), None);
+    }
+
+    #[test]
+    fn github_repo_url_targets_exact_repository() {
+        assert_eq!(
+            github_repo_url("ModestNerds-Co", "reroute"),
+            "https://api.github.com/repos/ModestNerds-Co/reroute"
+        );
     }
 }

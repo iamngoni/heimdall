@@ -78,16 +78,14 @@
                                        class="hm-oatmeal-input px-4 py-3 text-sm"
                                        hx-get="/api/repos/{{ active_source }}/list"
                                        hx-target="#provider-results"
-                                       hx-trigger="input changed delay:250ms, search">
+                                       hx-trigger="input changed delay:250ms, search"
+                                       hx-sync="#provider-results:replace">
                             </div>
 
                             <div id="provider-results"
-                                 hx-get="/api/repos/{{ active_source }}/list"
-                                 hx-trigger="load"
-                                 hx-swap="innerHTML"
                                  class="min-h-[20rem]">
                                 <div class="hm-oatmeal-panel flex h-80 items-center justify-center text-sm" style="color:var(--hm-text-400)">
-                                    Loading {{ provider_name }} repositories...
+                                    Search by repository name or paste owner/repo.
                                 </div>
                             </div>
                         </div>

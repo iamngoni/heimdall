@@ -72,16 +72,14 @@
                                        class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                                        hx-get="/api/repos/{{ active_source }}/list"
                                        hx-target="#provider-results"
-                                       hx-trigger="input changed delay:250ms, search">
+                                       hx-trigger="input changed delay:250ms, search"
+                                       hx-sync="#provider-results:replace">
                             </div>
 
                             <div id="provider-results"
-                                 hx-get="/api/repos/{{ active_source }}/list"
-                                 hx-trigger="load"
-                                 hx-swap="innerHTML"
                                  class="min-h-[20rem]">
                                 <div class="flex h-80 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-slate-400 shadow-sm">
-                                    Loading {{ provider_name }} repositories...
+                                    Search by repository name or paste owner/repo.
                                 </div>
                             </div>
                         </div>
