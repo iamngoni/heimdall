@@ -82,16 +82,15 @@
                                        name="q"
                                        placeholder="Search your repositories..."
                                        class="w-full border-0 border-b border-ink-300 bg-transparent px-0 py-3 text-base text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-ink-900"
-                                       hx-get="/api/repos/{{ active_source }}/list"
-                                       hx-target="#provider-results"
-                                       hx-trigger="input changed delay:250ms, search"
-                                       hx-sync="#provider-results:replace">
+                                       data-repo-search-input
+                                       data-repo-search-url="/api/repos/{{ active_source }}/list">
                             </div>
 
                             <div id="provider-results"
+                                 data-repo-search-results
                                  class="min-h-[20rem]">
                                 <div class="flex h-80 items-center justify-center border border-dashed border-ink-200 text-sm text-ink-400">
-                                    Search by repository name or paste owner/repo.
+                                    Loading recent {{ provider_name }} repositories...
                                 </div>
                             </div>
                         </div>
@@ -194,6 +193,68 @@
 
 <script>
 window.HeimdallRepoConnect = {
+    initSearch() {
+        const input = document.querySelector('[data-repo-search-input]');
+        const results = document.querySelector('[data-repo-search-results]');
+        if (!input || !results) {
+            return;
+        }
+
+        const endpoint = input.dataset.repoSearchUrl;
+        let activeController = null;
+        let requestId = 0;
+        let debounceTimer = null;
+
+        const load = async (query) => {
+            if (activeController) {
+                activeController.abort();
+            }
+            const controller = new AbortController();
+            activeController = controller;
+            const thisRequest = ++requestId;
+            const trimmed = (query || '').trim();
+            const url = trimmed ? `${endpoint}?q=${encodeURIComponent(trimmed)}` : endpoint;
+
+            results.setAttribute('aria-busy', 'true');
+            try {
+                const response = await fetch(url, {
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'text/html',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    signal: controller.signal
+                });
+                const html = await response.text();
+                if (!response.ok) {
+                    throw new Error(html || `Request failed (${response.status})`);
+                }
+                if (thisRequest === requestId) {
+                    results.innerHTML = html;
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                if (thisRequest === requestId) {
+                    results.innerHTML = '<div class="flex h-80 items-center justify-center border border-rose-200 px-6 text-center text-sm text-rose-700">Unable to load repositories right now.</div>';
+                }
+            } finally {
+                if (thisRequest === requestId) {
+                    results.removeAttribute('aria-busy');
+                }
+            }
+        };
+
+        input.addEventListener('input', () => {
+            window.clearTimeout(debounceTimer);
+            debounceTimer = window.setTimeout(() => load(input.value), 250);
+        });
+        input.addEventListener('search', () => load(input.value));
+
+        load(input.value);
+    },
+
     handleCreateResponse(event) {
         const xhr = event.detail.xhr;
         let payload = null;
@@ -222,5 +283,11 @@ window.HeimdallRepoConnect = {
         }
     }
 };
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => window.HeimdallRepoConnect.initSearch());
+} else {
+    window.HeimdallRepoConnect.initSearch();
+}
 </script>
 {% endblock %}

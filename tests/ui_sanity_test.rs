@@ -294,6 +294,19 @@ async fn test_dashboard_repos_and_finding_detail_regressions_stay_fixed() {
         .mark_patch_applied(patch.id, user.id)
         .await
         .expect("Failed to mark patch applied in UI test");
+    state
+        .db
+        .upsert_oauth_connection(
+            user.id,
+            "github",
+            "ui-test-user",
+            Some("fake-token"),
+            None,
+            Some("repo read:user user:email"),
+            None,
+        )
+        .await
+        .expect("Failed to create GitHub connection for UI test");
 
     let app = test::init_service(App::new().app_data(state.clone()).configure(routes::init)).await;
 
@@ -317,6 +330,20 @@ async fn test_dashboard_repos_and_finding_detail_regressions_stay_fixed() {
     assert!(repos_body.contains("repo-search"));
     assert!(repos_body.contains("row.classList.toggle('hidden'"));
     assert!(repos_body.contains(&repo.name));
+
+    let repo_new_req = test::TestRequest::get()
+        .uri("/repos/new?source=github")
+        .insert_header(bearer(&token))
+        .to_request();
+    let repo_new_resp = test::call_service(&app, repo_new_req).await;
+    assert_eq!(repo_new_resp.status(), StatusCode::OK);
+    let repo_new_body = String::from_utf8(test::read_body(repo_new_resp).await.to_vec())
+        .expect("Add repository page should render utf-8");
+    assert!(repo_new_body.contains("data-repo-search-input"));
+    assert!(repo_new_body.contains("data-repo-search-url=\"/api/repos/github/list\""));
+    assert!(repo_new_body.contains("data-repo-search-results"));
+    assert!(repo_new_body.contains("initSearch()"));
+    assert!(repo_new_body.contains("Loading recent GitHub repositories"));
 
     let finding_req = test::TestRequest::get()
         .uri(&format!("/findings/{}", finding.id))

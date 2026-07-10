@@ -949,6 +949,7 @@ enum RemoteFetchError {
 // Cap the total pages we'll follow per listing as a safety stop against
 // runaway pagination loops or pathological accounts.
 const REMOTE_REPO_MAX_PAGES: usize = 50;
+const GITHUB_RECENT_REPO_LIMIT: usize = 50;
 const GITHUB_SEARCH_REPO_LIMIT: usize = 50;
 
 fn parse_next_link(link_header: &str) -> Option<String> {
@@ -1169,7 +1170,13 @@ fn github_authenticated_get<'a>(
         .header("Accept", "application/vnd.github+json")
 }
 
-fn github_search_query(query: &str, user_login: &str) -> String {
+fn github_recent_repos_url() -> String {
+    format!(
+        "https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&direction=desc&per_page={GITHUB_RECENT_REPO_LIMIT}&page=1"
+    )
+}
+
+fn github_search_query(query: &str) -> String {
     let trimmed = query.trim();
     let has_qualifier = trimmed.contains("user:")
         || trimmed.contains("org:")
@@ -1180,7 +1187,7 @@ fn github_search_query(query: &str, user_login: &str) -> String {
     let base = if has_qualifier {
         trimmed.to_string()
     } else {
-        format!("{trimmed} in:name,description user:{user_login}")
+        format!("{trimmed} in:name,description")
     };
 
     if has_fork_qualifier {
@@ -1190,11 +1197,11 @@ fn github_search_query(query: &str, user_login: &str) -> String {
     }
 }
 
-fn github_search_repos_url(query: &str, user_login: &str) -> String {
+fn github_search_repos_url(query: &str) -> String {
     let mut url = reqwest::Url::parse("https://api.github.com/search/repositories")
         .expect("static GitHub search URL is valid");
     url.query_pairs_mut()
-        .append_pair("q", &github_search_query(query, user_login))
+        .append_pair("q", &github_search_query(query))
         .append_pair("sort", "updated")
         .append_pair("order", "desc")
         .append_pair("per_page", &GITHUB_SEARCH_REPO_LIMIT.to_string());
@@ -1247,13 +1254,35 @@ async fn handle_github_error(
     }
 }
 
+async fn fetch_github_recent_repos(
+    client: &reqwest::Client,
+    token: &str,
+) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
+    let url = github_recent_repos_url();
+    info!("[github] listing recent repos limit={GITHUB_RECENT_REPO_LIMIT}");
+    let resp = github_authenticated_get(client, token, &url)
+        .send()
+        .await
+        .map_err(|e| RemoteFetchError::Other(format!("Failed to reach GitHub: {e}")))?;
+    let status = resp.status();
+    info!("[github] recent repos API response: {status}");
+    if !status.is_success() {
+        return Err(handle_github_error(status, resp, "recent repos").await);
+    }
+
+    let parsed: Vec<GitHubRepo> = resp
+        .json()
+        .await
+        .map_err(|e| RemoteFetchError::Other(format!("Failed to parse repositories: {e}")))?;
+    Ok(parsed.into_iter().map(github_repo_to_remote).collect())
+}
+
 async fn fetch_github_search_repos(
     client: &reqwest::Client,
     token: &str,
-    user_login: &str,
     query: &str,
 ) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
-    let url = github_search_repos_url(query, user_login);
+    let url = github_search_repos_url(query);
     info!(
         "[github] searching repos query_len={} limit={GITHUB_SEARCH_REPO_LIMIT}",
         query.len()
@@ -1310,7 +1339,6 @@ async fn fetch_github_repo_by_full_name(
 async fn fetch_github_repos(
     client: &reqwest::Client,
     token: &str,
-    user_login: &str,
     query: Option<&str>,
 ) -> Result<Vec<RemoteRepo>, RemoteFetchError> {
     match query.map(str::trim).filter(|value| !value.is_empty()) {
@@ -1318,10 +1346,10 @@ async fn fetch_github_repos(
             if let Some((owner, repo)) = parse_github_full_name_query(query) {
                 fetch_github_repo_by_full_name(client, token, owner, repo).await
             } else {
-                fetch_github_search_repos(client, token, user_login, query).await
+                fetch_github_search_repos(client, token, query).await
             }
         }
-        None => Ok(Vec::new()),
+        None => fetch_github_recent_repos(client, token).await,
     }
 }
 
@@ -1476,20 +1504,6 @@ async fn list_remote_repos(
         }
     };
 
-    let query_value = query.q.as_deref().map(str::trim).unwrap_or_default();
-    if query_value.is_empty() {
-        return render_remote_repo_list(
-            &state,
-            &theme,
-            provider,
-            &[],
-            Some(&connected_urls),
-            None,
-            Some("Search repositories"),
-            Some("Type a repository name or paste owner/repo to search your connected account."),
-        );
-    }
-
     let token = match connection_access_token(&state, &conn) {
         Ok(token) => token,
         Err(message) => {
@@ -1541,9 +1555,7 @@ async fn list_remote_repos(
     // iterates per workspace because cross-workspace `/2.0/repositories` was
     // sunset (CHANGE-2770).
     let result = match provider {
-        "github" => {
-            fetch_github_repos(&client, &token, &conn.provider_user_id, query.q.as_deref()).await
-        }
+        "github" => fetch_github_repos(&client, &token, query.q.as_deref()).await,
         "gitlab" => fetch_gitlab_repos(&client, &token).await,
         "bitbucket" => fetch_bitbucket_repos(&client, &conn, &token).await,
         _ => unreachable!(),
@@ -1787,7 +1799,8 @@ fn repo_created_response(req: &HttpRequest, repo: &crate::models::db_models::Rep
 #[cfg(test)]
 mod tests {
     use super::{
-        github_repo_url, github_search_repos_url, parse_github_full_name_query, parse_next_link,
+        github_recent_repos_url, github_repo_url, github_search_repos_url,
+        parse_github_full_name_query, parse_next_link,
     };
 
     #[test]
@@ -1821,16 +1834,31 @@ mod tests {
 
     #[test]
     fn github_search_repos_url_uses_remote_search_query() {
-        let url = reqwest::Url::parse(&github_search_repos_url("kanvoya", "iamngoni")).unwrap();
+        let url = reqwest::Url::parse(&github_search_repos_url("kanvoya")).unwrap();
         let params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
 
         assert_eq!(url.path(), "/search/repositories");
         assert_eq!(
             params.get("q").map(String::as_str),
-            Some("kanvoya in:name,description user:iamngoni fork:true")
+            Some("kanvoya in:name,description fork:true")
         );
         assert_eq!(params.get("sort").map(String::as_str), Some("updated"));
         assert_eq!(params.get("order").map(String::as_str), Some("desc"));
+    }
+
+    #[test]
+    fn github_recent_repos_url_is_bounded_to_one_page() {
+        let url = reqwest::Url::parse(&github_recent_repos_url()).unwrap();
+        let params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+
+        assert_eq!(url.path(), "/user/repos");
+        assert_eq!(params.get("page").map(String::as_str), Some("1"));
+        assert_eq!(params.get("per_page").map(String::as_str), Some("50"));
+        assert_eq!(params.get("sort").map(String::as_str), Some("updated"));
+        assert_eq!(
+            params.get("affiliation").map(String::as_str),
+            Some("owner,collaborator,organization_member")
+        );
     }
 
     #[test]
