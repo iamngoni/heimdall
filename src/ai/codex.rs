@@ -957,7 +957,7 @@ mod tests {
                    data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"inspect\",\"arguments\":\"{\\\"path\\\":\\\"Cargo.toml\\\"}\"}}\n\n\
                    data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":3,\"output_tokens\":4,\"total_tokens\":7}}}\n\n";
 
-        let response = parse_responses_sse(sse, "gpt-5.4".to_string(), "codex").unwrap();
+        let response = parse_responses_sse(sse, "gpt-5.6-terra".to_string(), "codex").unwrap();
 
         assert_eq!(response.content, "hello");
         assert_eq!(response.stop_reason, StopReason::ToolUse);

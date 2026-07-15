@@ -148,7 +148,7 @@ async fn settings_page_renders_compact_openai_compatible_editor() {
                 },
                 "api_keys": [],
                 "ai_config": {
-                    "default_model": "gpt-5.4",
+                    "default_model": "gpt-5.6-terra",
                     "fallback_order": ["openai_compatible", "codex", "claude_code"],
                     "fallback_order_csv": "openai_compatible,codex,claude_code",
                     "fallbacks_enabled": true,
@@ -173,7 +173,7 @@ async fn settings_page_renders_compact_openai_compatible_editor() {
                     "provider_models": {
                         "anthropic": "",
                         "claude_code": "claude-sonnet-5",
-                        "codex": "gpt-5.4",
+                        "codex": "gpt-5.6-terra",
                         "xai_oauth": "",
                         "xai": "",
                         "openai": "",

@@ -2148,7 +2148,7 @@ mod tests {
         let user = test_user(
             Some("xai_oauth"),
             "xai_oauth,codex,openai",
-            r#"{"xai_oauth":"grok-build-0.1","codex":"gpt-5.4"}"#,
+            r#"{"xai_oauth":"grok-build-0.1","codex":"gpt-5.6-terra"}"#,
         );
 
         let (preferred, fallback_order, provider_models) =
@@ -2160,7 +2160,7 @@ mod tests {
         assert!(!provider_models.contains_key(&ProviderKind::XaiOAuth));
         assert_eq!(
             provider_models.get(&ProviderKind::Codex),
-            Some(&"gpt-5.4".to_string())
+            Some(&"gpt-5.6-terra".to_string())
         );
     }
 }

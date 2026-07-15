@@ -65,7 +65,7 @@ impl ProviderKind {
         match self {
             Self::Anthropic => "claude-sonnet-5",
             Self::ClaudeCode => "claude-sonnet-5",
-            Self::Codex => "gpt-5.4",
+            Self::Codex => "gpt-5.6-terra",
             Self::XaiOAuth => "grok-build-0.1",
             Self::Xai => "grok-build-0.1",
             Self::OpenAi => "gpt-4o",
@@ -420,7 +420,7 @@ mod tests {
         );
         assert_eq!(
             model_for_provider(ProviderKind::Codex, "claude-sonnet-5"),
-            "gpt-5.4"
+            "gpt-5.6-terra"
         );
         assert_eq!(
             model_for_provider(ProviderKind::Anthropic, "claude-sonnet-5"),
