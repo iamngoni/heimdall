@@ -25,6 +25,7 @@
 //! through a server-rendered form on the settings page.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use base64::Engine;
@@ -59,7 +60,13 @@ const CLAUDE_CODE_API_BASE: &str = "https://api.anthropic.com";
 const CLAUDE_CODE_ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Beta headers used by Claude Code when authenticating to the Messages API
 /// with subscription OAuth tokens.
-const CLAUDE_CODE_BETAS: &str = "claude-code-20250219,oauth-2025-04-20";
+// These values intentionally track the installed Claude CLI transport contract.
+// The ignored Nexus/Tyr live test catches upstream contract drift.
+const CLAUDE_CODE_BETAS: &str = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,extended-cache-ttl-2025-04-11";
+const CLAUDE_CODE_USER_AGENT: &str = "claude-cli/2.1.211 (external, sdk-cli)";
+const CLAUDE_CODE_BILLING_HEADER: &str =
+    "x-anthropic-billing-header: cc_version=2.1.211.cfa; cc_entrypoint=sdk-cli;";
+const CLAUDE_CODE_MAX_REQUEST_ATTEMPTS: usize = 6;
 /// System prompt prefix used by the Claude Agent SDK request path.
 const CLAUDE_CODE_SYSTEM_PREFIX: &str =
     "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
@@ -192,6 +199,7 @@ pub struct ClaudeCodeTokenPersistence {
 pub struct ClaudeCodeProvider {
     base_url: String,
     client: reqwest::Client,
+    session_id: Uuid,
     tokens: Mutex<ClaudeCodeAuthTokens>,
     persistence: Option<ClaudeCodeTokenPersistence>,
 }
@@ -217,6 +225,7 @@ impl ClaudeCodeProvider {
         Self {
             base_url: CLAUDE_CODE_API_BASE.to_string(),
             client: reqwest::Client::new(),
+            session_id: Uuid::now_v7(),
             tokens: Mutex::new(tokens),
             persistence,
         }
@@ -283,17 +292,22 @@ impl ClaudeCodeProvider {
         request: CompletionRequest,
         tokens: &ClaudeCodeAuthTokens,
     ) -> Result<CompletionResponse, ClaudeCodeRequestError> {
-        let body = build_messages_body(&request);
+        let mut body = build_messages_body(&request);
+        attach_claude_code_metadata(&mut body, tokens, self.session_id);
 
         let response = self
             .client
             .post(format!(
-                "{}/v1/messages",
+                "{}/v1/messages?beta=true",
                 self.base_url.trim_end_matches('/')
             ))
             .header("Authorization", format!("Bearer {}", tokens.access_token()))
             .header("anthropic-version", CLAUDE_CODE_ANTHROPIC_VERSION)
             .header("anthropic-beta", CLAUDE_CODE_BETAS)
+            .header("anthropic-dangerous-direct-browser-access", "true")
+            .header("user-agent", CLAUDE_CODE_USER_AGENT)
+            .header("x-app", "cli")
+            .header("x-claude-code-session-id", self.session_id.to_string())
             .header("content-type", "application/json")
             .json(&body)
             .send()
@@ -301,6 +315,12 @@ impl ClaudeCodeProvider {
             .map_err(ClaudeCodeRequestError::from)?;
 
         let status = response.status();
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok())
+            .map(Duration::from_secs);
         let response_text = response
             .text()
             .await
@@ -310,6 +330,13 @@ impl ClaudeCodeProvider {
             if status == StatusCode::UNAUTHORIZED {
                 return Err(ClaudeCodeRequestError::Unauthorized(response_text));
             }
+            if is_transient_status(status) {
+                return Err(ClaudeCodeRequestError::Transient {
+                    status,
+                    body: response_text,
+                    retry_after,
+                });
+            }
             return Err(ClaudeCodeRequestError::Other(anyhow::anyhow!(
                 "Claude Code API error ({status}): {response_text}"
             )));
@@ -318,6 +345,22 @@ impl ClaudeCodeProvider {
         parse_messages_response(&response_text, request.model)
             .map_err(ClaudeCodeRequestError::Other)
     }
+}
+
+fn attach_claude_code_metadata(body: &mut Value, tokens: &ClaudeCodeAuthTokens, session_id: Uuid) {
+    let account_uuid = tokens.account_uuid.as_deref().unwrap_or_default();
+    let device_id = format!(
+        "{:x}",
+        Sha256::digest(format!("heimdall:{account_uuid}").as_bytes())
+    );
+    let user_id = json!({
+        "device_id": device_id,
+        "account_uuid": account_uuid,
+        "session_id": session_id,
+    })
+    .to_string();
+
+    body["metadata"] = json!({ "user_id": user_id });
 }
 
 fn build_refresh_body(tokens: &ClaudeCodeAuthTokens) -> Value {
@@ -332,27 +375,42 @@ fn build_refresh_body(tokens: &ClaudeCodeAuthTokens) -> Value {
 #[async_trait::async_trait]
 impl ModelProvider for ClaudeCodeProvider {
     async fn complete(&self, request: CompletionRequest) -> HeimdallResult<CompletionResponse> {
-        let tokens = self.current_tokens(false).await?;
-        match self.send_completion(request.clone(), &tokens).await {
-            Ok(response) => Ok(response),
-            Err(ClaudeCodeRequestError::Unauthorized(body)) => {
-                log::warn!(
-                    "Claude Code access token rejected; refreshing and retrying once: {body}"
-                );
-                let tokens = self.current_tokens(true).await?;
-                self.send_completion(request, &tokens)
-                    .await
-                    .map_err(|error| match error {
-                        ClaudeCodeRequestError::Unauthorized(body) => {
-                            anyhow::anyhow!(
-                                "Claude Code API rejected refreshed credentials: {body}"
-                            )
-                        }
-                        ClaudeCodeRequestError::Other(error) => error,
-                    })
+        let mut tokens = self.current_tokens(false).await?;
+        let mut refreshed = false;
+
+        for attempt in 1..=CLAUDE_CODE_MAX_REQUEST_ATTEMPTS {
+            match self.send_completion(request.clone(), &tokens).await {
+                Ok(response) => return Ok(response),
+                Err(ClaudeCodeRequestError::Unauthorized(body)) if !refreshed => {
+                    log::warn!(
+                        "Claude Code access token rejected; refreshing and retrying once: {body}"
+                    );
+                    tokens = self.current_tokens(true).await?;
+                    refreshed = true;
+                }
+                Err(ClaudeCodeRequestError::Unauthorized(body)) => {
+                    anyhow::bail!("Claude Code API rejected refreshed credentials: {body}");
+                }
+                Err(ClaudeCodeRequestError::Transient {
+                    status,
+                    body,
+                    retry_after,
+                }) if attempt < CLAUDE_CODE_MAX_REQUEST_ATTEMPTS => {
+                    let delay = claude_code_retry_delay(attempt, retry_after);
+                    log::warn!(
+                        "Claude Code API returned {status} (attempt {attempt}/{CLAUDE_CODE_MAX_REQUEST_ATTEMPTS}); retrying in {:.1}s: {body}",
+                        delay.as_secs_f64()
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(ClaudeCodeRequestError::Transient { status, body, .. }) => {
+                    anyhow::bail!("Claude Code API error ({status}): {body}");
+                }
+                Err(ClaudeCodeRequestError::Other(error)) => return Err(error),
             }
-            Err(ClaudeCodeRequestError::Other(error)) => Err(error),
         }
+
+        unreachable!("Claude Code request loop always returns on its final attempt")
     }
 
     fn provider_name(&self) -> &str {
@@ -363,7 +421,28 @@ impl ModelProvider for ClaudeCodeProvider {
 #[derive(Debug)]
 enum ClaudeCodeRequestError {
     Unauthorized(String),
+    Transient {
+        status: StatusCode,
+        body: String,
+        retry_after: Option<Duration>,
+    },
     Other(anyhow::Error),
+}
+
+fn is_transient_status(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS
+        || status == StatusCode::INTERNAL_SERVER_ERROR
+        || status == StatusCode::BAD_GATEWAY
+        || status == StatusCode::SERVICE_UNAVAILABLE
+        || status.as_u16() == 529
+}
+
+fn claude_code_retry_delay(attempt: usize, retry_after: Option<Duration>) -> Duration {
+    let exponent = attempt.saturating_sub(1).min(4) as u32;
+    let backoff = Duration::from_millis(500 * 2_u64.pow(exponent));
+    retry_after
+        .map(|delay| delay.max(backoff).min(Duration::from_secs(15)))
+        .unwrap_or(backoff)
 }
 
 impl From<reqwest::Error> for ClaudeCodeRequestError {
@@ -553,11 +632,24 @@ fn build_messages_body(request: &CompletionRequest) -> Value {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let system = if user_system.is_empty() {
-        CLAUDE_CODE_SYSTEM_PREFIX.to_string()
-    } else {
-        format!("{CLAUDE_CODE_SYSTEM_PREFIX}\n\n{user_system}")
-    };
+    let mut system = vec![
+        json!({
+            "type": "text",
+            "text": CLAUDE_CODE_BILLING_HEADER,
+        }),
+        json!({
+            "type": "text",
+            "text": CLAUDE_CODE_SYSTEM_PREFIX,
+            "cache_control": { "type": "ephemeral", "ttl": "1h" },
+        }),
+    ];
+    if !user_system.is_empty() {
+        system.push(json!({
+            "type": "text",
+            "text": user_system,
+            "cache_control": { "type": "ephemeral", "ttl": "1h" },
+        }));
+    }
 
     let messages = request
         .messages
@@ -571,7 +663,10 @@ fn build_messages_body(request: &CompletionRequest) -> Value {
             };
             json!({
                 "role": role,
-                "content": message.content.as_str(),
+                "content": [{
+                    "type": "text",
+                    "text": message.content.as_str(),
+                }],
             })
         })
         .collect::<Vec<_>>();
@@ -581,6 +676,19 @@ fn build_messages_body(request: &CompletionRequest) -> Value {
         "max_tokens": request.max_tokens.unwrap_or(4096),
         "system": system,
         "messages": messages,
+        "tools": [],
+        "thinking": {
+            "type": "adaptive",
+            "display": "omitted",
+        },
+        "context_management": {
+            "edits": [{
+                "type": "clear_thinking_20251015",
+                "keep": "all",
+            }],
+        },
+        "output_config": { "effort": "high" },
+        "stream": false,
     });
 
     if let Some(tools) = request.tools.as_ref() {
@@ -882,8 +990,40 @@ mod tests {
     }
 
     #[test]
+    fn retries_transient_claude_code_statuses_with_bounded_backoff() {
+        assert!(is_transient_status(StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_transient_status(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(is_transient_status(StatusCode::from_u16(529).unwrap()));
+        assert!(!is_transient_status(StatusCode::BAD_REQUEST));
+
+        assert_eq!(claude_code_retry_delay(1, None), Duration::from_millis(500));
+        assert_eq!(claude_code_retry_delay(3, None), Duration::from_secs(2));
+        assert_eq!(
+            claude_code_retry_delay(1, Some(Duration::from_secs(60))),
+            Duration::from_secs(15)
+        );
+    }
+
+    #[test]
+    fn attaches_claude_code_session_metadata() {
+        let mut tokens = test_tokens(&[CLAUDE_CODE_SESSION_SCOPE]);
+        tokens.account_uuid = Some("account-123".to_string());
+        let session_id = Uuid::nil();
+        let mut body = json!({});
+
+        attach_claude_code_metadata(&mut body, &tokens, session_id);
+
+        let user_id: Value = serde_json::from_str(body["metadata"]["user_id"].as_str().unwrap())
+            .expect("metadata user_id should be encoded JSON");
+        assert_eq!(user_id["account_uuid"], "account-123");
+        assert_eq!(user_id["session_id"], session_id.to_string());
+        assert_eq!(user_id["device_id"].as_str().unwrap().len(), 64);
+    }
+
+    #[test]
     fn build_messages_body_injects_claude_code_identity() {
-        assert_eq!(CLAUDE_CODE_BETAS, "claude-code-20250219,oauth-2025-04-20");
+        assert!(CLAUDE_CODE_BETAS.contains("claude-code-20250219"));
+        assert!(CLAUDE_CODE_BETAS.contains("oauth-2025-04-20"));
         assert_eq!(
             CLAUDE_CODE_SYSTEM_PREFIX,
             "You are a Claude agent, built on Anthropic's Claude Agent SDK."
@@ -907,18 +1047,16 @@ mod tests {
         };
 
         let body = build_messages_body(&request);
-        let system = body
-            .get("system")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        assert!(
-            system.starts_with(CLAUDE_CODE_SYSTEM_PREFIX),
-            "system prompt must start with the Claude Code identity, got: {system}"
-        );
-        assert!(system.contains("Be terse."));
+        assert_eq!(body["system"][0]["text"], CLAUDE_CODE_BILLING_HEADER);
+        assert_eq!(body["system"][1]["text"], CLAUDE_CODE_SYSTEM_PREFIX);
+        assert_eq!(body["system"][2]["text"], "Be terse.");
+        assert_eq!(body["system"][1]["cache_control"]["ttl"], "1h");
         let messages = body.get("messages").and_then(Value::as_array).unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"][0]["text"], "Hi.");
+        assert_eq!(body["thinking"]["type"], "adaptive");
+        assert_eq!(body["stream"], false);
         assert!(body.get("temperature").is_none());
     }
 
