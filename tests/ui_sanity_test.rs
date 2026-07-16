@@ -16,6 +16,32 @@ fn bearer(token: &str) -> (header::HeaderName, String) {
 }
 
 #[actix_rt::test]
+async fn repo_add_forms_keep_native_submit_fallbacks() {
+    let import_partials = [
+        include_str!("../templates/themes/sentinel/partials/repo_import_list.html"),
+        include_str!("../templates/themes/oatmeal/partials/repo_import_list.html"),
+        include_str!("../templates/themes/editorial/partials/repo_import_list.html"),
+    ];
+    for body in import_partials {
+        assert!(body.contains("action=\"/api/repos/import\""));
+        assert!(body.contains("method=\"post\""));
+        assert!(body.contains("hx-post=\"/api/repos/import\""));
+    }
+
+    let add_pages = [
+        include_str!("../templates/themes/sentinel/pages/repo_new.html"),
+        include_str!("../templates/themes/oatmeal/pages/repo_new.html"),
+        include_str!("../templates/themes/editorial/pages/repo_new.html"),
+    ];
+    for body in add_pages {
+        assert!(body.contains("action=\"/api/repos\""));
+        assert!(body.contains("action=\"/api/repos/upload\""));
+        assert!(body.contains("method=\"post\""));
+        assert!(body.contains("enctype=\"multipart/form-data\""));
+    }
+}
+
+#[actix_rt::test]
 async fn threat_model_pages_render_expanded_lifecycle_sections() {
     let ctx = json!({
         "user": {
@@ -226,6 +252,65 @@ async fn test_public_auth_pages_render_structured_error_handling() {
             "expected structured error handling in {path}"
         );
     }
+}
+
+#[actix_rt::test]
+async fn repo_import_plain_form_redirects_to_created_repo() {
+    let Some(pool) = common::test_pool().await else {
+        return;
+    };
+
+    let state = common::test_app_state(pool).await;
+    let (user, token) = common::create_user_with_session(&state, "repo-import").await;
+    state
+        .db
+        .upsert_oauth_connection(
+            user.id,
+            "github",
+            "ui-test-user",
+            Some("fake-token"),
+            None,
+            Some("repo read:user user:email"),
+            None,
+        )
+        .await
+        .expect("Failed to create GitHub connection for import test");
+
+    let app = test::init_service(App::new().app_data(state.clone()).configure(routes::init)).await;
+    let full_name = format!("ui-owner/native-import-{}", Uuid::now_v7());
+    let clone_url = format!("https://github.com/{full_name}.git");
+    let req = test::TestRequest::post()
+        .uri("/api/repos/import")
+        .insert_header(bearer(&token))
+        .insert_header((header::ACCEPT, "text/html"))
+        .set_form([
+            ("provider", "github"),
+            ("full_name", full_name.as_str()),
+            ("clone_url", clone_url.as_str()),
+            ("name", full_name.as_str()),
+            ("default_branch", "main"),
+        ])
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let location = resp
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .expect("plain form import should redirect to repo detail");
+    assert!(location.starts_with("/repos/"));
+
+    let repos = state
+        .db
+        .list_repos_by_user(user.id)
+        .await
+        .expect("imported repo should be persisted");
+    assert!(
+        repos
+            .iter()
+            .any(|repo| repo.remote_url.as_deref() == Some(clone_url.as_str()))
+    );
 }
 
 #[actix_rt::test]
