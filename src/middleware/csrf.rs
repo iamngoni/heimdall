@@ -33,6 +33,19 @@ fn is_exempt_path(path: &str) -> bool {
     CSRF_EXEMPT_PATHS.contains(&path) || path.starts_with("/api/webhooks/")
 }
 
+/// Extract the `_csrf` token from a URL query string.
+///
+/// Native form submissions cannot set an `X-CSRF-Token` header, so the token
+/// is carried as a query parameter instead (the `_csrf` cookie is still sent
+/// automatically, preserving the double-submit comparison). Tokens are hex, so
+/// no percent-decoding is required.
+fn query_csrf_token(query: &str) -> Option<String> {
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == "_csrf").then(|| value.to_string())
+    })
+}
+
 /// Check if the request has a valid Bearer token (API clients skip CSRF).
 fn has_bearer_token(req: &ServiceRequest) -> bool {
     req.headers()
@@ -103,14 +116,19 @@ where
             .get("X-CSRF-Token")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
+        // Native form submits carry the token as a query param (no custom headers).
+        let query_token = query_csrf_token(req.query_string());
 
         let service = self.service.clone();
 
         Box::pin(async move {
             // Check CSRF for state-changing methods
             if requires_csrf_check(&method) && !is_exempt_path(&path) && !has_bearer {
-                let valid = match (&cookie_token, &header_token) {
-                    (Some(cookie), Some(header)) if !cookie.is_empty() => cookie == header,
+                // Accept the token from the header (HTMX/fetch) or the query
+                // string (native form submit). Either must match the cookie.
+                let submitted = header_token.as_ref().or(query_token.as_ref());
+                let valid = match (&cookie_token, submitted) {
+                    (Some(cookie), Some(token)) if !cookie.is_empty() => cookie == token,
                     _ => false,
                 };
 
@@ -146,5 +164,82 @@ where
                 Ok(res.map_into_left_body())
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::cookie::Cookie;
+    use actix_web::http::StatusCode;
+    use actix_web::test::{TestRequest, call_service, init_service};
+    use actix_web::{App, HttpResponse, web};
+
+    async fn ok() -> HttpResponse {
+        HttpResponse::Ok().finish()
+    }
+
+    #[test]
+    fn query_csrf_token_extracts_value() {
+        assert_eq!(query_csrf_token("_csrf=abc123").as_deref(), Some("abc123"));
+        assert_eq!(
+            query_csrf_token("foo=1&_csrf=abc&bar=2").as_deref(),
+            Some("abc")
+        );
+        assert_eq!(query_csrf_token("foo=1"), None);
+        assert_eq!(query_csrf_token(""), None);
+    }
+
+    #[actix_rt::test]
+    async fn native_form_submit_with_matching_query_token_passes() {
+        let app =
+            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
+                .await;
+        let req = TestRequest::post()
+            .uri("/api/x?_csrf=tok")
+            .cookie(Cookie::new("_csrf", "tok"))
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[actix_rt::test]
+    async fn post_without_any_token_is_rejected() {
+        let app =
+            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
+                .await;
+        let req = TestRequest::post()
+            .uri("/api/x")
+            .cookie(Cookie::new("_csrf", "tok"))
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[actix_rt::test]
+    async fn mismatched_query_token_is_rejected() {
+        let app =
+            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
+                .await;
+        let req = TestRequest::post()
+            .uri("/api/x?_csrf=wrong")
+            .cookie(Cookie::new("_csrf", "tok"))
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[actix_rt::test]
+    async fn header_token_still_works() {
+        let app =
+            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
+                .await;
+        let req = TestRequest::post()
+            .uri("/api/x")
+            .cookie(Cookie::new("_csrf", "tok"))
+            .insert_header(("X-CSRF-Token", "tok"))
+            .to_request();
+        let resp = call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

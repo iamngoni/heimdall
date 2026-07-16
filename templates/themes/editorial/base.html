@@ -79,6 +79,24 @@
         }
     });
 
+    // Native form submits can't set the X-CSRF-Token header, so carry the token
+    // as a query param on the form action. HTMX uses hx-post (not action), so
+    // this only affects the plain-submit fallback path.
+    document.addEventListener('submit', function(evt) {
+        const form = evt.target;
+        if (!form || form.tagName !== 'FORM') return;
+        if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+        const csrf = document.cookie.split('; ').find((c) => c.startsWith('_csrf='));
+        if (!csrf) return;
+        const token = csrf.split('=').slice(1).join('=');
+        if (!token) return;
+        try {
+            const url = new URL(form.getAttribute('action') || window.location.href, window.location.origin);
+            url.searchParams.set('_csrf', decodeURIComponent(token));
+            form.setAttribute('action', url.pathname + url.search);
+        } catch (_) { /* leave action unchanged */ }
+    }, true);
+
     window.HeimdallUI = window.HeimdallUI || (() => {
         const MAX_VISIBLE = 5;
         const barColors = { success: 'bg-emerald-500', warning: 'bg-amber-500', error: 'bg-rose-500', info: 'bg-blue-500' };
