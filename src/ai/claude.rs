@@ -288,6 +288,7 @@ impl ModelProvider for ClaudeProvider {
             },
             provider: "claude".to_string(),
             model: request.model,
+            fallback_attempts: Vec::new(),
         })
     }
 

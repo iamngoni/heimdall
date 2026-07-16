@@ -669,6 +669,10 @@ async fn scan_detail_page(
                 "timestamp": scan.updated_at.to_rfc3339(),
             })
         });
+    let fallback = live_snapshot
+        .get("fallback")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
     let ctx = minijinja::context! {
         user => user_ctx(&req),
         user_initial => user_initial(&req),
@@ -698,6 +702,7 @@ async fn scan_detail_page(
         stages => minijinja::Value::from_serialize(&stage_values),
         activities => minijinja::Value::from_serialize(&activity_values),
         current_task => minijinja::Value::from_serialize(&current_task),
+        fallback => minijinja::Value::from_serialize(&fallback),
     };
 
     render_html(&state, "pages/scan.html", &user_theme(&req), ctx)

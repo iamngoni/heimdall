@@ -1298,6 +1298,23 @@ impl DatabaseOperations {
         .context("Failed to list scan events")
     }
 
+    pub async fn get_latest_scan_event_by_type(
+        &self,
+        scan_id: Uuid,
+        event_type: &str,
+    ) -> HeimdallResult<Option<ScanEventRecord>> {
+        sqlx::query_as::<_, ScanEventRecord>(
+            "SELECT * FROM scan_events \
+             WHERE scan_id = $1 AND event_type = $2 \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(scan_id)
+        .bind(event_type)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to get latest scan event by type")
+    }
+
     // -----------------------------------------------------------------------
     // Extended findings
     // -----------------------------------------------------------------------

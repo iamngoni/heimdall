@@ -14,8 +14,67 @@ use log::{error, info, warn};
 use tokio::time::Instant;
 use uuid::Uuid;
 
+use crate::ai::ModelProvider;
+use crate::ai::types::{CompletionRequest, CompletionResponse};
+use crate::db::DatabaseOperations;
+use crate::models::HeimdallResult;
 use crate::pipeline::ScanPipeline;
 use crate::state::AppState;
+
+struct ScanAiProvider {
+    inner: Arc<dyn ModelProvider>,
+    db: Arc<DatabaseOperations>,
+    scan_id: Uuid,
+}
+
+impl ScanAiProvider {
+    fn new(inner: Arc<dyn ModelProvider>, db: Arc<DatabaseOperations>, scan_id: Uuid) -> Self {
+        Self { inner, db, scan_id }
+    }
+
+    async fn record_fallback(&self, response: &CompletionResponse) {
+        let Some(metadata) = response.routing_metadata() else {
+            return;
+        };
+        let Some(detail) = response.fallback_summary() else {
+            return;
+        };
+
+        if let Err(error) = self
+            .db
+            .create_scan_event(
+                self.scan_id,
+                None,
+                Some("provider-fallback"),
+                "provider_fallback",
+                Some("warning"),
+                "AI provider fallback used",
+                Some(&detail),
+                None,
+                Some(&metadata),
+            )
+            .await
+        {
+            warn!(
+                "[{}] Failed to record AI provider fallback: {error:#}",
+                self.scan_id
+            );
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ModelProvider for ScanAiProvider {
+    async fn complete(&self, request: CompletionRequest) -> HeimdallResult<CompletionResponse> {
+        let response = self.inner.complete(request).await?;
+        self.record_fallback(&response).await;
+        Ok(response)
+    }
+
+    fn provider_name(&self) -> &str {
+        self.inner.provider_name()
+    }
+}
 
 /// Background worker that polls `scan_jobs` and executes scan pipelines.
 pub struct ScanWorker {
@@ -200,10 +259,15 @@ impl ScanWorker {
 
         // Run the pipeline
         let cancel_token = self.state.sse.register_cancellation_token(scan_id);
+        let scan_ai: Arc<dyn ModelProvider> = Arc::new(ScanAiProvider::new(
+            Arc::clone(&runtime.provider),
+            Arc::clone(&self.state.db),
+            scan_id,
+        ));
         let pipeline = ScanPipeline::new(
             scan_id,
             Arc::clone(&self.state.db),
-            Arc::clone(&runtime.provider),
+            scan_ai,
             runtime.model,
             Arc::clone(&self.state.sse),
             self.state.encryption_key,

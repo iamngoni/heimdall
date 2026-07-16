@@ -1262,7 +1262,7 @@ async fn claude_code_authorize(state: web::Data<AppState>, req: HttpRequest) -> 
 #[derive(Deserialize)]
 pub struct ClaudeCodeExchangeForm {
     /// The `code#state` blob (or bare code, or full callback URL) the user
-    /// pasted from the Anthropic console redirect page.
+    /// pasted from the Anthropic platform redirect page.
     code: String,
     /// Explicit `state` value, when the user pasted only the code without
     /// the trailing `#state`. Optional — overrides the value parsed out of
@@ -1272,7 +1272,7 @@ pub struct ClaudeCodeExchangeForm {
 }
 
 /// POST /settings/claude-code/exchange — accept the pasted authorization
-/// code from the Anthropic console redirect page and exchange it for tokens.
+/// code from the Anthropic platform redirect page and exchange it for tokens.
 async fn claude_code_exchange(
     state: web::Data<AppState>,
     req: HttpRequest,
@@ -1294,7 +1294,7 @@ async fn claude_code_exchange(
     let state_value = supplied_state.or(parsed_state);
 
     let Some(state_param) = state_value.as_deref().filter(|s| !s.is_empty()) else {
-        let message = "Paste the entire `code#state` string from the Anthropic console.";
+        let message = "Paste the entire `code#state` string from the Anthropic platform page.";
         if is_hx_request(&req) {
             return inline_feedback_html(false, message);
         }

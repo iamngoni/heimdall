@@ -36,6 +36,92 @@ pub struct CompletionResponse {
     /// if a fallback occurred.
     #[serde(default)]
     pub model: String,
+    /// Providers attempted before another provider completed the request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback_attempts: Vec<FallbackAttempt>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FallbackAttempt {
+    pub provider: String,
+    pub model: String,
+    pub reason: String,
+}
+
+impl CompletionResponse {
+    pub fn routing_metadata(&self) -> Option<serde_json::Value> {
+        if self.fallback_attempts.is_empty() {
+            return None;
+        }
+
+        Some(serde_json::json!({
+            "fallback_used": true,
+            "attempts": &self.fallback_attempts,
+            "completed_by": {
+                "provider": self.provider,
+                "provider_label": provider_label(&self.provider),
+                "model": self.model,
+            },
+        }))
+    }
+
+    pub fn fallback_summary(&self) -> Option<String> {
+        if self.fallback_attempts.is_empty() {
+            return None;
+        }
+
+        let failed = self
+            .fallback_attempts
+            .iter()
+            .map(|attempt| {
+                format!(
+                    "{} ({}) {}",
+                    provider_label(&attempt.provider),
+                    attempt.model,
+                    reason_label(&attempt.reason)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        Some(format!(
+            "{failed}; continued with {} ({}).",
+            provider_label(&self.provider),
+            self.model
+        ))
+    }
+}
+
+fn provider_label(provider: &str) -> String {
+    crate::ai::provider_kind_from_name(provider)
+        .map(|kind| kind.label().to_string())
+        .unwrap_or_else(|| {
+            provider
+                .split(['_', '-'])
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    let mut chars = part.chars();
+                    chars
+                        .next()
+                        .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+}
+
+fn reason_label(reason: &str) -> &'static str {
+    match reason {
+        "rate_limited" => "was rate limited",
+        "authentication_failed" => "rejected authentication",
+        "access_denied" => "denied access",
+        "quota_exhausted" => "exhausted its quota",
+        "provider_unavailable" => "was unavailable",
+        "timed_out" => "timed out",
+        "connection_failed" => "could not be reached",
+        _ => "failed",
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

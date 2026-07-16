@@ -50,6 +50,11 @@
                                          'bg-slate-100 text-slate-700' }}">
                                 {{ scan.status_label }}
                             </span>
+                            <span id="scan-fallback-pill"
+                                  title="{{ fallback.detail or '' }}"
+                                  class="inline-flex rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 {{ '' if fallback else 'hidden' }}">
+                                Fallback used{% if fallback.provider_label %} · {{ fallback.provider_label }}{% endif %}
+                            </span>
                             {% if scan.is_live %}
                             <button id="cancel-scan-btn"
                                     onclick="HeimdallScanPage.cancelScan('{{ scan.id }}', this)"
@@ -438,6 +443,7 @@ window.HeimdallScanPage = {
         this.liveUrl = this.root.dataset.liveUrl;
         this.streamUrl = this.root.dataset.streamUrl;
         this.statusPill = document.getElementById('scan-status-pill');
+        this.fallbackPill = document.getElementById('scan-fallback-pill');
         this.livePanel = document.getElementById('scan-live-panel');
         this.liveIndicator = document.getElementById('scan-live-indicator');
         this.liveTitle = document.getElementById('scan-live-title');
@@ -577,6 +583,7 @@ window.HeimdallScanPage = {
         this.root.dataset.scanLive = scan.is_live ? 'true' : 'false';
 
         this.setStatus(scan.status, scan.updated_at);
+        this.renderFallback(snapshot.fallback || null);
         this.setCounts(snapshot.counts || {});
         this.setLivePanel(scan, snapshot.current_task || {});
         this.renderCurrentTask(snapshot.current_task || {});
@@ -715,6 +722,24 @@ window.HeimdallScanPage = {
             default:
                 return 'bg-slate-400';
         }
+    },
+
+    renderFallback(fallback) {
+        if (!this.fallbackPill) {
+            return;
+        }
+
+        const used = Boolean(fallback && fallback.used);
+        this.fallbackPill.classList.toggle('hidden', !used);
+        if (!used) {
+            this.fallbackPill.textContent = 'Fallback used';
+            this.fallbackPill.removeAttribute('title');
+            return;
+        }
+
+        const provider = fallback.provider_label || this.humanize(fallback.provider);
+        this.fallbackPill.textContent = provider ? `Fallback used · ${provider}` : 'Fallback used';
+        this.fallbackPill.title = fallback.detail || 'A configured backup AI provider completed this request.';
     },
 
     setStatus(status, timestamp) {

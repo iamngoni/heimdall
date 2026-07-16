@@ -19,8 +19,8 @@
 //!
 //! The production Claude OAuth client does not accept arbitrary localhost
 //! redirect URIs, so we can't run an in-process callback the way we do for
-//! Codex. Instead the redirect target is the hosted Anthropic console page
-//! `https://console.anthropic.com/oauth/code/callback`, which displays a
+//! Codex. Instead the redirect target is the hosted Anthropic platform page
+//! `https://platform.claude.com/oauth/code/callback`, which displays a
 //! `code#state` string for the user to copy. We then accept that string
 //! through a server-rendered form on the settings page.
 
@@ -46,13 +46,15 @@ use crate::models::HeimdallResult;
 
 /// Public OAuth client ID used by the Claude Code CLI.
 const CLAUDE_CODE_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const CLAUDE_CODE_AUTHORIZE_URL: &str = "https://claude.ai/oauth/authorize";
-const CLAUDE_CODE_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
-/// The Anthropic console page that displays the authorization code for the
+const CLAUDE_CODE_AUTHORIZE_URL: &str = "https://platform.claude.com/oauth/authorize";
+const CLAUDE_CODE_TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
+/// The Anthropic platform page that displays the authorization code for the
 /// user to paste back. This is the only redirect URI the Claude OAuth client
 /// accepts for public PKCE flows.
-const CLAUDE_CODE_REDIRECT_URI: &str = "https://console.anthropic.com/oauth/code/callback";
-const CLAUDE_CODE_SCOPE: &str = "org:create_api_key user:profile user:inference";
+const CLAUDE_CODE_REDIRECT_URI: &str = "https://platform.claude.com/oauth/code/callback";
+const CLAUDE_CODE_SCOPE: &str =
+    "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
+const CLAUDE_CODE_SESSION_SCOPE: &str = "user:sessions:claude_code";
 const CLAUDE_CODE_API_BASE: &str = "https://api.anthropic.com";
 const CLAUDE_CODE_ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Beta headers used by Claude Code when authenticating to the Messages API
@@ -136,6 +138,15 @@ impl ClaudeCodeAuthTokens {
     }
 
     fn needs_refresh(&self) -> bool {
+        if !self.refresh_token.is_empty()
+            && !self
+                .scopes
+                .iter()
+                .any(|scope| scope == CLAUDE_CODE_SESSION_SCOPE)
+        {
+            return true;
+        }
+
         let Some(expires_at) = self.access_token_expires_at else {
             return false;
         };
@@ -230,11 +241,7 @@ impl ClaudeCodeProvider {
             .client
             .post(CLAUDE_CODE_TOKEN_URL)
             .header("Content-Type", "application/json")
-            .json(&json!({
-                "grant_type": "refresh_token",
-                "client_id": CLAUDE_CODE_CLIENT_ID,
-                "refresh_token": tokens.refresh_token.as_str(),
-            }))
+            .json(&build_refresh_body(tokens))
             .send()
             .await
             .context("Claude Code token refresh request failed")?;
@@ -311,6 +318,15 @@ impl ClaudeCodeProvider {
         parse_messages_response(&response_text, request.model)
             .map_err(ClaudeCodeRequestError::Other)
     }
+}
+
+fn build_refresh_body(tokens: &ClaudeCodeAuthTokens) -> Value {
+    json!({
+        "grant_type": "refresh_token",
+        "client_id": CLAUDE_CODE_CLIENT_ID,
+        "refresh_token": tokens.refresh_token.as_str(),
+        "scope": CLAUDE_CODE_SCOPE,
+    })
 }
 
 #[async_trait::async_trait]
@@ -676,6 +692,7 @@ fn parse_messages_response(body: &str, model: String) -> HeimdallResult<Completi
         },
         provider: "claude_code".to_string(),
         model,
+        fallback_attempts: Vec::new(),
     })
 }
 
@@ -777,6 +794,93 @@ pub fn login_error_html(message: &str, return_url: &str) -> String {
 mod tests {
     use super::*;
 
+    fn test_tokens(scopes: &[&str]) -> ClaudeCodeAuthTokens {
+        ClaudeCodeAuthTokens {
+            access_token: "access-token".to_string(),
+            refresh_token: "refresh-token".to_string(),
+            email: None,
+            account_uuid: None,
+            organization_uuid: None,
+            scopes: scopes.iter().map(|scope| (*scope).to_string()).collect(),
+            access_token_expires_at: Some(Utc::now() + chrono::Duration::hours(1)),
+            last_refresh: None,
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires HEIMDALL_CLAUDE_CODE_TEST_SECRET and live Anthropic access"]
+    async fn live_completion_with_external_secret() {
+        let secret = std::env::var("HEIMDALL_CLAUDE_CODE_TEST_SECRET")
+            .expect("HEIMDALL_CLAUDE_CODE_TEST_SECRET must be set");
+        let provider = ClaudeCodeProvider::from_secret(secret).unwrap();
+        let response = provider
+            .complete(CompletionRequest {
+                model: "claude-sonnet-5".to_string(),
+                messages: vec![crate::ai::types::Message {
+                    role: "user".to_string(),
+                    content: "Reply with exactly HEIMDALL_PROVIDER_OK and nothing else."
+                        .to_string(),
+                }],
+                tools: None,
+                max_tokens: Some(64),
+                temperature: Some(0.0),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(response.content.trim(), "HEIMDALL_PROVIDER_OK");
+        assert_eq!(response.provider, "claude_code");
+        assert_eq!(response.model, "claude-sonnet-5");
+    }
+
+    #[test]
+    fn authorization_uses_current_claude_code_oauth_contract() {
+        let request = prepare_claude_code_authorization().unwrap();
+        let url = reqwest::Url::parse(&request.authorize_url).unwrap();
+        let query = url
+            .query_pairs()
+            .collect::<std::collections::HashMap<_, _>>();
+
+        assert_eq!(
+            url.origin().ascii_serialization(),
+            "https://platform.claude.com"
+        );
+        assert_eq!(url.path(), "/oauth/authorize");
+        assert_eq!(
+            query.get("redirect_uri").map(|value| value.as_ref()),
+            Some(CLAUDE_CODE_REDIRECT_URI)
+        );
+        assert_eq!(
+            query.get("scope").map(|value| value.as_ref()),
+            Some(CLAUDE_CODE_SCOPE)
+        );
+        assert_eq!(
+            CLAUDE_CODE_TOKEN_URL,
+            "https://platform.claude.com/v1/oauth/token"
+        );
+    }
+
+    #[test]
+    fn legacy_oauth_credentials_are_refreshed_with_current_scopes() {
+        let tokens = test_tokens(&["org:create_api_key", "user:profile", "user:inference"]);
+
+        assert!(tokens.needs_refresh());
+        assert_eq!(build_refresh_body(&tokens)["scope"], CLAUDE_CODE_SCOPE);
+    }
+
+    #[test]
+    fn current_unexpired_oauth_credentials_do_not_refresh() {
+        let tokens = test_tokens(&[
+            "user:profile",
+            "user:inference",
+            CLAUDE_CODE_SESSION_SCOPE,
+            "user:mcp_servers",
+            "user:file_upload",
+        ]);
+
+        assert!(!tokens.needs_refresh());
+    }
+
     #[test]
     fn build_messages_body_injects_claude_code_identity() {
         assert_eq!(CLAUDE_CODE_BETAS, "claude-code-20250219,oauth-2025-04-20");
@@ -843,7 +947,7 @@ mod tests {
 
     #[test]
     fn split_pasted_code_handles_full_url() {
-        let blob = "https://console.anthropic.com/oauth/code/callback?code=abc123#xyz789";
+        let blob = "https://platform.claude.com/oauth/code/callback?code=abc123#xyz789";
         let (code, state) = split_pasted_code(blob);
         assert_eq!(code, "abc123");
         assert_eq!(state.as_deref(), Some("xyz789"));

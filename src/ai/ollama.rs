@@ -199,6 +199,7 @@ impl ModelProvider for OllamaProvider {
             },
             provider: "ollama".to_string(),
             model: request.model,
+            fallback_attempts: Vec::new(),
         })
     }
 

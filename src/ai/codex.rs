@@ -689,6 +689,7 @@ pub(crate) fn parse_responses_sse(
         usage,
         provider: provider.to_string(),
         model,
+        fallback_attempts: Vec::new(),
     })
 }
 

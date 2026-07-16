@@ -10,7 +10,7 @@
 use log::{info, warn};
 
 use crate::ai::ModelProvider;
-use crate::ai::types::{CompletionRequest, CompletionResponse};
+use crate::ai::types::{CompletionRequest, CompletionResponse, FallbackAttempt};
 use crate::models::HeimdallResult;
 
 /// A provider entry in the fallback chain, pairing a provider with its default model.
@@ -61,39 +61,53 @@ impl FallbackProvider {
 ///   "Claude API error (429): rate_limit_error — ..."
 ///   "OpenAI API error (429): ..."
 fn is_retryable_error(err: &anyhow::Error) -> bool {
+    fallback_reason(err).is_some()
+}
+
+fn fallback_reason(err: &anyhow::Error) -> Option<&'static str> {
     let msg = format!("{err}");
-    // Match status codes in parentheses from our provider error format
-    for code in [
-        "(401)", "(403)", "(429)", "(500)", "(502)", "(503)", "(529)",
-    ] {
-        if msg.contains(code) {
-            return true;
-        }
-    }
-    // Catch auth/access and billing/quota errors — these mean the current
-    // provider cannot serve requests even if another one can.
     let lower = msg.to_ascii_lowercase();
-    if lower.contains("authentication")
+
+    if lower.contains("(429") || lower.contains("rate_limit") || lower.contains("rate limit") {
+        return Some("rate_limited");
+    }
+    if lower.contains("(401") || lower.contains("authentication") {
+        return Some("authentication_failed");
+    }
+    if lower.contains("(403")
         || lower.contains("forbidden")
         || lower.contains("request not allowed")
-        || lower.contains("credit balance")
+    {
+        return Some("access_denied");
+    }
+    if lower.contains("credit balance")
         || lower.contains("billing")
         || lower.contains("quota")
         || lower.contains("insufficient_quota")
-        || lower.contains("rate_limit")
     {
-        return true;
+        return Some("quota_exhausted");
     }
-    // Also catch connection/timeout errors that suggest the provider is down
-    lower.contains("connection refused")
-        || lower.contains("timed out")
-        || lower.contains("connection reset")
+    if ["(500", "(502", "(503", "(529"]
+        .iter()
+        .any(|code| lower.contains(code))
+    {
+        return Some("provider_unavailable");
+    }
+    if lower.contains("timed out") || lower.contains("timeout") {
+        return Some("timed_out");
+    }
+    if lower.contains("connection refused") || lower.contains("connection reset") {
+        return Some("connection_failed");
+    }
+
+    None
 }
 
 #[async_trait::async_trait]
 impl ModelProvider for FallbackProvider {
     async fn complete(&self, request: CompletionRequest) -> HeimdallResult<CompletionResponse> {
         let mut last_error: Option<anyhow::Error> = None;
+        let mut fallback_attempts = Vec::new();
 
         for (i, entry) in self.providers.iter().enumerate() {
             // Rewrite the model field to match this provider's default
@@ -104,8 +118,16 @@ impl ModelProvider for FallbackProvider {
                 req.model = entry.default_model.clone();
             }
 
+            let attempted_model = req.model.clone();
             match entry.provider.complete(req).await {
-                Ok(response) => {
+                Ok(mut response) => {
+                    if response.provider.is_empty() {
+                        response.provider = entry.provider.provider_name().to_string();
+                    }
+                    if response.model.is_empty() {
+                        response.model = attempted_model;
+                    }
+                    response.fallback_attempts.extend(fallback_attempts);
                     if i > 0 {
                         info!(
                             "Fallback to {} succeeded (provider #{})",
@@ -117,6 +139,7 @@ impl ModelProvider for FallbackProvider {
                 }
                 Err(e) => {
                     if is_retryable_error(&e) && i + 1 < self.providers.len() {
+                        let reason = fallback_reason(&e).unwrap_or("provider_error");
                         let next = &self.providers[i + 1];
                         warn!(
                             "{} failed with retryable error: {e:#} — falling back to {} (model: {})",
@@ -124,6 +147,11 @@ impl ModelProvider for FallbackProvider {
                             next.provider.provider_name(),
                             next.default_model,
                         );
+                        fallback_attempts.push(FallbackAttempt {
+                            provider: entry.provider.provider_name().to_string(),
+                            model: attempted_model,
+                            reason: reason.to_string(),
+                        });
                         last_error = Some(e);
                         continue;
                     }
@@ -194,6 +222,7 @@ mod tests {
                 },
                 provider: self.name.to_string(),
                 model: "test-model".to_string(),
+                fallback_attempts: Vec::new(),
             })
         }
         fn provider_name(&self) -> &str {
@@ -248,6 +277,24 @@ mod tests {
 
         let result = provider.complete(test_request()).await.unwrap();
         assert_eq!(result.content, "response from secondary");
+        assert_eq!(result.provider, "secondary");
+        assert_eq!(result.model, "test-model");
+        assert_eq!(
+            result.fallback_attempts,
+            vec![FallbackAttempt {
+                provider: "primary".to_string(),
+                model: "test-model".to_string(),
+                reason: "rate_limited".to_string(),
+            }]
+        );
+        let routing = result.routing_metadata().unwrap();
+        assert_eq!(routing["fallback_used"], true);
+        assert_eq!(routing["attempts"][0]["reason"], "rate_limited");
+        assert_eq!(routing["completed_by"]["provider"], "secondary");
+        assert_eq!(
+            result.fallback_summary().as_deref(),
+            Some("Primary (test-model) was rate limited; continued with Secondary (test-model).")
+        );
     }
 
     #[tokio::test]

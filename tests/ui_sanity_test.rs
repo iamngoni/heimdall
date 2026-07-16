@@ -16,6 +16,21 @@ fn bearer(token: &str) -> (header::HeaderName, String) {
 }
 
 #[actix_rt::test]
+async fn scan_pages_expose_persisted_provider_fallback_status() {
+    let scan_pages = [
+        include_str!("../templates/themes/sentinel/pages/scan.html"),
+        include_str!("../templates/themes/oatmeal/pages/scan.html"),
+        include_str!("../templates/themes/editorial/pages/scan.html"),
+    ];
+
+    for body in scan_pages {
+        assert!(body.contains("id=\"scan-fallback-pill\""));
+        assert!(body.contains("this.renderFallback(snapshot.fallback || null)"));
+        assert!(body.contains("Fallback used"));
+    }
+}
+
+#[actix_rt::test]
 async fn repo_add_forms_keep_native_submit_fallbacks() {
     let import_partials = [
         include_str!("../templates/themes/sentinel/partials/repo_import_list.html"),
@@ -392,6 +407,34 @@ async fn test_dashboard_repos_and_finding_detail_regressions_stay_fixed() {
         )
         .await
         .expect("Failed to create GitHub connection for UI test");
+    let fallback_metadata = json!({
+        "fallback_used": true,
+        "attempts": [{
+            "provider": "claude_code",
+            "model": "claude-sonnet-5",
+            "reason": "rate_limited",
+        }],
+        "completed_by": {
+            "provider": "codex",
+            "provider_label": "Codex",
+            "model": "gpt-5.6-terra",
+        },
+    });
+    state
+        .db
+        .create_scan_event(
+            scan.id,
+            Some("tyr"),
+            Some("provider-fallback"),
+            "provider_fallback",
+            Some("warning"),
+            "AI provider fallback used",
+            Some("Claude Code was rate limited; continued with Codex (gpt-5.6-terra)."),
+            None,
+            Some(&fallback_metadata),
+        )
+        .await
+        .expect("Failed to create provider fallback event for UI test");
 
     let app = test::init_service(App::new().app_data(state.clone()).configure(routes::init)).await;
 
@@ -429,6 +472,26 @@ async fn test_dashboard_repos_and_finding_detail_regressions_stay_fixed() {
     assert!(repo_new_body.contains("data-repo-search-results"));
     assert!(repo_new_body.contains("initSearch()"));
     assert!(repo_new_body.contains("Loading recent GitHub repositories"));
+
+    let live_req = test::TestRequest::get()
+        .uri(&format!("/api/scans/{}/live", scan.id))
+        .insert_header(bearer(&token))
+        .to_request();
+    let live_resp = test::call_service(&app, live_req).await;
+    assert_eq!(live_resp.status(), StatusCode::OK);
+    let live_payload: serde_json::Value = test::read_body_json(live_resp).await;
+    assert_eq!(live_payload["data"]["fallback"]["used"], true);
+    assert_eq!(live_payload["data"]["fallback"]["provider_label"], "Codex");
+    assert_eq!(live_payload["data"]["fallback"]["model"], "gpt-5.6-terra");
+    assert!(
+        live_payload["data"]["activity"]
+            .as_array()
+            .expect("Live scan activity should be an array")
+            .iter()
+            .any(|event| {
+                event["event_type"] == "provider_fallback" && event["tone"] == "warning"
+            })
+    );
 
     let finding_req = test::TestRequest::get()
         .uri(&format!("/findings/{}", finding.id))

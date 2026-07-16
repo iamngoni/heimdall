@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use log::warn;
+use log::{info, warn};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -47,7 +47,7 @@ pub struct XaiOAuthPendingLogin {
 
 /// In-flight Claude Code (Claude.ai subscription) OAuth login awaiting the
 /// user to paste back the authorization code from
-/// `console.anthropic.com/oauth/code/callback`. Keyed by the OAuth `state`
+/// `platform.claude.com/oauth/code/callback`. Keyed by the OAuth `state`
 /// parameter so the paste-back form can be matched to its initiator.
 #[derive(Clone, Debug)]
 pub struct ClaudeCodePendingLogin {
@@ -199,6 +199,15 @@ impl AppState {
         let primary_provider_kind = candidates[0].provider_kind;
         let primary_model = candidates[0].model.clone();
         let primary_source = candidates[0].source.as_str();
+        let route = candidates
+            .iter()
+            .map(|candidate| format!("{}:{}", candidate.provider_kind.as_str(), candidate.model))
+            .collect::<Vec<_>>()
+            .join(" -> ");
+        info!(
+            "Resolved AI route for user {user_id}: fallbacks_enabled={}, candidates=[{route}]",
+            preferences.fallbacks_enabled
+        );
 
         let provider: Arc<dyn ModelProvider> = if candidates.len() == 1 {
             Arc::from(candidates.remove(0).provider)

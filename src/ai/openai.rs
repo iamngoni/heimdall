@@ -338,6 +338,7 @@ impl ModelProvider for OpenAiProvider {
             },
             provider: self.provider_name.clone(),
             model: request.model,
+            fallback_attempts: Vec::new(),
         })
     }
 

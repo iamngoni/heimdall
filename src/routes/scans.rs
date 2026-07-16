@@ -736,6 +736,23 @@ pub async fn build_scan_live_snapshot(
     .collect::<Vec<_>>();
 
     let scan_events = db.list_scan_events(scan_id, 80).await?;
+    let fallback = db
+        .get_latest_scan_event_by_type(scan_id, "provider_fallback")
+        .await?
+        .map(|event| {
+            let completed_by = event
+                .metadata_json
+                .as_ref()
+                .and_then(|metadata| metadata.get("completed_by"));
+            serde_json::json!({
+                "used": true,
+                "provider": completed_by.and_then(|value| value.get("provider")).cloned(),
+                "provider_label": completed_by.and_then(|value| value.get("provider_label")).cloned(),
+                "model": completed_by.and_then(|value| value.get("model")).cloned(),
+                "detail": event.detail,
+                "timestamp": event.created_at.to_rfc3339(),
+            })
+        });
     let activity = scan_events
         .iter()
         .map(|event| {
@@ -804,6 +821,7 @@ pub async fn build_scan_live_snapshot(
             "low": low,
         },
         "current_task": current_task,
+        "fallback": fallback,
         "stages": stage_values,
         "activity": activity,
     })))
@@ -848,6 +866,7 @@ fn activity_tone(status: Option<&str>, event_type: &str) -> &'static str {
         Some("completed") => "success",
         Some("failed") => "error",
         Some("running") => "active",
+        Some("warning") => "warning",
         _ => match event_type {
             "issue_automation" => "active",
             "scan_failed" => "error",
