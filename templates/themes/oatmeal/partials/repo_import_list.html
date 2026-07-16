@@ -48,7 +48,7 @@
                 Connected
             </span>
             {% else %}
-            <form hx-post="/api/repos/import" hx-swap="none" hx-on::after-request="HeimdallRepoConnect.handleCreateResponse(event)" class="m-0">
+            <form action="/api/repos/import" method="post" hx-post="/api/repos/import" hx-swap="none" hx-on::after-request="HeimdallRepoConnect.handleCreateResponse(event)" class="m-0">
                 <input type="hidden" name="provider" value="{{ provider }}">
                 <input type="hidden" name="full_name" value="{{ repo.full_name }}">
                 <input type="hidden" name="clone_url" value="{{ repo.clone_url }}">
