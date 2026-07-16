@@ -55,14 +55,12 @@ const CLAUDE_CODE_REDIRECT_URI: &str = "https://console.anthropic.com/oauth/code
 const CLAUDE_CODE_SCOPE: &str = "org:create_api_key user:profile user:inference";
 const CLAUDE_CODE_API_BASE: &str = "https://api.anthropic.com";
 const CLAUDE_CODE_ANTHROPIC_VERSION: &str = "2023-06-01";
-/// Beta header required when authenticating to the Messages API with
-/// subscription OAuth tokens.
-const CLAUDE_CODE_OAUTH_BETA: &str = "oauth-2025-04-20";
-/// System prompt prefix that subscription tokens are scoped to. When the
-/// `Authorization: Bearer <subscription-token>` header is used the API
-/// rejects requests whose system prompt doesn't identify the caller as
-/// Claude Code.
-const CLAUDE_CODE_SYSTEM_PREFIX: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
+/// Beta headers used by Claude Code when authenticating to the Messages API
+/// with subscription OAuth tokens.
+const CLAUDE_CODE_BETAS: &str = "claude-code-20250219,oauth-2025-04-20";
+/// System prompt prefix used by the Claude Agent SDK request path.
+const CLAUDE_CODE_SYSTEM_PREFIX: &str =
+    "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
 const TOKEN_REFRESH_WINDOW_MINUTES: i64 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,7 +286,7 @@ impl ClaudeCodeProvider {
             ))
             .header("Authorization", format!("Bearer {}", tokens.access_token()))
             .header("anthropic-version", CLAUDE_CODE_ANTHROPIC_VERSION)
-            .header("anthropic-beta", CLAUDE_CODE_OAUTH_BETA)
+            .header("anthropic-beta", CLAUDE_CODE_BETAS)
             .header("content-type", "application/json")
             .json(&body)
             .send()
@@ -781,6 +779,12 @@ mod tests {
 
     #[test]
     fn build_messages_body_injects_claude_code_identity() {
+        assert_eq!(CLAUDE_CODE_BETAS, "claude-code-20250219,oauth-2025-04-20");
+        assert_eq!(
+            CLAUDE_CODE_SYSTEM_PREFIX,
+            "You are a Claude agent, built on Anthropic's Claude Agent SDK."
+        );
+
         let request = CompletionRequest {
             model: "claude-sonnet-4-6".to_string(),
             messages: vec![
