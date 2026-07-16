@@ -13,7 +13,7 @@ use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
 
 use crate::ai::ModelProvider;
-use crate::ai::types::{CompletionRequest, Message, StopReason};
+use crate::ai::types::{CompletionRequest, Message, StopReason, ToolCall};
 use crate::db::DatabaseOperations;
 use crate::index::CodeIndex;
 use crate::models::{FindingEvidence, FindingFixType, HeimdallResult};
@@ -234,7 +234,7 @@ impl HuntAgent {
                     // Add assistant message with tool calls
                     self.messages.push(Message {
                         role: "assistant".to_string(),
-                        content: response.content.clone(),
+                        content: assistant_tool_history(&response.content, tool_calls),
                     });
 
                     for tc in tool_calls {
@@ -535,6 +535,19 @@ fn make_fingerprint(title: &str, file: &str, line: i32) -> String {
     hex::encode(hasher.finalize())
 }
 
+fn assistant_tool_history(content: &str, tool_calls: &[ToolCall]) -> String {
+    if !content.trim().is_empty() {
+        return content.to_string();
+    }
+
+    let tools = tool_calls
+        .iter()
+        .map(|tool_call| tool_call.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("Requested investigation tools: {tools}.")
+}
+
 fn slugify(value: &str) -> String {
     value
         .chars()
@@ -689,5 +702,28 @@ fn parse_fix_type(value: &str) -> FindingFixType {
         "config_change" => FindingFixType::ConfigChange,
         "manual_review" => FindingFixType::ManualReview,
         _ => FindingFixType::CodeChange,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_only_assistant_turn_has_non_empty_history() {
+        let tool_calls = vec![ToolCall {
+            id: "tool-1".to_string(),
+            name: "read_file".to_string(),
+            arguments: serde_json::json!({ "file_path": "src/main.rs" }),
+        }];
+
+        assert_eq!(
+            assistant_tool_history("", &tool_calls),
+            "Requested investigation tools: read_file."
+        );
+        assert_eq!(
+            assistant_tool_history("Checking authentication.", &tool_calls),
+            "Checking authentication."
+        );
     }
 }

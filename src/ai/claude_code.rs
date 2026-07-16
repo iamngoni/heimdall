@@ -654,7 +654,9 @@ fn build_messages_body(request: &CompletionRequest) -> Value {
     let messages = request
         .messages
         .iter()
-        .filter(|message| !message.role.eq_ignore_ascii_case("system"))
+        .filter(|message| {
+            !message.role.eq_ignore_ascii_case("system") && !message.content.trim().is_empty()
+        })
         .map(|message| {
             let role = if message.role.eq_ignore_ascii_case("assistant") {
                 "assistant"
@@ -1039,6 +1041,10 @@ mod tests {
                 crate::ai::types::Message {
                     role: "user".to_string(),
                     content: "Hi.".to_string(),
+                },
+                crate::ai::types::Message {
+                    role: "assistant".to_string(),
+                    content: "  ".to_string(),
                 },
             ],
             tools: None,
