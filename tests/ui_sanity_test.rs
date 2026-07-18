@@ -17,11 +17,7 @@ fn bearer(token: &str) -> (header::HeaderName, String) {
 
 #[actix_rt::test]
 async fn scan_pages_expose_persisted_provider_fallback_status() {
-    let scan_pages = [
-        include_str!("../templates/themes/sentinel/pages/scan.html"),
-        include_str!("../templates/themes/oatmeal/pages/scan.html"),
-        include_str!("../templates/themes/editorial/pages/scan.html"),
-    ];
+    let scan_pages = [include_str!("../templates/themes/heimdall/pages/scan.html")];
 
     for body in scan_pages {
         assert!(body.contains("id=\"scan-fallback-pill\""));
@@ -32,22 +28,16 @@ async fn scan_pages_expose_persisted_provider_fallback_status() {
 
 #[actix_rt::test]
 async fn repo_add_forms_keep_native_submit_fallbacks() {
-    let import_partials = [
-        include_str!("../templates/themes/sentinel/partials/repo_import_list.html"),
-        include_str!("../templates/themes/oatmeal/partials/repo_import_list.html"),
-        include_str!("../templates/themes/editorial/partials/repo_import_list.html"),
-    ];
+    let import_partials = [include_str!(
+        "../templates/themes/heimdall/partials/repo_import_list.html"
+    )];
     for body in import_partials {
         assert!(body.contains("action=\"/api/repos/import\""));
         assert!(body.contains("method=\"post\""));
         assert!(body.contains("hx-post=\"/api/repos/import\""));
     }
 
-    let add_pages = [
-        include_str!("../templates/themes/sentinel/pages/repo_new.html"),
-        include_str!("../templates/themes/oatmeal/pages/repo_new.html"),
-        include_str!("../templates/themes/editorial/pages/repo_new.html"),
-    ];
+    let add_pages = [include_str!("../templates/themes/heimdall/pages/repo_new.html")];
     for body in add_pages {
         assert!(body.contains("action=\"/api/repos\""));
         assert!(body.contains("action=\"/api/repos/upload\""));
@@ -154,7 +144,7 @@ async fn threat_model_pages_render_expanded_lifecycle_sections() {
         }],
     });
 
-    for theme in ["sentinel", "oatmeal", "editorial"] {
+    for theme in ["heimdall"] {
         let engine = TemplateEngine::new(&format!("templates/themes/{theme}"));
         let body = engine
             .render("pages/threat_model.html", ctx.clone())
@@ -169,13 +159,13 @@ async fn threat_model_pages_render_expanded_lifecycle_sections() {
 
 #[actix_rt::test]
 async fn settings_page_renders_compact_openai_compatible_editor() {
-    let engine = TemplateEngine::new("templates/themes/sentinel");
+    let engine = TemplateEngine::new("templates/themes/heimdall");
     let body = engine
         .render(
             "pages/settings.html",
             json!({
-                "current_theme": "sentinel",
-                "available_themes": ["sentinel", "oatmeal", "editorial"],
+                "current_theme": "heimdall",
+                "available_themes": ["heimdall"],
                 "integration_error": null,
                 "user": {
                     "email": "ui@example.com",

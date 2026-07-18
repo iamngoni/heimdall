@@ -1,0 +1,110 @@
+{# ── Heimdall shared UI macros ── #}
+
+{# Companion mascot. tone: "light" (white shape for dark bg) | "dark" (graphite for light bg). #}
+{% macro logo(tone="dark", cls="w-9 h-9") %}
+{% set shape = "#FFFFFF" if tone == "light" else "#1F2328" %}
+<svg class="{{ cls }}" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <path d="M90 18c40 0 70 31 70 70 0 40-31 72-70 72-11 0-21-2-30-7 10 3 20 2 29-3 21-10 32-32 27-54-4-17-17-31-34-36-25-8-51 5-60 29C15 60 47 18 90 18Z" fill="{{ shape }}"/>
+  <ellipse cx="74" cy="90" rx="7.5" ry="12" fill="#0FA3A3"/>
+  <ellipse cx="104" cy="90" rx="7.5" ry="12" fill="#0FA3A3"/>
+  <path d="M62 124c16 11 38 11 54 0" stroke="#0FA3A3" stroke-width="5" stroke-linecap="round"/>
+</svg>
+{% endmacro %}
+
+{# Severity pill. level: critical|high|medium|low (case-insensitive). #}
+{% macro sev_pill(level) %}
+{% set l = (level | lower) %}
+{% set map = {"critical":"bg-crit-50 text-crit-700","high":"bg-high-50 text-high-700","medium":"bg-med-50 text-med-700","low":"bg-low-50 text-low-700"} %}
+<span class="hm-badge {{ map[l] if l in map else 'bg-ink-100 text-ink-600' }}">{{ level | capitalize }}</span>
+{% endmacro %}
+
+{# Severity dot + count. #}
+{% macro sev_dot(level, count) %}
+{% set l = (level | lower) %}
+{% set map = {"critical":"bg-crit","high":"bg-high","medium":"bg-med","low":"bg-low"} %}
+<span class="inline-flex items-center gap-1.5 text-sm text-ink-900"><span class="h-2 w-2 rounded-full {{ map[l] if l in map else 'bg-ink-400' }}"></span>{{ count }}</span>
+{% endmacro %}
+
+{# Generic status badge. tone: neutral|info|warning|success|danger #}
+{% macro status_badge(tone, label) %}
+{% set map = {
+  "neutral":"bg-ink-100 text-ink-600 border border-ink-200",
+  "info":"bg-info-50 text-info-700 border border-info-200",
+  "warning":"bg-med-50 text-med-700 border border-med-200",
+  "success":"bg-low-50 text-low-700 border border-low-200",
+  "danger":"bg-crit-50 text-crit-700 border border-crit-100"
+} %}
+<span class="hm-badge {{ map[tone] if tone in map else map['neutral'] }}">{{ label }}</span>
+{% endmacro %}
+
+{# Provider brand mark. provider: github|gitlab|bitbucket #}
+{% macro provider_mark(provider, cls="w-5 h-5") %}
+{% set p = (provider | lower) %}
+{% if p == "gitlab" %}
+<svg class="{{ cls }}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill="#E24329" d="M12 21.42l3.978-12.24H8.022L12 21.42Z"/><path fill="#FC6D26" d="M12 21.42 8.022 9.18H2.446L12 21.42Z"/><path fill="#FCA326" d="M2.446 9.18.86 14.06a1.08 1.08 0 0 0 .393 1.208L12 21.42 2.446 9.18Z"/><path fill="#E24329" d="M2.446 9.18h5.576L5.628 1.802a.554.554 0 0 0-1.052 0L2.446 9.18Z"/><path fill="#FC6D26" d="M12 21.42 15.978 9.18h5.576L12 21.42Z"/><path fill="#FCA326" d="m21.554 9.18 1.586 4.88a1.08 1.08 0 0 1-.393 1.208L12 21.42l9.554-12.24Z"/><path fill="#E24329" d="M21.554 9.18h-5.576l2.394-7.378a.554.554 0 0 1 1.052 0L21.554 9.18Z"/></svg>
+{% elif p == "bitbucket" %}
+<svg class="{{ cls }}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill="#2684FF" d="M2.5 4.5h19l-2.1 15a.9.9 0 0 1-.9.8H7.3a1 1 0 0 1-1-.8L2.5 4.5Z"/><path fill="#fff" d="M9.7 9.3h4.9l-.7 4.4H10.4L9.7 9.3Z"/></svg>
+{% else %}
+<svg class="{{ cls }}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill="#1F2328" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+{% endif %}
+{% endmacro %}
+
+{# Inline stroke icon set (currentColor). #}
+{% macro icon(name, cls="w-5 h-5") %}
+{% set paths = {
+  "grid": '<rect x="3.2" y="3.2" width="5.8" height="5.8" rx="1.2"/><rect x="11" y="3.2" width="5.8" height="5.8" rx="1.2"/><rect x="3.2" y="11" width="5.8" height="5.8" rx="1.2"/><rect x="11" y="11" width="5.8" height="5.8" rx="1.2"/>',
+  "folder": '<path d="M3 7a2 2 0 0 1 2-2h2.6a1 1 0 0 1 .7.3l1.1 1.1a1 1 0 0 0 .7.3H15a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>',
+  "gear": '<circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1 4.7 4.7"/>',
+  "bell": '<path d="M6 8.5a4 4 0 0 1 8 0c0 3.5 1.4 4.5 1.4 4.5H4.6S6 12 6 8.5Z"/><path d="M8.4 15.5a1.7 1.7 0 0 0 3.2 0"/>',
+  "search": '<circle cx="8.6" cy="8.6" r="5"/><path d="M12.4 12.4 16.5 16.5"/>',
+  "plus": '<path d="M10 4v12M4 10h12"/>',
+  "check": '<path d="M4 10.5l3.5 3.5L16 6"/>',
+  "check-circle": '<circle cx="10" cy="10" r="7.5"/><path d="M6.5 10.2l2.3 2.3 4.5-4.7"/>',
+  "x": '<path d="M5 5l10 10M15 5 5 15"/>',
+  "external": '<path d="M11 3h6v6M17 3l-8 8M9 3H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>',
+  "chevron-down": '<path d="M5 8l5 5 5-5"/>',
+  "chevron-right": '<path d="M7.5 5l5 5-5 5"/>',
+  "chevron-left": '<path d="M12.5 5l-5 5 5 5"/>',
+  "chevron-up": '<path d="M5 12l5-5 5 5"/>',
+  "alert-triangle": '<path d="M10 3.5 17.5 16.5H2.5L10 3.5Z"/><path d="M10 8.5v3.4M10 14.3h.01"/>',
+  "alert-octagon": '<path d="M6.8 2.5h6.4l4.3 4.3v6.4l-4.3 4.3H6.8L2.5 13.2V6.8L6.8 2.5Z"/><path d="M10 6.5v4M10 13.3h.01"/>',
+  "shield": '<path d="M10 2.6l6 2.2v4.7c0 3.8-2.8 6.2-6 7.2-3.2-1-6-3.4-6-7.2V4.8l6-2.2Z"/>',
+  "shield-check": '<path d="M10 2.6l6 2.2v4.7c0 3.8-2.8 6.2-6 7.2-3.2-1-6-3.4-6-7.2V4.8l6-2.2Z"/><path d="M7.4 10l1.8 1.8 3.4-3.7"/>',
+  "clock": '<circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.6 1.6"/>',
+  "radar": '<circle cx="10" cy="10" r="6.8"/><circle cx="10" cy="10" r="2.4"/>',
+  "box": '<path d="M17 6.5 10 3 3 6.5m14 0L10 10 3 6.5m14 0v7L10 17m0-7v7m0-7L3 6.5v7"/>',
+  "play": '<path d="M6.5 4.5l8 5.5-8 5.5V4.5Z" fill="currentColor" stroke="none"/>',
+  "refresh": '<path d="M15.5 6.5A6 6 0 1 0 16 10"/><path d="M15.8 4v3h-3"/>',
+  "copy": '<path d="M7 7h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"/><path d="M4 12.5A1 1 0 0 1 3.5 11.6V4.6a1 1 0 0 1 1-1h7a1 1 0 0 1 .9.5"/>',
+  "trash": '<path d="M4 6h12M8 6V4.6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6M6.2 6l.7 9.2a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9L14.8 6"/>',
+  "key": '<circle cx="7" cy="7" r="3.2"/><path d="M9.3 9.3 15.5 15.5M13 13l2-2M15 15l1.3-1.3"/>',
+  "sparkle": '<path d="M10 3l1.3 3.7L15 8l-3.7 1.3L10 13l-1.3-3.7L5 8l3.7-1.3L10 3Z"/>',
+  "flame": '<path d="M11 2.5c.5 2.5-1.5 3.5-1.5 5.5 0 1 .8 1.6 1.4 1.1.3 1.4-.6 2.4-.6 2.4s3.3-1 3.3-4.5c0-2.2-1.4-3.3-2.6-4.5C10.8 4.7 11 3.6 11 2.5Z"/><path d="M7.5 9c-1 1-1.5 2-1.5 3.4a4 4 0 0 0 8 0"/>',
+  "git-branch": '<circle cx="6" cy="5.5" r="2"/><circle cx="6" cy="14.5" r="2"/><circle cx="14" cy="5.5" r="2"/><path d="M6 7.5v5M14 7.5c0 3.5-3.5 2.5-4.6 4.5"/>',
+  "home": '<path d="M3 8.5 10 3l7 5.5V16a1 1 0 0 1-1 1h-3v-5H7v5H4a1 1 0 0 1-1-1V8.5Z"/>',
+  "person": '<circle cx="10" cy="7.3" r="2.8"/><path d="M4.5 16c.6-2.6 2.8-4 5.5-4s4.9 1.4 5.5 4"/>',
+  "eye": '<path d="M2.5 10S5 5 10 5s7.5 5 7.5 5-2.5 5-7.5 5-7.5-5-7.5-5Z"/><circle cx="10" cy="10" r="2.2"/>',
+  "download": '<path d="M10 3v9M6 8.5l4 4 4-4M4 16h12"/>',
+  "doc": '<path d="M6 3.5h5l3 3V16a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 6 16V4a.5.5 0 0 1 .5-.5Z"/><path d="M11 3.5v3h3"/>',
+  "code": '<path d="M7 6l-3.5 4L7 14M13 6l3.5 4L13 14"/>',
+  "globe": '<circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2 2.6 2 11.4 0 14M10 3c-2 2.6-2 11.4 0 14"/>',
+  "kebab": '<circle cx="10" cy="4.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.4" fill="currentColor" stroke="none"/><circle cx="10" cy="15.5" r="1.4" fill="currentColor" stroke="none"/>',
+  "list": '<path d="M4 6h12M4 10h12M4 14h12"/>',
+  "hourglass": '<path d="M6 4h8M6 16h8M6.5 4c0 3 3.5 4 3.5 6s-3.5 3-3.5 6M13.5 4c0 3-3.5 4-3.5 6s3.5 3 3.5 6"/>',
+  "lock": '<rect x="4.5" y="9" width="11" height="7.5" rx="1.6"/><path d="M6.8 9V7.2a3.2 3.2 0 0 1 6.4 0V9"/>',
+  "sort": '<path d="M6.5 4.5v11M6.5 4.5 4 7M6.5 4.5 9 7M13.5 15.5v-11M13.5 15.5 11 13M13.5 15.5 16 13"/>',
+  "filter": '<path d="M4 5h12l-4.6 5.6V15l-2.8 1.4v-5.8L4 5Z"/>',
+  "arrow-right": '<path d="M4 10h11M10.5 5.5 15 10l-4.5 4.5"/>',
+  "grip": '<circle cx="7" cy="5" r="1.1" fill="currentColor" stroke="none"/><circle cx="7" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="7" cy="15" r="1.1" fill="currentColor" stroke="none"/><circle cx="13" cy="5" r="1.1" fill="currentColor" stroke="none"/><circle cx="13" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="13" cy="15" r="1.1" fill="currentColor" stroke="none"/>',
+  "flag": '<path d="M5 3v14M5 4h9l-1.6 3L14 10H5"/>',
+  "comment": '<path d="M4 5.5h12a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H8.5L5 17v-2.5H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z"/>',
+  "send": '<path d="M4 10h10M9.5 5.5 15 10l-5.5 4.5"/>',
+  "pencil": '<path d="M4 15.5l1-3.3 8-8a1.5 1.5 0 0 1 2.1 2.1l-8 8L4 15.5Z"/>'
+} %}
+<svg class="{{ cls }}" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">{{ paths[name] | default('') | safe }}</svg>
+{% endmacro %}
+
+{# Convenience aliases (some pages call these directly) #}
+{% macro chevron_right(cls="w-4 h-4") %}{{ icon("chevron-right", cls) }}{% endmacro %}
+{% macro chevron_left(cls="w-4 h-4") %}{{ icon("chevron-left", cls) }}{% endmacro %}
+{% macro chevron_down(cls="w-4 h-4") %}{{ icon("chevron-down", cls) }}{% endmacro %}

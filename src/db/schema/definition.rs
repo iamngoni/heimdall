@@ -26,7 +26,7 @@ pub fn heimdall_schema() -> SchemaDef {
             t.text("display_name");
             t.text("avatar_url");
             t.text("role").not_null().default_str("'user'");
-            t.text("theme").not_null().default_str("'sentinel'");
+            t.text("theme").not_null().default_str("'heimdall'");
             t.text("preferred_ai_provider");
             t.boolean("ai_fallbacks_enabled")
                 .not_null()

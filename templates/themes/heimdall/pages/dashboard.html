@@ -1,0 +1,230 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+
+{% set active_nav = "overview" %}
+{% set breadcrumb = [{"label": "Overview"}] %}
+{% set page_title = "Security Overview" %}
+
+{% block title %}Security Overview · Heimdall{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-[1320px] space-y-6">
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h1 class="text-[28px] font-semibold tracking-[-0.02em] text-ink-900">Security Overview</h1>
+      <p class="mt-1 text-sm text-ink-500">Repository intake, scan activity, and current exposure.</p>
+    </div>
+    <a href="/repos/new" class="hm-btn-primary inline-flex items-center gap-2">
+      {{ ui.icon("plus", "h-5 w-5") }}
+      <span>Add repository</span>
+    </a>
+  </div>
+
+  <section class="hm-card overflow-hidden" aria-label="Security summary">
+    <div class="grid divide-y divide-ink-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
+      <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-brand-500 bg-brand-50 text-brand-700">
+          {{ ui.icon("box", "h-6 w-6") }}
+        </span>
+        <div>
+          <p class="text-sm text-ink-500">Connected repositories</p>
+          <p class="mt-0.5 text-[28px] font-semibold leading-none text-ink-900">{{ stats.total_repos }}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-brand-500 bg-brand-50 text-brand-700">
+          {{ ui.icon("radar", "h-6 w-6") }}
+        </span>
+        <div>
+          <p class="text-sm text-ink-500">Recent scans</p>
+          <p class="mt-0.5 text-[28px] font-semibold leading-none text-ink-900">{{ stats.recent_scans }}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-high-500 bg-high-50 text-high-700">
+          {{ ui.icon("doc", "h-6 w-6") }}
+        </span>
+        <div>
+          <p class="text-sm text-ink-500">Open findings</p>
+          <p class="mt-0.5 text-[28px] font-semibold leading-none text-ink-900">{{ stats.open_findings }}</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-crit-500 bg-crit-50 text-crit-700">
+          {{ ui.icon("shield", "h-6 w-6") }}
+        </span>
+        <div>
+          <p class="text-sm text-ink-500">Critical risks</p>
+          <p class="mt-0.5 text-[28px] font-semibold leading-none text-crit-500">{{ stats.critical_findings }}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(440px,1fr)]">
+    <section class="hm-card overflow-hidden">
+      <div class="flex items-center justify-between border-b border-ink-200 px-5 py-4">
+        <h2 class="text-base font-semibold text-ink-900">Recent scans</h2>
+        <a href="/repos" class="text-sm font-medium text-brand-700 hover:text-brand-600">View repositories</a>
+      </div>
+
+      {% if recent_scans | length > 0 %}
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[680px] table-fixed text-left">
+          <thead class="border-b border-ink-200 bg-ink-50 text-xs font-medium text-ink-500">
+            <tr>
+              <th class="w-[38%] px-5 py-3 font-medium">Repository</th>
+              <th class="w-[16%] px-3 py-3 font-medium">Type</th>
+              <th class="w-[18%] px-3 py-3 font-medium">Status</th>
+              <th class="w-[12%] px-3 py-3 font-medium">Findings</th>
+              <th class="px-3 py-3 font-medium">Started</th>
+              <th class="w-9 px-2 py-3"><span class="sr-only">Open</span></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-ink-200">
+            {% for scan in recent_scans %}
+            <tr class="group transition hover:bg-ink-50">
+              <td class="px-5 py-4">
+                <a href="/scans/{{ scan.id }}" class="flex min-w-0 items-center gap-3">
+                  <span class="shrink-0">{{ ui.provider_mark("github", "h-5 w-5") }}</span>
+                  <span class="truncate text-[13px] font-medium text-ink-900 group-hover:text-brand-700">{{ scan.repo_name }}</span>
+                </a>
+              </td>
+              <td class="px-3 py-4 text-[13px] text-ink-500">{{ scan.scan_type | replace("_", " ") | title }}</td>
+              <td class="px-3 py-4">
+                <span class="inline-flex items-center gap-2 text-[13px] font-medium
+                  {{ 'text-low-700' if scan.status == 'completed' else
+                     'text-crit-700' if scan.status == 'failed' else
+                     'text-high-700' if scan.status == 'cancelled' else
+                     'text-brand-700' }}">
+                  <span class="h-2 w-2 rounded-full
+                    {{ 'bg-low-500' if scan.status == 'completed' else
+                       'bg-crit-500' if scan.status == 'failed' else
+                       'bg-high-500' if scan.status == 'cancelled' else
+                       'bg-brand-500' }}"></span>
+                  {{ scan.status | replace("_", " ") | title }}
+                </span>
+              </td>
+              <td class="px-3 py-4 text-[13px] text-ink-700">{{ scan.finding_count }}</td>
+              <td class="whitespace-nowrap px-3 py-4 font-mono text-xs text-ink-500">{{ scan.created_at }}</td>
+              <td class="px-2 py-4">
+                <a href="/scans/{{ scan.id }}" aria-label="Open scan {{ scan.id }}" class="text-ink-400 transition group-hover:text-brand-700">
+                  {{ ui.icon("chevron-right", "h-4 w-4") }}
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="px-6 py-14 text-center">
+        <span class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-700">{{ ui.icon("radar", "h-5 w-5") }}</span>
+        <h3 class="mt-4 text-sm font-semibold text-ink-900">No scans yet</h3>
+        <p class="mx-auto mt-1 max-w-sm text-sm text-ink-500">Add a repository and run its first scan to start building your security history.</p>
+        <a href="/repos/new" class="hm-btn-primary mt-5 inline-flex items-center gap-2">{{ ui.icon("plus", "h-4 w-4") }} Add repository</a>
+      </div>
+      {% endif %}
+    </section>
+
+    <div class="space-y-6">
+      <section class="hm-card overflow-hidden">
+        <div class="flex items-center justify-between border-b border-ink-200 px-5 py-4">
+          <h2 class="text-base font-semibold text-ink-900">Connected repositories</h2>
+          <a href="/repos/new" class="text-sm font-medium text-brand-700 hover:text-brand-600">Add more</a>
+        </div>
+
+        {% if repo_summaries | length > 0 %}
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[580px] table-fixed text-left">
+            <thead class="border-b border-ink-200 bg-ink-50 text-xs text-ink-500">
+              <tr>
+                <th class="w-[42%] px-5 py-3 font-medium">Repository</th>
+                <th class="w-[16%] px-3 py-3 font-medium">Source</th>
+                <th class="w-[24%] px-3 py-3 font-medium">Last scan</th>
+                <th class="px-3 py-3 font-medium">Findings</th>
+                <th class="w-9 px-2 py-3"><span class="sr-only">Open</span></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-ink-200">
+              {% for repo in repo_summaries %}
+              <tr class="group transition hover:bg-ink-50">
+                <td class="px-5 py-3.5">
+                  <a href="/repos/{{ repo.id }}" class="flex min-w-0 items-start gap-3">
+                    <span class="mt-0.5 shrink-0">{{ ui.provider_mark(repo.source_label, "h-5 w-5") }}</span>
+                    <span class="min-w-0">
+                      <span class="block truncate text-[13px] font-medium text-ink-900 group-hover:text-brand-700">{{ repo.name }}</span>
+                      <span class="mt-0.5 block truncate text-xs text-ink-500">{{ repo.host }}</span>
+                    </span>
+                  </a>
+                </td>
+                <td class="px-3 py-3.5 text-[13px] text-ink-500">{{ repo.source_label }}</td>
+                <td class="px-3 py-3.5">
+                  {% if repo.last_scan_status %}
+                  <span class="inline-flex items-center gap-2 text-xs font-medium
+                    {{ 'text-low-700' if repo.last_scan_status == 'completed' else
+                       'text-crit-700' if repo.last_scan_status == 'failed' else
+                       'text-high-700' if repo.last_scan_status == 'cancelled' else
+                       'text-brand-700' }}">
+                    <span class="h-2 w-2 rounded-full
+                      {{ 'bg-low-500' if repo.last_scan_status == 'completed' else
+                         'bg-crit-500' if repo.last_scan_status == 'failed' else
+                         'bg-high-500' if repo.last_scan_status == 'cancelled' else
+                         'bg-brand-500' }}"></span>
+                    {{ repo.last_scan_status | replace("_", " ") | title }}
+                  </span>
+                  <span class="mt-0.5 block whitespace-nowrap font-mono text-[11px] text-ink-500">{{ repo.last_scan_at }}</span>
+                  {% else %}
+                  <span class="inline-flex items-center gap-2 text-xs text-ink-500"><span class="h-2 w-2 rounded-full bg-ink-300"></span>No scans yet</span>
+                  {% endif %}
+                </td>
+                <td class="px-3 py-3.5 text-xs text-ink-600">{{ repo.finding_count }} findings</td>
+                <td class="px-2 py-3.5">
+                  <a href="/repos/{{ repo.id }}" aria-label="Open repository {{ repo.name }}" class="text-ink-400 transition group-hover:text-brand-700">{{ ui.icon("chevron-right", "h-4 w-4") }}</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="px-6 py-10 text-center">
+          <p class="text-sm font-medium text-ink-700">No connected repositories</p>
+          <a href="/repos/new" class="mt-2 inline-flex text-sm font-medium text-brand-700 hover:text-brand-600">Add your first repository</a>
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="hm-card overflow-hidden">
+        <div class="flex items-center justify-between border-b border-ink-200 px-5 py-4">
+          <h2 class="text-base font-semibold text-ink-900">Source control</h2>
+          <a href="/settings" class="text-sm font-medium text-brand-700 hover:text-brand-600">Manage</a>
+        </div>
+        <div class="divide-y divide-ink-200">
+          <div class="flex items-center justify-between px-5 py-3">
+            <span class="flex items-center gap-3 text-sm font-medium text-ink-900">{{ ui.provider_mark("github", "h-5 w-5") }} GitHub</span>
+            <span class="inline-flex items-center gap-2 text-xs {{ 'text-low-700' if integrations.github.connected else 'text-ink-500' }}">
+              <span class="h-2 w-2 rounded-full {{ 'bg-low-500' if integrations.github.connected else 'bg-ink-400' }}"></span>
+              {{ 'Connected' if integrations.github.connected else 'Not connected' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between px-5 py-3">
+            <span class="flex items-center gap-3 text-sm font-medium text-ink-900">{{ ui.provider_mark("gitlab", "h-5 w-5") }} GitLab</span>
+            <span class="inline-flex items-center gap-2 text-xs {{ 'text-low-700' if integrations.gitlab.connected else 'text-ink-500' }}">
+              <span class="h-2 w-2 rounded-full {{ 'bg-low-500' if integrations.gitlab.connected else 'bg-ink-400' }}"></span>
+              {{ 'Connected' if integrations.gitlab.connected else 'Not connected' }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between px-5 py-3">
+            <span class="flex items-center gap-3 text-sm font-medium text-ink-900">{{ ui.provider_mark("bitbucket", "h-5 w-5") }} Bitbucket</span>
+            <span class="inline-flex items-center gap-2 text-xs {{ 'text-low-700' if integrations.bitbucket.connected else 'text-ink-500' }}">
+              <span class="h-2 w-2 rounded-full {{ 'bg-low-500' if integrations.bitbucket.connected else 'bg-ink-400' }}"></span>
+              {{ 'Connected' if integrations.bitbucket.connected else 'Not connected' }}
+            </span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

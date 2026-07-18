@@ -1,0 +1,82 @@
+{% import "macros.html" as ui %}
+{% set target_finding_id = finding_id or finding.id %}
+<section id="finding-issue-panel" class="hm-card p-5">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Repository issue</h2>
+        </div>
+        {% if issue.url %}
+        <a href="{{ issue.url }}" target="_blank" rel="noreferrer" class="hm-btn-secondary shrink-0 text-sm">
+            <span>Open issue</span>
+        </a>
+        {% elif issue.supported %}
+        <button hx-post="/api/findings/{{ target_finding_id }}/issue"
+                hx-target="#finding-issue-panel"
+                hx-swap="outerHTML"
+                hx-indicator="#finding-issue-loading"
+                class="hm-btn-primary shrink-0 text-sm">
+            <span>Create issue</span>
+            <span class="htmx-indicator-flex ml-1 items-center gap-1.5 text-white/80">
+                <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                </svg>
+                <span class="text-xs font-semibold uppercase tracking-[0.1em]">Creating</span>
+            </span>
+        </button>
+        {% endif %}
+    </div>
+
+    {% if issue.supported %}
+        {% if issue.url %}
+        <div class="mt-3 flex items-center gap-3 rounded-xl border border-low-200 bg-low-50 px-3.5 py-3">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-ink-500">
+                {{ ui.provider_mark(repo.source_type, "w-5 h-5") }}
+            </span>
+            <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="hm-badge bg-white text-low-700">{{ issue.provider|upper }}{% if issue.number %} #{{ issue.number }}{% endif %}</span>
+                    {{ ui.status_badge("success" if issue.state == "open" else "neutral", issue.state or "open") }}
+                    {% if issue.auto_created %}{{ ui.status_badge("info", "Auto-created") }}{% endif %}
+                </div>
+                <p class="mt-1.5 text-sm text-low-700">Linked to a repository issue. Use the tracker to collaborate on remediation.</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="mt-3 flex items-center gap-3 rounded-xl border border-dashed border-ink-200 bg-ink-50 px-3.5 py-3.5">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-ink-400">
+                {{ ui.provider_mark(repo.source_type, "w-5 h-5") }}
+            </span>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-ink-700">No linked issue</p>
+                <p class="mt-0.5 text-sm text-ink-500">Creates or links an issue using this finding fingerprint.</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <p class="mt-2.5 text-xs text-ink-400">
+            {% if repo.issue_auto_create_enabled %}
+            Auto-create enabled at {{ repo.issue_auto_create_min_severity|upper }} severity and above.
+            {% else %}
+            Auto-create is disabled for this repository. Manual creation is still available above.
+            {% endif %}
+        </p>
+
+        <div id="finding-issue-loading"
+             class="htmx-indicator-flex mt-3 items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-brand-700">
+            <svg class="mt-0.5 h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+            <div>
+                <p class="text-sm font-semibold">Creating repository issue</p>
+                <p class="mt-0.5 text-sm leading-6 text-brand-700/80">Deduplicating against existing issue fingerprints and sending it to the provider.</p>
+            </div>
+        </div>
+    {% else %}
+    <div class="mt-3 rounded-xl border border-med-200 bg-med-50 p-3.5">
+        <p class="text-sm font-semibold text-med-700">Issue creation unavailable</p>
+        <p class="mt-1.5 text-sm leading-6 text-med-700/90">Reconnect this repository through its provider to enable issue automation.</p>
+    </div>
+    {% endif %}
+</section>

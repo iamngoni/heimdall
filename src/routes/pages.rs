@@ -731,7 +731,7 @@ async fn scan_report_page(
         }
     };
 
-    let engine = state.themes.get("oatmeal");
+    let engine = state.themes.get("heimdall");
     match engine.render("pages/scan_report.html", &ctx) {
         Ok(html) => HttpResponse::Ok()
             .content_type("text/html; charset=utf-8")

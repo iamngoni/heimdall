@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Heimdall{% endblock %}</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script src="https://unpkg.com/htmx-ext-json-enc@2.0.3/json-enc.js"></script>
+    <link rel="stylesheet" href="/static/css/app.css?v=6">
+    <link rel="stylesheet" href="/static/css/animations.css">
+    <link rel="icon" href="data:,">
+</head>
+<body class="h-full bg-paper text-ink-900 antialiased font-sans">
+    <div id="heimdall-floating-layer" class="pointer-events-none fixed inset-0 z-[80]"></div>
+
+    {# ── Toast system ── #}
+    <div id="heimdall-toast-region" aria-live="polite" aria-atomic="true"
+         style="position:fixed;bottom:0;right:0;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;padding:1.5rem;pointer-events:none">
+        <div id="heimdall-toast-stack" style="display:flex;flex-direction:column-reverse;gap:0.5rem;width:360px;max-width:calc(100vw - 2rem)"></div>
+    </div>
+    <template id="heimdall-toast-tpl">
+        <div role="status" class="pointer-events-auto relative overflow-hidden rounded-xl border border-ink-200 bg-white px-4 py-3 shadow-overlay">
+            <div class="flex items-start gap-3">
+                <span data-toast-icon class="shrink-0"></span>
+                <p data-toast-message class="flex-1 text-[13px] leading-5 text-ink-700"></p>
+                <button type="button" aria-label="Dismiss" data-toast-close
+                        class="-mr-1 -mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-ink-400 transition hover:bg-ink-100 hover:text-ink-600">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l8 8M14 6l-8 8"/></svg>
+                </button>
+            </div>
+            <div data-toast-bar-track class="absolute inset-x-0 bottom-0 h-[3px] overflow-hidden rounded-b-xl">
+                <div data-toast-bar class="h-full origin-left"></div>
+            </div>
+        </div>
+    </template>
+    <template id="heimdall-toast-icon-success"><svg class="h-[18px] w-[18px] text-low-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd"/></svg></template>
+    <template id="heimdall-toast-icon-warning"><svg class="h-[18px] w-[18px] text-med-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg></template>
+    <template id="heimdall-toast-icon-error"><svg class="h-[18px] w-[18px] text-crit-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd"/></svg></template>
+    <template id="heimdall-toast-icon-info"><svg class="h-[18px] w-[18px] text-info-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd"/></svg></template>
+
+    <script>
+    // CSRF: attach header to every htmx request from the _csrf cookie.
+    document.body.addEventListener('htmx:configRequest', function (evt) {
+        const csrf = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        if (csrf) evt.detail.headers['X-CSRF-Token'] = csrf.split('=')[1];
+    });
+    // Native POST form fallback: carry csrf on the action query.
+    document.addEventListener('submit', function (evt) {
+        const form = evt.target;
+        if (!form || form.tagName !== 'FORM') return;
+        if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+        const csrf = document.cookie.split('; ').find((c) => c.startsWith('_csrf='));
+        if (!csrf) return;
+        const token = csrf.split('=').slice(1).join('=');
+        if (!token) return;
+        try {
+            const url = new URL(form.getAttribute('action') || window.location.href, window.location.origin);
+            url.searchParams.set('_csrf', decodeURIComponent(token));
+            form.setAttribute('action', url.pathname + url.search);
+        } catch (_) {}
+    }, true);
+
+    window.HeimdallUI = window.HeimdallUI || (() => {
+        const MAX_VISIBLE = 5;
+        const barColors = { success: 'bg-low-500', warning: 'bg-med-500', error: 'bg-crit-500', info: 'bg-info-500' };
+        const borderColors = { success: 'border-low-200', warning: 'border-med-200', error: 'border-crit-200', info: 'border-ink-200' };
+        const bgColors = { success: 'bg-low-50', warning: 'bg-med-50', error: 'bg-crit-50', info: 'bg-white' };
+        function getStack() { return document.getElementById('heimdall-toast-stack'); }
+        function getFloatingLayer() { return document.getElementById('heimdall-floating-layer'); }
+        function getCsrfToken() {
+            const csrf = document.cookie.split('; ').find((c) => c.startsWith('_csrf='));
+            return csrf ? decodeURIComponent(csrf.split('=').slice(1).join('=')) : null;
+        }
+        function removeToast(el) { el.classList.remove('heimdall-toast-enter'); el.classList.add('heimdall-toast-exit'); el.addEventListener('animationend', () => el.remove(), { once: true }); }
+        function trimStack() { const s = getStack(); if (!s) return; while (s.children.length > MAX_VISIBLE) s.children[s.children.length - 1].remove(); }
+        function notify({ message, tone = 'info', duration = 4000 } = {}) {
+            if (!message) return; const stack = getStack(); if (!stack) return;
+            const tpl = document.getElementById('heimdall-toast-tpl'); if (!tpl) return;
+            const toast = tpl.content.firstElementChild.cloneNode(true);
+            toast.classList.remove('border-ink-200', 'bg-white');
+            toast.classList.add(borderColors[tone] || borderColors.info, bgColors[tone] || bgColors.info);
+            const iconTpl = document.getElementById('heimdall-toast-icon-' + (barColors[tone] ? tone : 'info'));
+            if (iconTpl) toast.querySelector('[data-toast-icon]').appendChild(iconTpl.content.cloneNode(true));
+            toast.querySelector('[data-toast-message]').textContent = message;
+            toast.querySelector('[data-toast-close]').addEventListener('click', () => removeToast(toast));
+            const bar = toast.querySelector('[data-toast-bar]'); const barTrack = toast.querySelector('[data-toast-bar-track]');
+            if (duration > 0 && bar) { bar.classList.add(barColors[tone] || barColors.info); bar.style.animation = 'heimdall-toast-progress ' + duration + 'ms linear forwards'; }
+            else if (barTrack) barTrack.remove();
+            toast.addEventListener('mouseenter', () => { if (bar) bar.style.animationPlayState = 'paused'; });
+            toast.addEventListener('mouseleave', () => { if (bar) bar.style.animationPlayState = 'running'; });
+            toast.classList.add('heimdall-toast-enter'); stack.prepend(toast); trimStack();
+            if (duration > 0) setTimeout(() => { if (toast.parentNode) removeToast(toast); }, duration);
+        }
+        document.addEventListener('heimdall:notify', (evt) => { const d = evt.detail || {}; notify({ message: d.message, tone: d.tone || 'info', duration: d.duration || 4000 }); });
+        return {
+            getCsrfToken, notify,
+            fetch(url, options = {}) {
+                const method = (options.method || 'GET').toUpperCase();
+                const headers = new Headers(options.headers || {});
+                if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+                if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !headers.has('X-CSRF-Token')) { const c = getCsrfToken(); if (c) headers.set('X-CSRF-Token', c); }
+                return window.fetch(url, { credentials: 'same-origin', ...options, method, headers });
+            },
+            success(m, d = 4000) { notify({ message: m, tone: 'success', duration: d }); },
+            warning(m, d = 4500) { notify({ message: m, tone: 'warning', duration: d }); },
+            error(m, d = 5000) { notify({ message: m, tone: 'error', duration: d }); },
+            info(m, d = 3500) { notify({ message: m, tone: 'info', duration: d }); }
+        };
+    })();
+    </script>
+    <style>
+    @keyframes heimdall-toast-in { from { opacity:0; transform:translateY(16px) scale(.96);} to {opacity:1; transform:translateY(0) scale(1);} }
+    @keyframes heimdall-toast-out { from {opacity:1; transform:translateY(0) scale(1);} to {opacity:0; transform:translateY(8px) scale(.96);} }
+    @keyframes heimdall-toast-progress { from { transform: scaleX(1);} to { transform: scaleX(0);} }
+    .heimdall-toast-enter { animation: heimdall-toast-in .32s cubic-bezier(.21,1.02,.73,1) forwards; }
+    .heimdall-toast-exit { animation: heimdall-toast-out .2s cubic-bezier(.06,.71,.55,1) forwards; }
+    </style>
+
+    {% block body %}{% endblock %}
+</body>
+</html>

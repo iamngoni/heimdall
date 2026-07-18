@@ -1,0 +1,306 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+
+{% set active_nav = "repositories" %}
+{% set breadcrumb = [
+  {"label": "Repositories", "href": "/repos"},
+  {"label": repo.name, "href": "/repos/" ~ repo.id},
+  {"label": "Findings", "href": "/scans/" ~ finding.scan_id ~ "/findings"},
+  {"label": finding.title}
+] %}
+
+{% block title %}{{ finding.title }} · Heimdall{% endblock %}
+
+{% block content %}
+{% set status_text_map = {
+  "confirmed": "text-low-700",
+  "open": "text-crit-600",
+  "false_positive": "text-med-700",
+  "dismissed": "text-ink-500",
+  "fixed": "text-info-700"
+} %}
+{% set conf_pill_map = {"critical":"bg-crit-50 text-crit-700","high":"bg-high-50 text-high-700","medium":"bg-med-50 text-med-700","low":"bg-low-50 text-low-700"} %}
+{% set conf_l = (finding.confidence | lower) %}
+
+<div class="space-y-6">
+    {# ── Header ── #}
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+                {{ ui.sev_pill(finding.severity) }}
+                <h1 class="text-2xl font-semibold tracking-tighter2 text-ink-900">{{ finding.title }}</h1>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink-500">
+                <span class="hm-badge border border-ink-200 bg-white text-ink-600">{{ finding.source|replace("_", " ")|upper }}</span>
+                <span class="text-ink-300">&middot;</span>
+                <span class="hm-badge {{ conf_pill_map[conf_l] if conf_l in conf_pill_map else 'bg-ink-100 text-ink-600' }}">{{ finding.confidence }} confidence</span>
+                <span class="text-ink-300">&middot;</span>
+                <span class="font-semibold {{ status_text_map[finding.status] if finding.status in status_text_map else 'text-ink-600' }}">{{ finding.status|replace("_", " ")|capitalize }}</span>
+                <span class="text-ink-300">&middot;</span>
+                <span class="font-mono text-ink-600">{{ finding.file_path }}:{{ finding.line_start }}{% if finding.line_end and finding.line_end != finding.line_start %}-{{ finding.line_end }}{% endif %}</span>
+                {% if finding.cwe_id %}<span class="text-ink-300">&middot;</span><span class="font-mono text-ink-600">{{ finding.cwe_id }}</span>{% endif %}
+            </div>
+
+            <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                <a href="/repos/{{ repo.id }}" class="font-medium text-brand-600 hover:text-brand-700">{{ repo.name }}</a>
+                <span class="text-ink-300">&middot;</span>
+                <a href="/scans/{{ finding.scan_id }}" class="font-medium text-brand-600 hover:text-brand-700">Scan {{ finding.scan_id }}</a>
+            </div>
+        </div>
+
+        <a href="/scans/{{ finding.scan_id }}/findings" class="hm-btn-secondary shrink-0 text-sm">
+            {{ ui.icon("chevron-left", "w-4 h-4") }}
+            <span>Back to findings</span>
+        </a>
+    </div>
+
+    {# ── Main grid ── #}
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        {# ── Left column ── #}
+        <div class="space-y-6">
+            {# Finding #}
+            <section class="hm-card p-5">
+                <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Finding</h2>
+                {% if finding.description %}
+                <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink-700">{{ finding.description }}</p>
+                {% endif %}
+
+                <div class="mt-4 grid grid-cols-2 gap-4 border-t border-ink-100 pt-4 sm:grid-cols-3 lg:grid-cols-6">
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">Source</p>
+                        <p class="mt-1 text-sm text-ink-900">{{ finding.source|replace("_", " ")|upper }}</p>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">Confidence</p>
+                        <p class="mt-1">
+                            <span class="hm-badge {{ conf_pill_map[conf_l] if conf_l in conf_pill_map else 'bg-ink-100 text-ink-600' }}">{{ finding.confidence }}</span>
+                        </p>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">CWE</p>
+                        <p class="mt-1 font-mono text-sm text-ink-900">{{ finding.cwe_id or "—" }}</p>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">CVE</p>
+                        <p class="mt-1 font-mono text-sm text-ink-900">{{ finding.cve_id or "—" }}</p>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">File</p>
+                        <p class="mt-1 truncate font-mono text-sm text-ink-900" title="{{ finding.file_path }}">{{ finding.file_path }}</p>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">Lines</p>
+                        <p class="mt-1 font-mono text-sm text-ink-900">{{ finding.line_start }}{% if finding.line_end and finding.line_end != finding.line_start %}–{{ finding.line_end }}{% endif %}</p>
+                    </div>
+                </div>
+            </section>
+
+            {# Evidence #}
+            {% if finding.code_snippet %}
+            <section class="hm-card p-5">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Evidence</h2>
+                    <button type="button" id="copy-snippet-btn" class="hm-btn-ghost text-xs">
+                        {{ ui.icon("copy", "w-3.5 h-3.5") }}
+                        <span id="copy-snippet-label">Copy snippet</span>
+                    </button>
+                </div>
+                <div class="mt-3 flex items-center justify-between rounded-t-lg border border-b-0 border-ink-200 bg-ink-50 px-3.5 py-2">
+                    <span class="font-mono text-xs text-ink-500">{{ finding.file_path }}</span>
+                    <span class="font-mono text-xs text-ink-400">line {{ finding.line_start }}{% if finding.line_end and finding.line_end != finding.line_start %}–{{ finding.line_end }}{% endif %}</span>
+                </div>
+                <div class="overflow-x-auto rounded-b-lg border border-ink-200 bg-ink-900">
+                    <pre id="finding-code-snippet" class="p-4 text-sm leading-6 text-ink-100"><code>{{ finding.code_snippet }}</code></pre>
+                </div>
+            </section>
+            {% endif %}
+
+            {# Suggested patch #}
+            {% if finding.suggested_patch or finding.fix_summary %}
+            <section class="hm-card p-5">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Suggested patch</h2>
+                    {% if patch.id %}
+                    {{ ui.status_badge("info", "Marked applied" if patch.applied else "Review ready") }}
+                    {% endif %}
+                </div>
+
+                {% if finding.suggested_patch %}
+                <div class="mt-3 overflow-x-auto rounded-lg border border-ink-200 bg-ink-900">
+                    <pre id="finding-suggested-patch" class="p-4 text-sm leading-6 text-low-200"><code>{{ finding.suggested_patch }}</code></pre>
+                </div>
+                {% else %}
+                <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink-700">{{ finding.fix_summary }}</p>
+                {% endif %}
+
+                <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <p class="text-xs text-ink-400">
+                        Generated with finding
+                        {% if patch.created_at %}&middot; stored {{ patch.created_at }}{% endif %}
+                        &middot; <span class="font-medium {{ 'text-low-700' if patch.applied else 'text-ink-500' }}">{{ "Marked applied" if patch.applied else "Not marked applied" }}</span>
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <button type="button"
+                                id="mark-applied-btn"
+                                onclick="heimdallMarkPatchApplied()"
+                                {% if not patch.id or patch.applied %}disabled{% endif %}
+                                class="hm-btn-secondary text-sm disabled:cursor-not-allowed disabled:opacity-50">
+                            <span>Mark applied in Heimdall</span>
+                        </button>
+                        {% if remediation.supported and not remediation.pr_opened and not remediation.running %}
+                        <button hx-post="/api/findings/{{ finding.id }}/remediate"
+                                hx-target="#finding-remediation-panel"
+                                hx-swap="outerHTML"
+                                class="hm-btn-primary text-sm">
+                            <span>Create Fix PR</span>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                <p class="mt-1 text-xs text-ink-400">Records review metadata only; this does not write to the repository.</p>
+            </section>
+            {% endif %}
+
+            {# AI review #}
+            {% include "partials/finding_ai_review.html" %}
+
+            {% if finding.agent_reasoning %}
+            <section class="hm-card p-5">
+                <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Analyst notes</h2>
+                <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink-700">{{ finding.agent_reasoning }}</p>
+            </section>
+            {% endif %}
+
+            {# PoC validation #}
+            {% if finding.poc_exploit_json %}
+            <section class="hm-card p-5">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">PoC validation</h2>
+                    {{ ui.status_badge("danger" if finding.poc_validated else "neutral", "Validated" if finding.poc_validated else "Not validated") }}
+                </div>
+                <div class="mt-3 overflow-x-auto rounded-lg border border-ink-200 bg-ink-900">
+                    <pre class="p-4 text-sm leading-6 text-ink-100"><code>{{ finding.poc_exploit_json }}</code></pre>
+                </div>
+            </section>
+            {% endif %}
+        </div>
+
+        {# ── Right rail ── #}
+        <aside class="space-y-6">
+            {% include "partials/finding_status_controls.html" %}
+
+            {# Severity #}
+            <div id="finding-severity-card" class="hm-card p-5">
+                <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Severity</h2>
+                <div class="mt-3 flex items-center gap-2">
+                    <div class="relative flex-1">
+                        <select id="finding-severity-select"
+                                class="hm-input appearance-none pr-9 capitalize">
+                            {% for level in ["critical", "high", "medium", "low"] %}
+                            <option value="{{ level }}" {% if (finding.severity|lower) == level %}selected{% endif %}>{{ level|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-ink-400">{{ ui.icon("chevron-down", "w-4 h-4") }}</span>
+                    </div>
+                    <button type="button" onclick="heimdallSaveSeverity()" class="hm-btn-secondary shrink-0 text-sm">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </div>
+
+            {% include "partials/finding_issue_panel.html" %}
+            {% include "partials/finding_remediation_panel.html" %}
+            {% include "partials/finding_recent_activity.html" %}
+
+            {# Comment #}
+            <div class="hm-card p-5">
+                <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Comment</h2>
+                <form id="finding-comment-form" class="mt-3 flex items-center gap-2" onsubmit="return heimdallSubmitComment(event)">
+                    <input id="finding-comment-input" type="text" name="comment" class="hm-input" placeholder="Add a review comment&hellip;" autocomplete="off" />
+                    <button type="submit" class="hm-btn-primary shrink-0 px-3 py-2.5" aria-label="Send comment">
+                        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M17.5 2.5 2.5 8.75l5.5 2.25M17.5 2.5 11.25 17.5l-3.25-6.5M17.5 2.5 8.75 11.25"/>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<script>
+(function () {
+    function apiFetch(url, options) {
+        if (window.HeimdallUI && window.HeimdallUI.fetch) return window.HeimdallUI.fetch(url, options || {});
+        return window.fetch(url, options || {});
+    }
+    function notify(kind, message) {
+        if (window.HeimdallUI && window.HeimdallUI[kind]) window.HeimdallUI[kind](message);
+    }
+
+    // Copy the raw evidence snippet to the clipboard.
+    var copyBtn = document.getElementById('copy-snippet-btn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', async function () {
+            var label = document.getElementById('copy-snippet-label');
+            var codeEl = document.getElementById('finding-code-snippet');
+            try {
+                await navigator.clipboard.writeText(codeEl ? codeEl.textContent : '');
+                if (label) label.textContent = 'Copied!';
+                setTimeout(function () { if (label) label.textContent = 'Copy snippet'; }, 2000);
+            } catch (_) {
+                if (label) label.textContent = 'Failed';
+                setTimeout(function () { if (label) label.textContent = 'Copy snippet'; }, 2000);
+            }
+        });
+    }
+
+    window.heimdallMarkPatchApplied = function () {
+        apiFetch('/api/findings/{{ finding.id }}/apply-patch', { method: 'POST' })
+            .then(function (r) { if (!r.ok) throw new Error('request failed'); return r.json(); })
+            .then(function () {
+                notify('success', 'Suggested patch marked as applied.');
+                setTimeout(function () { window.location.reload(); }, 700);
+            })
+            .catch(function () { notify('error', 'Failed to mark the patch as applied.'); });
+    };
+
+    window.heimdallSaveSeverity = function () {
+        var select = document.getElementById('finding-severity-select');
+        if (!select) return;
+        apiFetch('/api/findings/{{ finding.id }}/severity', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ severity: select.value })
+        })
+            .then(function (r) { if (!r.ok) throw new Error('request failed'); return r.json(); })
+            .then(function () {
+                notify('success', 'Severity updated to ' + select.value + '.');
+                setTimeout(function () { window.location.reload(); }, 700);
+            })
+            .catch(function () { notify('error', 'Failed to update severity.'); });
+    };
+
+    window.heimdallSubmitComment = function (evt) {
+        evt.preventDefault();
+        var input = document.getElementById('finding-comment-input');
+        var value = input ? input.value.trim() : '';
+        if (!value) return false;
+        apiFetch('/api/findings/{{ finding.id }}/comment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment: value })
+        })
+            .then(function (r) { if (!r.ok) throw new Error('request failed'); return r.json(); })
+            .then(function () {
+                notify('success', 'Comment added.');
+                if (input) input.value = '';
+                setTimeout(function () { window.location.reload(); }, 700);
+            })
+            .catch(function () { notify('error', 'Failed to add comment.'); });
+        return false;
+    };
+})();
+</script>
+{% endblock %}

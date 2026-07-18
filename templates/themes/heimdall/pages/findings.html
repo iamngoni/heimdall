@@ -1,0 +1,337 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+
+{% set active_nav = "repositories" %}
+{% set breadcrumb = [
+  {"label": "Repositories", "href": "/repos"},
+  {"label": repo.name, "href": "/repos/" ~ repo.id},
+  {"label": "Scan " ~ scan_id[:8], "href": "/scans/" ~ scan_id},
+  {"label": "Findings"}
+] %}
+
+{% block title %}Findings · {{ repo.name }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-[1400px] space-y-6">
+
+  {# ── Header ── #}
+  <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div>
+      <span class="hm-badge bg-brand-50 text-brand-700 text-[11px] font-semibold uppercase tracking-wide">Scan findings</span>
+      <h1 class="mt-3 text-[26px] font-semibold tracking-tightest text-ink-900">Findings for {{ repo.name }}</h1>
+      <p class="mt-1.5 text-sm text-ink-500">
+        Scan <span class="font-mono text-ink-700">{{ scan.id[:8] }}</span>
+        <span class="mx-1.5 text-ink-300">·</span>
+        <span class="font-semibold text-brand-700">{{ scan.status | default("completed") | capitalize }}</span>
+        <span class="mx-1.5 text-ink-300">·</span>
+        {{ scan.finding_count | default(total) }} findings
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2.5">
+      <a href="/scans/{{ scan_id }}" class="hm-btn-secondary">
+        {{ ui.icon("chevron-left", "w-4 h-4") }} Back to scan
+      </a>
+      <a href="/scans/{{ scan_id }}/threat-model" class="hm-btn-secondary">
+        {{ ui.icon("shield", "w-4 h-4") }} View threat model
+      </a>
+      {% if issue_supported %}
+      <button type="button" id="bulk-issue-btn" onclick="createAllIssues(this)" class="hm-btn-primary">
+        {{ ui.provider_mark(issue_provider | default("github"), "w-4 h-4") }}
+        <span id="bulk-issue-label">Create issues</span>
+        <svg id="bulk-issue-spinner" class="hidden h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Filter bar ── #}
+  <form method="get" class="hm-card flex flex-col gap-4 p-4 lg:flex-row lg:items-end lg:justify-between">
+    <div class="grid gap-3 sm:grid-cols-2 sm:max-w-md">
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium text-ink-500">Severity</span>
+        <select name="severity" onchange="this.form.requestSubmit()" class="hm-input">
+          <option value="">All severities</option>
+          <option value="critical" {% if severity_filter == "critical" %}selected{% endif %}>Critical</option>
+          <option value="high" {% if severity_filter == "high" %}selected{% endif %}>High</option>
+          <option value="medium" {% if severity_filter == "medium" %}selected{% endif %}>Medium</option>
+          <option value="low" {% if severity_filter == "low" %}selected{% endif %}>Low</option>
+        </select>
+      </label>
+      <label class="block">
+        <span class="mb-1.5 block text-xs font-medium text-ink-500">Status</span>
+        <select name="status" onchange="this.form.requestSubmit()" class="hm-input">
+          <option value="">All statuses</option>
+          <option value="open" {% if status_filter == "open" %}selected{% endif %}>Open</option>
+          <option value="confirmed" {% if status_filter == "confirmed" %}selected{% endif %}>Confirmed</option>
+          <option value="dismissed" {% if status_filter == "dismissed" %}selected{% endif %}>Dismissed</option>
+          <option value="false_positive" {% if status_filter == "false_positive" %}selected{% endif %}>False Positive</option>
+          <option value="fixed" {% if status_filter == "fixed" %}selected{% endif %}>Fixed</option>
+        </select>
+      </label>
+    </div>
+    <div class="flex items-center gap-2">
+      {% if severity_filter or status_filter %}
+      <a href="/scans/{{ scan_id }}/findings" class="hm-btn-secondary">Clear filters</a>
+      {% endif %}
+      <span class="whitespace-nowrap text-sm text-ink-500">{{ total }} total findings in this scan</span>
+    </div>
+  </form>
+
+  {# ── Table ── #}
+  <section class="hm-card overflow-hidden">
+    <div id="bulk-actions-bar" class="hidden items-center gap-3 bg-sidebar px-6 py-2.5 text-sm text-white">
+      <span id="selected-count" class="font-semibold">0 selected</span>
+      <button type="button" onclick="copySelectedFindings()" id="copy-selected-btn"
+              class="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20">
+        {{ ui.icon("copy", "w-3.5 h-3.5") }}
+        <span id="copy-selected-label">Copy as Markdown</span>
+      </button>
+      <button type="button" onclick="clearSelection()" class="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-ink-300 transition hover:text-white">
+        {{ ui.icon("x", "w-3.5 h-3.5") }} Clear
+      </button>
+    </div>
+
+    <div class="hidden border-b border-ink-200 bg-ink-50 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-ink-500 lg:grid lg:grid-cols-[28px_100px_minmax(0,1.4fr)_170px_140px_150px_20px] lg:items-center lg:gap-4">
+      <span><input type="checkbox" id="select-all-checkbox" class="h-4 w-4 rounded border-ink-300 text-brand-500 focus:ring-brand-500/30" aria-label="Select all findings"></span>
+      <span>Severity</span>
+      <span>Issue</span>
+      <span>Source</span>
+      <span>Identifiers</span>
+      <span class="text-right">Status / Updated</span>
+      <span></span>
+    </div>
+
+    {% if findings | length > 0 %}
+    <div class="divide-y divide-ink-200">
+      {% for finding in findings %}
+      {% set source_l = (finding.source | default("") | lower) %}
+      {% set source_cls = "bg-brand-50 text-brand-700" if source_l == "ai" else ("bg-info-50 text-info-700" if source_l == "static" else ("bg-purple-50 text-purple-700" if "dep" in source_l else "bg-ink-100 text-ink-600")) %}
+      {% set status_l = (finding.status | default("") | lower) %}
+      {% set status_tone = "danger" if status_l == "open" else ("info" if status_l == "confirmed" else ("neutral" if status_l == "dismissed" else ("warning" if status_l == "false_positive" else ("success" if status_l == "fixed" else "neutral")))) %}
+      <div class="group grid cursor-pointer grid-cols-[28px_1fr] gap-4 px-6 py-4 transition hover:bg-ink-50 lg:grid-cols-[28px_100px_minmax(0,1.4fr)_170px_140px_150px_20px] lg:items-center"
+           onclick="if(!event.target.closest('.finding-checkbox')){window.location='/findings/{{ finding.id }}'}"
+           data-finding-id="{{ finding.id }}"
+           data-finding-title="{{ finding.title }}"
+           data-finding-severity="{{ finding.severity }}"
+           data-finding-confidence="{{ finding.confidence }}"
+           data-finding-source="{{ finding.source }}"
+           data-finding-status="{{ finding.status }}"
+           data-finding-file="{{ finding.file_path }}"
+           data-finding-line-start="{{ finding.line_start }}"
+           data-finding-cwe="{{ finding.cwe_id }}"
+           data-finding-cve="{{ finding.cve_id }}">
+        <div class="flex items-center" onclick="event.stopPropagation()">
+          <input type="checkbox" class="finding-checkbox h-4 w-4 rounded border-ink-300 text-brand-500 focus:ring-brand-500/30" value="{{ finding.id }}" aria-label="Select finding">
+        </div>
+
+        <div class="flex items-center">{{ ui.sev_pill(finding.severity) }}</div>
+
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold text-ink-900">{{ finding.title }}</p>
+          <p class="mt-0.5 truncate font-mono text-xs text-ink-500">{{ finding.file_path }}:{{ finding.line_start }}</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="hm-badge {{ source_cls }} text-[11px] font-semibold">{{ finding.source | default("") | replace("_", " ") | capitalize }}</span>
+          <span class="text-xs font-medium text-ink-500">{{ finding.confidence | default("") | capitalize }} confidence</span>
+        </div>
+
+        <div class="font-mono text-xs text-ink-600">
+          {% if finding.cwe_id %}<div>{{ finding.cwe_id }}</div>{% endif %}
+          {% if finding.cve_id %}<div>{{ finding.cve_id }}</div>{% endif %}
+          {% if not finding.cwe_id and not finding.cve_id %}<span class="text-ink-400">&mdash;</span>{% endif %}
+        </div>
+
+        <div class="flex flex-col items-end gap-1">
+          {{ ui.status_badge(status_tone, finding.status | default("") | replace("_", " ") | capitalize) }}
+          <span class="text-xs text-ink-400">{{ finding.updated_at }}</span>
+        </div>
+
+        <div class="hidden justify-end text-ink-300 lg:flex">{{ ui.chevron_right() }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="px-8 py-16 text-center">
+      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-ink-100 text-ink-400">
+        {{ ui.icon("search", "w-6 h-6") }}
+      </div>
+      {% if severity_filter or status_filter %}
+      <h2 class="mt-4 text-sm font-semibold text-ink-900">No findings match these filters</h2>
+      <p class="mx-auto mt-2 max-w-sm text-sm text-ink-500">Try broadening your search by removing a severity or status filter.</p>
+      <a href="/scans/{{ scan_id }}/findings" class="hm-btn-secondary mt-4 inline-flex">Clear all filters</a>
+      {% else %}
+      <h2 class="mt-4 text-sm font-semibold text-ink-900">No findings in this scan</h2>
+      <p class="mx-auto mt-2 max-w-sm text-sm text-ink-500">This scan completed without detecting any security findings. Review the threat model for a broader architectural perspective.</p>
+      <a href="/scans/{{ scan_id }}/threat-model" class="mt-4 inline-flex text-sm font-semibold text-brand-600 hover:text-brand-700">View threat model</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if total_pages and total_pages > 1 %}
+    <nav class="flex flex-col gap-3 border-t border-ink-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-ink-500">Page {{ page }} of {{ total_pages }}</p>
+      <div class="flex items-center gap-2">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}&per_page={{ per_page }}{% if severity_filter %}&severity={{ severity_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="hm-btn-secondary">
+          {{ ui.icon("chevron-left", "w-4 h-4") }} Previous
+        </a>
+        {% endif %}
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&per_page={{ per_page }}{% if severity_filter %}&severity={{ severity_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}" class="hm-btn-secondary">
+          Next {{ ui.icon("chevron-right", "w-4 h-4") }}
+        </a>
+        {% endif %}
+      </div>
+    </nav>
+    {% endif %}
+  </section>
+
+  {# ── Bottom subnav ── #}
+  <div class="flex items-center gap-6 border-t border-ink-200 pt-4 text-sm">
+    <a href="/scans/{{ scan_id }}" class="font-medium text-ink-500 hover:text-ink-900">Scan details</a>
+    <a href="/scans/{{ scan_id }}/threat-model" class="font-medium text-ink-500 hover:text-ink-900">Threat model</a>
+    <span class="inline-flex items-center gap-2 font-semibold text-ink-900">
+      Findings <span class="hm-badge bg-brand-50 text-brand-700">{{ total }}</span>
+    </span>
+  </div>
+</div>
+
+<script>
+const selectAllCheckbox = document.getElementById('select-all-checkbox');
+const bulkBar = document.getElementById('bulk-actions-bar');
+const selectedCountEl = document.getElementById('selected-count');
+
+function getCheckboxes() { return document.querySelectorAll('.finding-checkbox'); }
+function getChecked() { return document.querySelectorAll('.finding-checkbox:checked'); }
+
+function updateBulkBar() {
+    const count = getChecked().length;
+    if (count > 0) {
+        bulkBar.classList.remove('hidden');
+        bulkBar.classList.add('flex');
+        selectedCountEl.textContent = count + ' selected';
+    } else {
+        bulkBar.classList.add('hidden');
+        bulkBar.classList.remove('flex');
+    }
+    const all = getCheckboxes();
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = all.length > 0 && count === all.length;
+        selectAllCheckbox.indeterminate = count > 0 && count < all.length;
+    }
+}
+
+if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', function () {
+        getCheckboxes().forEach(function (cb) { cb.checked = selectAllCheckbox.checked; });
+        updateBulkBar();
+    });
+}
+
+document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('finding-checkbox')) updateBulkBar();
+});
+
+function clearSelection() {
+    getCheckboxes().forEach(function (cb) { cb.checked = false; });
+    updateBulkBar();
+}
+
+function buildFindingMarkdown(el) {
+    const d = el.dataset;
+    const lines = [];
+    lines.push('### ' + (d.findingTitle || 'Untitled'));
+    lines.push('');
+    const badges = ['**Severity:** ' + (d.findingSeverity || '').toUpperCase()];
+    badges.push('**Confidence:** ' + (d.findingConfidence || ''));
+    badges.push('**Source:** ' + (d.findingSource || '').replace(/_/g, ' '));
+    badges.push('**Status:** ' + (d.findingStatus || '').replace(/_/g, ' '));
+    lines.push(badges.join(' | '));
+    lines.push('');
+    lines.push('**Location:** `' + d.findingFile + ':' + d.findingLineStart + '`');
+    if (d.findingCwe && d.findingCwe !== 'None') lines.push('**CWE:** ' + d.findingCwe);
+    if (d.findingCve && d.findingCve !== 'None') lines.push('**CVE:** ' + d.findingCve);
+    lines.push('');
+    return lines.join('\n');
+}
+
+async function copySelectedFindings() {
+    const checked = getChecked();
+    if (checked.length === 0) return;
+    const label = document.getElementById('copy-selected-label');
+    const btn = document.getElementById('copy-selected-btn');
+
+    const sections = [];
+    sections.push('# Heimdall Findings Report');
+    sections.push('');
+    sections.push('**Repository:** {{ repo.name }}');
+    sections.push('**Scan:** `{{ scan_id }}`');
+    sections.push('**Findings:** ' + checked.length);
+    sections.push('');
+    sections.push('---');
+    sections.push('');
+
+    checked.forEach(function (cb) {
+        const card = cb.closest('[data-finding-id]');
+        if (card) sections.push(buildFindingMarkdown(card));
+        sections.push('---');
+        sections.push('');
+    });
+
+    sections.push('*Exported from [Heimdall](/scans/{{ scan_id }}/findings)*');
+
+    try {
+        await navigator.clipboard.writeText(sections.join('\n'));
+        label.textContent = 'Copied!';
+        setTimeout(function () { label.textContent = 'Copy as Markdown'; }, 2000);
+    } catch (_) {
+        label.textContent = 'Failed';
+        setTimeout(function () { label.textContent = 'Copy as Markdown'; }, 2000);
+    }
+}
+
+async function createAllIssues(btn) {
+    const label = document.getElementById('bulk-issue-label');
+    const spinner = document.getElementById('bulk-issue-spinner');
+    const originalText = label.textContent;
+
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    label.textContent = 'Creating...';
+    spinner.classList.remove('hidden');
+
+    try {
+        const resp = await window.HeimdallUI.fetch('/api/scans/{{ scan_id }}/findings/create-all-issues', { method: 'POST' });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.data) {
+            const d = data.data;
+            const summary = d.summary || (
+                d.created + ' created' +
+                (d.linked > 0 ? ', ' + d.linked + ' already linked' : '') +
+                (d.failed > 0 ? ', ' + d.failed + ' failed' : '')
+            );
+            label.textContent = d.created > 0 ? 'Issues created' : 'No new issues';
+            window.HeimdallUI.success(summary, 3600);
+            setTimeout(function() { window.location.reload(); }, 1200);
+        } else {
+            const msg = data.error || data.message || 'Failed to create issues';
+            window.HeimdallUI.error(msg, 4800);
+            label.textContent = originalText;
+            btn.disabled = false;
+        }
+    } catch (err) {
+        window.HeimdallUI.error('Network error while creating issues. Try again.', 4800);
+        label.textContent = originalText;
+        btn.disabled = false;
+    } finally {
+        btn.removeAttribute('aria-busy');
+        spinner.classList.add('hidden');
+    }
+}
+</script>
+{% endblock %}

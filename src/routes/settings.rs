@@ -62,7 +62,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
                 web::post().to(claude_code_exchange),
             )
             .route("/ai-routing", web::patch().to(update_ai_routing))
-            .route("/theme", web::patch().to(update_theme))
             .route("/test-connection", web::post().to(test_connection))
             .route("/ai-status", web::get().to(ai_status)),
     );
@@ -98,11 +97,6 @@ struct TestConnectionRequest {
 #[derive(Deserialize)]
 struct UpdateProfileRequest {
     display_name: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct UpdateThemeRequest {
-    theme: String,
 }
 
 #[derive(Deserialize)]
@@ -2072,53 +2066,6 @@ async fn save_pat(
     }
 }
 
-/// PATCH /settings/theme — update the authenticated user's theme preference.
-async fn update_theme(
-    state: web::Data<AppState>,
-    req: HttpRequest,
-    body: web::Json<UpdateThemeRequest>,
-) -> HttpResponse {
-    let user = match req.extensions().get::<AuthenticatedUser>().cloned() {
-        Some(u) => u,
-        None => {
-            return HttpResponse::Unauthorized()
-                .json(ApiResponse::<()>::error(401, "Unauthorized"));
-        }
-    };
-
-    let theme = crate::templates::normalize_theme(body.theme.trim()).to_string();
-    if !crate::templates::KNOWN_THEMES.contains(&theme.as_str()) {
-        let msg = format!(
-            "Unknown theme '{}'. Available: {}",
-            theme,
-            crate::templates::KNOWN_THEMES.join(", ")
-        );
-        if is_hx_request(&req) {
-            return inline_feedback_html(false, &msg);
-        }
-        return HttpResponse::BadRequest().json(ApiResponse::<()>::error(400, msg));
-    }
-
-    match state.db.update_user_theme(user.id, &theme).await {
-        Ok(_) => {
-            if is_hx_request(&req) {
-                return HttpResponse::Ok()
-                    .insert_header(("HX-Redirect", "/settings"))
-                    .finish();
-            }
-            HttpResponse::Ok().json(ApiResponse::ok(serde_json::json!({ "theme": theme })))
-        }
-        Err(e) => {
-            log::error!("Failed to update theme for user {}: {e:#}", user.id);
-            if is_hx_request(&req) {
-                return inline_feedback_html(false, "Failed to save theme.");
-            }
-            HttpResponse::InternalServerError()
-                .json(ApiResponse::<()>::error(500, "Failed to save theme."))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2132,7 +2079,7 @@ mod tests {
             display_name: None,
             avatar_url: None,
             role: "user".to_string(),
-            theme: "sentinel".to_string(),
+            theme: "heimdall".to_string(),
             preferred_ai_provider: preferred.map(str::to_string),
             ai_fallbacks_enabled: true,
             ai_fallback_order: fallback_order.to_string(),

@@ -56,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
     let template_root = std::env::var("TEMPLATE_DIR").unwrap_or_else(|_| "templates".to_string());
     let themes = ThemeRegistry::new(&template_root);
     let html = themes
-        .get("oatmeal")
+        .get("heimdall")
         .render("pages/scan_report.html", &ctx)?;
 
     std::fs::write(&out_path, &html)?;
