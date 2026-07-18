@@ -105,7 +105,7 @@
             {{ repo.last_scan_status | replace("_", " ") | title }}
           </span>
         </div>
-        <p class="mt-0.5 pl-3.5 text-xs text-ink-400">{{ repo.last_scan_at }}</p>
+        <p class="mt-0.5 pl-3.5 text-xs text-ink-400">{{ repo.last_scan_at | short_dt }}</p>
         {% else %}
         <span class="text-sm text-ink-400">Never scanned</span>
         {% endif %}
@@ -113,7 +113,7 @@
 
       <div class="text-sm font-medium {{ 'text-ink-900' if repo.finding_count else 'text-ink-300' }}">{{ repo.finding_count }}</div>
 
-      <div class="text-sm text-ink-500">{{ repo.created_at }}</div>
+      <div class="text-sm text-ink-500">{{ repo.created_at | short_dt }}</div>
 
       <div class="flex justify-end text-ink-300">{{ ui.icon("chevron-right", "w-4 h-4") }}</div>
     </a>

@@ -52,7 +52,7 @@
         <span class="text-ink-300">·</span>
         Generated from scan <span class="font-mono text-ink-600">{{ scan_id[:8] }}</span>
         <span class="text-ink-300">·</span>
-        Updated {{ threat_model.updated_at | default("—") }}
+        Updated {{ threat_model.updated_at | default("—") | short_dt }}
       </p>
     </div>
     <div class="flex items-center gap-2">

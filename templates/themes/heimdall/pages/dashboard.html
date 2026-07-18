@@ -106,7 +106,7 @@
                 </span>
               </td>
               <td class="px-3 py-4 text-[13px] text-ink-700">{{ scan.finding_count }}</td>
-              <td class="whitespace-nowrap px-3 py-4 font-mono text-xs text-ink-500">{{ scan.created_at }}</td>
+              <td class="whitespace-nowrap px-3 py-4 font-mono text-xs text-ink-500">{{ scan.created_at | short_dt }}</td>
               <td class="px-2 py-4">
                 <a href="/scans/{{ scan.id }}" aria-label="Open scan {{ scan.id }}" class="text-ink-400 transition group-hover:text-brand-700">
                   {{ ui.icon("chevron-right", "h-4 w-4") }}
@@ -173,7 +173,7 @@
                          'bg-brand-500' }}"></span>
                     {{ repo.last_scan_status | replace("_", " ") | title }}
                   </span>
-                  <span class="mt-0.5 block whitespace-nowrap font-mono text-[11px] text-ink-500">{{ repo.last_scan_at }}</span>
+                  <span class="mt-0.5 block whitespace-nowrap font-mono text-[11px] text-ink-500">{{ repo.last_scan_at | short_dt }}</span>
                   {% else %}
                   <span class="inline-flex items-center gap-2 text-xs text-ink-500"><span class="h-2 w-2 rounded-full bg-ink-300"></span>No scans yet</span>
                   {% endif %}

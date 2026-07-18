@@ -33,9 +33,9 @@
       <div><span class="font-semibold text-ink-900">Commit:</span> <span class="ml-1 font-mono text-ink-600">{{ scan.commit_short | default("—") }}</span></div>
       <div><span class="font-semibold text-ink-900">Status:</span> <span class="ml-1 text-ink-600">{{ scan.status | default("completed") | capitalize }}</span></div>
       <div><span class="font-semibold text-ink-900">Branch:</span> <span class="ml-1 text-ink-600">{{ repo.default_branch }}</span></div>
-      <div><span class="font-semibold text-ink-900">Started:</span> <span class="ml-1 text-ink-600">{{ scan.started_at | default("—") }}</span></div>
-      <div><span class="font-semibold text-ink-900">Generated:</span> <span class="ml-1 text-ink-600">{{ generated_at }}</span></div>
-      <div><span class="font-semibold text-ink-900">Completed:</span> <span class="ml-1 text-ink-600">{{ scan.completed_at | default("—") }}</span></div>
+      <div><span class="font-semibold text-ink-900">Started:</span> <span class="ml-1 text-ink-600">{{ scan.started_at | default("—") | short_dt }}</span></div>
+      <div><span class="font-semibold text-ink-900">Generated:</span> <span class="ml-1 text-ink-600">{{ generated_at | short_dt }}</span></div>
+      <div><span class="font-semibold text-ink-900">Completed:</span> <span class="ml-1 text-ink-600">{{ scan.completed_at | default("—") | short_dt }}</span></div>
       <div><span class="font-semibold text-ink-900">Scan type:</span> <span class="ml-1 text-ink-600">{{ scan.scan_type | default("full") | replace("_", " ") | capitalize }}</span></div>
     </div>
 
