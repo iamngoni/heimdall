@@ -1,0 +1,530 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+
+{% set active_nav = "repositories" %}
+{% set breadcrumb = [{"label": "Repositories", "href": "/repos"}, {"label": repo.name}] %}
+
+{% block title %}{{ repo.name }} · Heimdall{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+  <div class="max-w-3xl">
+    <div class="flex items-center gap-3">
+      {{ ui.provider_mark(repo.source_type, "w-7 h-7") }}
+      <h1 class="text-2xl font-semibold tracking-tighter2 text-ink-900">{{ repo.name }}</h1>
+    </div>
+    <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink-500">
+      <span class="inline-flex items-center gap-1.5">{{ ui.provider_mark(repo.source_type, "w-4 h-4") }} {{ repo.source_label }}</span>
+      <span class="text-ink-300">|</span>
+      <span class="inline-flex items-center gap-1.5">{{ ui.icon("globe", "w-4 h-4") }} {{ repo.host }}</span>
+      {% if repo.default_branch %}
+      <span class="text-ink-300">|</span>
+      <span class="inline-flex items-center gap-1.5">{{ ui.icon("git-branch", "w-4 h-4") }} Default branch <span class="font-medium text-ink-700">{{ repo.default_branch }}</span></span>
+      {% endif %}
+    </div>
+    {% if repo.remote_url %}
+    <a href="{{ repo.remote_url }}" target="_blank" rel="noreferrer"
+       class="mt-2 inline-flex items-center gap-1 truncate text-sm text-brand-600 hover:text-brand-700">
+      {{ repo.remote_url }} {{ ui.icon("external", "w-3.5 h-3.5") }}
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="flex flex-col items-start gap-2 lg:items-end">
+    <div class="flex items-center gap-2">
+      <button type="button"
+              class="hm-btn-primary {{ 'cursor-not-allowed opacity-60' if not scan_capability.available else '' }}"
+              {% if not scan_capability.available %}disabled{% endif %}
+              hx-post="/api/repos/{{ repo.id }}/scan"
+              hx-swap="none"
+              hx-on::after-request="HeimdallRepoDetail.handleScanResponse(event)">
+        {{ ui.icon("play", "w-4 h-4") }} Run scan
+      </button>
+      <button type="button" aria-label="More actions" class="hm-btn-secondary px-3 py-2.5">
+        {{ ui.icon("kebab", "w-4 h-4") }}
+      </button>
+    </div>
+    {% if scan_capability.available %}
+    <p class="flex items-center gap-1.5 text-xs text-low-700">
+      <span class="h-1.5 w-1.5 rounded-full bg-low-500"></span>
+      Ready with {{ scan_capability.provider | capitalize }} · {{ scan_capability.model }}
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{% if not scan_capability.available %}
+<div class="mt-5 rounded-xl border border-med-200 bg-med-50 px-4 py-3 text-sm text-med-700">
+  <p class="font-semibold">Scanning isn't ready for this workspace yet.</p>
+  <p class="mt-1">{{ scan_capability.reason }}</p>
+  <a href="/settings" class="mt-2 inline-flex items-center text-sm font-semibold hover:underline">Open Settings</a>
+</div>
+{% endif %}
+
+<div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_340px]">
+  {# ── Left column ── #}
+  <div class="space-y-6">
+    <section class="hm-card p-5">
+      <div class="grid grid-cols-2 gap-5 sm:grid-cols-4">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.1em] text-ink-400">Source</p>
+          <p class="mt-2 flex items-center gap-1.5 text-sm font-semibold text-ink-900">
+            {{ ui.provider_mark(repo.source_type, "w-4 h-4") }} {{ repo.source_label }}
+          </p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.1em] text-ink-400">Default branch</p>
+          <div class="mt-2 flex items-center gap-2">
+            <span class="text-sm font-semibold text-ink-900" id="repo-branch-value">{{ repo.default_branch | default("—") }}</span>
+            {% if repo.source_type in ["github", "gitlab", "bitbucket"] %}
+            <button type="button" id="repo-branch-change-btn"
+                    onclick="HeimdallRepoDetail.toggleBranchPicker('{{ repo.id }}')"
+                    class="text-xs font-medium text-brand-600 hover:text-brand-700">Change</button>
+            {% endif %}
+          </div>
+          <select id="repo-branch-select"
+                  class="hm-input mt-2 hidden py-1.5 text-xs"
+                  onchange="HeimdallRepoDetail.selectBranch('{{ repo.id }}', this.value)">
+          </select>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.1em] text-ink-400">Latest scan</p>
+          <div class="mt-2">
+            {% if latest_scan and latest_scan.status %}
+              {% if latest_scan.status == "completed" %}
+              {{ ui.status_badge("success", latest_scan.status | replace("_", " ") | title) }}
+              {% elif latest_scan.status == "failed" %}
+              {{ ui.status_badge("danger", latest_scan.status | replace("_", " ") | title) }}
+              {% elif latest_scan.status == "cancelled" %}
+              {{ ui.status_badge("neutral", latest_scan.status | replace("_", " ") | title) }}
+              {% else %}
+              {{ ui.status_badge("warning", latest_scan.status | replace("_", " ") | title) }}
+              {% endif %}
+            {% else %}
+            <p class="text-sm font-semibold text-ink-900">Awaiting first scan</p>
+            {% endif %}
+          </div>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.1em] text-ink-400">Latest scan at</p>
+          <p class="mt-2 text-sm font-medium text-ink-900">{{ latest_scan.created_at | default("—") }}</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="hm-card overflow-hidden">
+      <div class="flex items-center justify-between border-b border-ink-200 px-5 py-4">
+        <h2 class="text-sm font-semibold text-ink-900">Scan history</h2>
+        <p class="text-sm text-ink-500">{{ total }} scans</p>
+      </div>
+
+      {% if scans | length > 0 %}
+      <div class="divide-y divide-ink-200">
+        {% for scan in scans %}
+        <a href="/scans/{{ scan.id }}"
+           class="grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,1fr)_24px] items-center gap-4 px-5 py-4 transition hover:bg-ink-50">
+          <div class="min-w-0">
+            <p class="truncate font-mono text-sm font-semibold text-brand-600">{{ scan.short_id }}</p>
+            <p class="mt-0.5 text-xs uppercase tracking-[0.1em] text-ink-400">{{ scan.scan_type }}</p>
+          </div>
+          <div>
+            {% if scan.status == "completed" %}
+            {{ ui.status_badge("success", scan.status | replace("_", " ") | title) }}
+            {% elif scan.status == "failed" %}
+            {{ ui.status_badge("danger", scan.status | replace("_", " ") | title) }}
+            {% elif scan.status == "cancelled" %}
+            {{ ui.status_badge("neutral", scan.status | replace("_", " ") | title) }}
+            {% else %}
+            {{ ui.status_badge("warning", scan.status | replace("_", " ") | title) }}
+            {% endif %}
+          </div>
+          <div class="text-sm text-ink-700">{{ scan.finding_count }}</div>
+          <div class="font-mono text-sm text-ink-500">{{ scan.created_at }}</div>
+          <div class="text-ink-400">{{ ui.chevron_right() }}</div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="px-8 py-16 text-center">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50">
+          {{ ui.icon("radar", "w-6 h-6 text-brand-600") }}
+        </div>
+        <h3 class="mt-4 text-sm font-semibold text-ink-900">Ready for its first scan</h3>
+        <p class="mx-auto mt-2 max-w-sm text-sm text-ink-500">
+          Heimdall will clone the repo, build a code index, generate a threat model, and hunt for vulnerabilities. Results will appear here.
+        </p>
+      </div>
+      {% endif %}
+
+      {% if total_pages > 1 %}
+      <nav class="flex items-center justify-between border-t border-ink-200 px-5 py-4">
+        <p class="text-sm text-ink-500">Page {{ page }} of {{ total_pages }}</p>
+        <div class="flex items-center gap-2">
+          <a href="?page={{ page - 1 }}&per_page={{ per_page }}"
+             class="hm-btn-secondary px-3 py-2 {{ 'pointer-events-none opacity-50' if page <= 1 else '' }}">Previous</a>
+          <a href="?page={{ page + 1 }}&per_page={{ per_page }}"
+             class="hm-btn-secondary px-3 py-2 {{ 'pointer-events-none opacity-50' if page >= total_pages else '' }}">
+            Next {{ ui.icon("chevron-right", "w-4 h-4") }}
+          </a>
+        </div>
+      </nav>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ── Right rail ── #}
+  <aside class="space-y-6">
+    <section class="hm-card p-5">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-ink-900">Scanning</h2>
+        {{ ui.status_badge("success" if scan_capability.available else "neutral", "Ready" if scan_capability.available else "Not ready") }}
+      </div>
+      <dl class="mt-4 space-y-3 text-sm">
+        <div class="flex items-center justify-between">
+          <dt class="text-ink-500">Provider</dt>
+          <dd class="font-medium text-ink-900">{{ scan_capability.provider | default("—") | capitalize }}</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-ink-500">Model</dt>
+          <dd class="font-medium text-ink-900">{{ scan_capability.model | default("—") }}</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-ink-500">Source</dt>
+          <dd class="font-medium text-ink-900">{{ scan_capability.source | default("—") }}</dd>
+        </div>
+      </dl>
+      <p class="mt-4 border-t border-ink-200 pt-3 text-xs leading-5 text-ink-500">
+        A new full scan is created and opened when started.
+      </p>
+    </section>
+
+    <section class="hm-card p-5">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold text-ink-900">Issue automation</h2>
+          <p class="mt-1 text-sm text-ink-500">New findings can create or sync {{ issue_support.provider | default("issue") | upper }} issues automatically.</p>
+        </div>
+        <span id="repo-issue-provider-pill" class="hm-badge {{ 'bg-low-50 text-low-700' if issue_support.supported else 'bg-ink-100 text-ink-600' }}">
+          {{ issue_support.provider_label | default("Not ready") }}
+        </span>
+      </div>
+
+      <div id="repo-issue-support-card"
+           class="mt-4 rounded-lg border px-3.5 py-2.5 text-sm {{ 'border-low-200 bg-low-50 text-low-700' if issue_support.supported else 'border-med-200 bg-med-50 text-med-700' }}">
+        <p id="repo-issue-support-message">{{ issue_support.message }}</p>
+      </div>
+
+      {% if issue_support.bb_issue_tracker_disabled %}
+      <div id="bb-issue-recheck-controls" class="mt-3">
+        <button type="button"
+                onclick="HeimdallRepoDetail.recheckIssueTracker('{{ repo.id }}', this)"
+                class="hm-btn-secondary">
+          <span data-idle-icon>{{ ui.icon("refresh", "w-4 h-4") }}</span>
+          <span data-loading-icon class="hidden">{{ ui.icon("refresh", "w-4 h-4 animate-spin") }}</span>
+          <span data-button-label>Recheck</span>
+        </button>
+      </div>
+      {% endif %}
+
+      <form id="repo-issue-automation-form" class="mt-4 space-y-4">
+        <label class="flex items-start gap-3 rounded-lg border border-ink-200 bg-ink-50 px-3.5 py-3.5">
+          <input id="repo-issue-auto-enabled"
+                 type="checkbox"
+                 class="mt-1 h-4 w-4 rounded border-ink-300 text-brand-500 focus:ring-brand-500"
+                 {% if repo.issue_auto_create_enabled %}checked{% endif %}
+                 {% if not issue_support.supported %}disabled{% endif %}>
+          <span class="block">
+            <span class="text-sm font-semibold text-ink-900">Auto-create issues after scans</span>
+            <span class="mt-1 block text-sm text-ink-500">
+              When enabled, Heimdall opens or reuses repository issues for new findings that meet the threshold below.
+            </span>
+          </span>
+        </label>
+
+        <label class="block">
+          <span class="text-xs font-semibold uppercase tracking-[0.1em] text-ink-400">Minimum severity</span>
+          <select id="repo-issue-min-severity"
+                  class="hm-input mt-2"
+                  {% if not issue_support.supported %}disabled{% endif %}>
+            <option value="critical" {% if repo.issue_auto_create_min_severity == "critical" %}selected{% endif %}>Critical</option>
+            <option value="high" {% if repo.issue_auto_create_min_severity == "high" %}selected{% endif %}>High</option>
+            <option value="medium" {% if repo.issue_auto_create_min_severity == "medium" %}selected{% endif %}>Medium</option>
+            <option value="low" {% if repo.issue_auto_create_min_severity == "low" %}selected{% endif %}>Low</option>
+          </select>
+        </label>
+
+        <button type="button"
+                id="repo-issue-save-button"
+                onclick="HeimdallRepoDetail.saveIssueAutomation('{{ repo.id }}', this)"
+                {% if not issue_support.supported %}disabled{% endif %}
+                class="hm-btn-primary w-full justify-center disabled:cursor-not-allowed disabled:bg-ink-200 disabled:text-ink-500">
+          Save policy
+        </button>
+
+        <p class="border-t border-ink-200 pt-3 text-xs leading-5 text-ink-500">
+          Repo-level policy is the guardrail. Findings can still be escalated manually from the review screen.
+        </p>
+      </form>
+    </section>
+
+    <section class="hm-card p-5">
+      <h2 class="text-sm font-semibold text-ink-900">Repository details</h2>
+      <dl class="mt-4 space-y-3 text-sm">
+        <div class="flex items-center justify-between">
+          <dt class="text-ink-500">Source</dt>
+          <dd class="font-medium text-ink-900">{{ repo.source_label }}</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-ink-500">Host</dt>
+          <dd class="font-medium text-ink-900">{{ repo.host }}</dd>
+        </div>
+        <div class="flex items-center justify-between">
+          <dt class="text-ink-500">Default branch</dt>
+          <dd class="font-mono font-medium text-ink-900">{{ repo.default_branch | default("—") }}</dd>
+        </div>
+        {% if repo.remote_url %}
+        <div class="flex items-center justify-between gap-3">
+          <dt class="shrink-0 text-ink-500">Remote URL</dt>
+          <dd class="truncate">
+            <a href="{{ repo.remote_url }}" target="_blank" rel="noreferrer" class="truncate text-brand-600 hover:text-brand-700">{{ repo.remote_url }}</a>
+          </dd>
+        </div>
+        {% endif %}
+        <div class="flex items-center justify-between gap-3">
+          <dt class="shrink-0 text-ink-500">Repository ID</dt>
+          <dd class="flex items-center gap-1.5">
+            <span class="truncate font-mono text-xs text-ink-700">{{ repo.id }}</span>
+            <button type="button" aria-label="Copy repository ID"
+                    onclick="HeimdallRepoDetail.copyToClipboard('{{ repo.id }}')"
+                    class="text-ink-400 hover:text-ink-600">{{ ui.icon("copy", "w-3.5 h-3.5") }}</button>
+          </dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="hm-card p-5">
+      <h2 class="text-sm font-semibold text-crit-700">Remove repository</h2>
+      <p class="mt-1 text-sm text-ink-500">This action cannot be undone.</p>
+      <button type="button"
+              class="hm-btn-danger mt-4 w-full justify-center"
+              hx-delete="/api/repos/{{ repo.id }}"
+              hx-confirm="Are you sure you want to remove &quot;{{ repo.name }}&quot;? This will delete all associated scans and findings."
+              hx-swap="none"
+              hx-on::after-request="HeimdallRepoDetail.handleRemoveResponse(event)">
+        {{ ui.icon("trash", "w-4 h-4") }} Remove
+      </button>
+    </section>
+  </aside>
+</div>
+
+<script>
+window.HeimdallRepoDetail = {
+    notify(message, tone) {
+        if (window.HeimdallUI && typeof window.HeimdallUI[tone] === 'function') {
+            window.HeimdallUI[tone](message);
+        }
+    },
+
+    handleScanResponse(event) {
+        const xhr = event.detail.xhr;
+        let payload = null;
+        try { payload = JSON.parse(xhr.responseText); } catch (_) { payload = null; }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+            const redirect = xhr.getResponseHeader('HX-Redirect') || (payload && payload.data ? `/scans/${payload.data.id}` : null);
+            if (redirect) {
+                window.location.href = redirect;
+                return;
+            }
+        }
+
+        const message = payload && payload.error ? (payload.error.message || payload.error) : 'Unable to start the scan right now.';
+        this.notify(message, 'warning');
+    },
+
+    handleRemoveResponse(event) {
+        const xhr = event.detail.xhr;
+        if (xhr.status >= 200 && xhr.status < 300) {
+            window.location.href = '/repos';
+            return;
+        }
+        let payload = null;
+        try { payload = JSON.parse(xhr.responseText); } catch (_) { payload = null; }
+        const message = payload && payload.error ? (payload.error.message || payload.error) : 'Unable to remove repository.';
+        this.notify(message, 'warning');
+    },
+
+    copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => this.notify('Repository ID copied.', 'success'));
+        }
+    },
+
+    async recheckIssueTracker(repoId, button) {
+        const label = button.querySelector('[data-button-label]');
+        const idleIcon = button.querySelector('[data-idle-icon]');
+        const loadingIcon = button.querySelector('[data-loading-icon]');
+        const originalLabel = label ? label.textContent : button.textContent;
+
+        button.disabled = true;
+        if (label) label.textContent = 'Checking...';
+        if (idleIcon) idleIcon.classList.add('hidden');
+        if (loadingIcon) loadingIcon.classList.remove('hidden');
+
+        try {
+            const response = await (window.HeimdallUI ? window.HeimdallUI.fetch(`/repos/${repoId}/check-issue-tracker`) : fetch(`/repos/${repoId}/check-issue-tracker`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' }));
+            const payload = await response.json().catch(() => null);
+            const data = payload && payload.data ? payload.data : null;
+            if (!response.ok || !data) {
+                const message = payload && payload.error ? (payload.error.message || payload.error) : 'Unable to check the issue tracker right now.';
+                this.notify(message, 'warning');
+                return;
+            }
+
+            if (data.issue_tracker_enabled) {
+                this.syncIssueAutomationSupport(true, data.issue_support_message || 'New findings can create or sync issues automatically.');
+                this.notify(data.message || 'Issue tracker is enabled. Issue automation is ready to use.', 'success');
+                return;
+            }
+
+            this.notify(data.message || 'Issue tracker is still not enabled.', 'warning');
+        } catch (_) {
+            this.notify('Unable to check the issue tracker right now.', 'warning');
+        } finally {
+            button.disabled = false;
+            if (label) label.textContent = originalLabel;
+            if (idleIcon) idleIcon.classList.remove('hidden');
+            if (loadingIcon) loadingIcon.classList.add('hidden');
+        }
+    },
+
+    syncIssueAutomationSupport(isSupported, message) {
+        const pill = document.getElementById('repo-issue-provider-pill');
+        const card = document.getElementById('repo-issue-support-card');
+        const cardMessage = document.getElementById('repo-issue-support-message');
+        const autoEnabled = document.getElementById('repo-issue-auto-enabled');
+        const minSeverity = document.getElementById('repo-issue-min-severity');
+        const saveButton = document.getElementById('repo-issue-save-button');
+        const recheckControls = document.getElementById('bb-issue-recheck-controls');
+
+        if (pill) {
+            pill.classList.remove('bg-ink-100', 'text-ink-600', 'bg-low-50', 'text-low-700');
+            pill.classList.add(isSupported ? 'bg-low-50' : 'bg-ink-100', isSupported ? 'text-low-700' : 'text-ink-600');
+        }
+        if (card) {
+            card.classList.remove('border-low-200', 'bg-low-50', 'text-low-700', 'border-med-200', 'bg-med-50', 'text-med-700');
+            card.classList.add(isSupported ? 'border-low-200' : 'border-med-200', isSupported ? 'bg-low-50' : 'bg-med-50', isSupported ? 'text-low-700' : 'text-med-700');
+        }
+        if (cardMessage) cardMessage.textContent = message;
+        if (autoEnabled) autoEnabled.disabled = !isSupported;
+        if (minSeverity) minSeverity.disabled = !isSupported;
+        if (saveButton) saveButton.disabled = !isSupported;
+        if (recheckControls) recheckControls.classList.toggle('hidden', isSupported);
+    },
+
+    async saveIssueAutomation(repoId, button) {
+        const enabled = document.getElementById('repo-issue-auto-enabled').checked;
+        const minSeverity = document.getElementById('repo-issue-min-severity').value;
+        const originalLabel = button.innerHTML;
+
+        button.disabled = true;
+        button.innerHTML = 'Saving...';
+
+        try {
+            const response = await window.HeimdallUI.fetch(`/repos/${repoId}/issue-automation`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled, min_severity: minSeverity })
+            });
+
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                const message = payload && payload.error ? (payload.error.message || payload.error) : 'Unable to update issue automation.';
+                this.notify(message, 'warning');
+                return;
+            }
+
+            this.notify(
+                enabled ? `Issue automation enabled from ${minSeverity.toUpperCase()} severity and above.` : 'Issue automation disabled for this repository.',
+                'success'
+            );
+        } catch (_) {
+            this.notify('Unable to update issue automation right now.', 'warning');
+        } finally {
+            button.disabled = false;
+            button.innerHTML = originalLabel;
+        }
+    },
+
+    _branchRepoId: null,
+
+    async toggleBranchPicker(repoId) {
+        const select = document.getElementById('repo-branch-select');
+        const changeBtn = document.getElementById('repo-branch-change-btn');
+        if (!select) return;
+
+        if (!select.classList.contains('hidden')) {
+            select.classList.add('hidden');
+            if (changeBtn) changeBtn.classList.remove('hidden');
+            return;
+        }
+
+        this._branchRepoId = repoId;
+        select.innerHTML = '<option>Loading branches…</option>';
+        select.classList.remove('hidden');
+        if (changeBtn) changeBtn.classList.add('hidden');
+
+        try {
+            const response = await window.HeimdallUI.fetch(`/repos/${repoId}/branches`);
+            const payload = await response.json().catch(() => null);
+            const branches = payload && payload.data ? payload.data.branches : [];
+            const current = document.getElementById('repo-branch-value').textContent.trim();
+
+            if (!branches || branches.length === 0) {
+                this.notify('Could not load branches from remote.', 'warning');
+                select.classList.add('hidden');
+                if (changeBtn) changeBtn.classList.remove('hidden');
+                return;
+            }
+
+            select.innerHTML = branches.map((branch) =>
+                `<option value="${branch}" ${branch === current ? 'selected' : ''}>${branch}</option>`
+            ).join('');
+            select.focus();
+        } catch (_) {
+            this.notify('Unable to load branches right now.', 'warning');
+            select.classList.add('hidden');
+            if (changeBtn) changeBtn.classList.remove('hidden');
+        }
+    },
+
+    async selectBranch(repoId, branch) {
+        const select = document.getElementById('repo-branch-select');
+        const changeBtn = document.getElementById('repo-branch-change-btn');
+        const valueEl = document.getElementById('repo-branch-value');
+
+        valueEl.textContent = branch;
+        if (select) select.classList.add('hidden');
+        if (changeBtn) changeBtn.classList.remove('hidden');
+
+        try {
+            const response = await window.HeimdallUI.fetch(`/repos/${repoId}/branch`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ branch })
+            });
+
+            if (response.ok) {
+                this.notify(`Default branch set to "${branch}".`, 'success');
+            } else {
+                const payload = await response.json().catch(() => null);
+                const message = payload && payload.error ? (payload.error.message || payload.error) : 'Failed to update branch.';
+                this.notify(message, 'warning');
+            }
+        } catch (_) {
+            this.notify('Unable to update branch right now.', 'warning');
+        }
+    }
+};
+</script>
+{% endblock %}

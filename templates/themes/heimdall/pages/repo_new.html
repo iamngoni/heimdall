@@ -1,0 +1,310 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+
+{% set active_nav = "repositories" %}
+{% set breadcrumb = [{"label": "Repositories", "href": "/repos"}, {"label": "Add repository"}] %}
+
+{% block title %}Add repository · Heimdall{% endblock %}
+
+{% block content %}
+<div class="flex items-start justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tighter2 text-ink-900">Add repository</h1>
+    <p class="mt-1 text-sm text-ink-500">Connect source code to Heimdall.</p>
+  </div>
+  <a href="/settings" class="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700">
+    Manage connections {{ ui.icon("external", "w-4 h-4") }}
+  </a>
+</div>
+
+{# ── Provider tabs ── #}
+<div class="mt-6 flex flex-wrap items-center gap-6 border-b border-ink-200">
+  <a href="/repos/new?source=github"
+     class="flex items-center gap-2 border-b-2 pb-3 text-sm font-semibold transition {{ 'border-brand-500 text-ink-900' if active_source == 'github' else 'border-transparent text-ink-500 hover:text-ink-700' }}">
+    {{ ui.provider_mark("github", "w-[18px] h-[18px]") }} GitHub
+  </a>
+  <a href="/repos/new?source=gitlab"
+     class="flex items-center gap-2 border-b-2 pb-3 text-sm font-semibold transition {{ 'border-brand-500 text-ink-900' if active_source == 'gitlab' else 'border-transparent text-ink-500 hover:text-ink-700' }}">
+    {{ ui.provider_mark("gitlab", "w-[18px] h-[18px]") }} GitLab
+  </a>
+  <a href="/repos/new?source=bitbucket"
+     class="flex items-center gap-2 border-b-2 pb-3 text-sm font-semibold transition {{ 'border-brand-500 text-ink-900' if active_source == 'bitbucket' else 'border-transparent text-ink-500 hover:text-ink-700' }}">
+    {{ ui.provider_mark("bitbucket", "w-[18px] h-[18px]") }} Bitbucket
+  </a>
+  <a href="/repos/new?source=git_url"
+     class="flex items-center gap-2 border-b-2 pb-3 text-sm font-semibold transition {{ 'border-brand-500 text-ink-900' if active_source == 'git_url' else 'border-transparent text-ink-500 hover:text-ink-700' }}">
+    {{ ui.icon("external", "w-[18px] h-[18px]") }} Git URL
+  </a>
+  <a href="/repos/new?source=zip"
+     class="flex items-center gap-2 border-b-2 pb-3 text-sm font-semibold transition {{ 'border-brand-500 text-ink-900' if active_source == 'zip' else 'border-transparent text-ink-500 hover:text-ink-700' }}">
+    {{ ui.icon("doc", "w-[18px] h-[18px]") }} Upload ZIP
+  </a>
+</div>
+
+{% if active_source == "github" or active_source == "gitlab" or active_source == "bitbucket" %}
+  {% if active_source == "github" %}
+    {% set provider = integrations.github %}
+    {% set provider_name = "GitHub" %}
+    {% set connect_href = "/api/auth/github/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgithub" %}
+  {% elif active_source == "gitlab" %}
+    {% set provider = integrations.gitlab %}
+    {% set provider_name = "GitLab" %}
+    {% set connect_href = "/api/auth/gitlab/authorize?next=%2Frepos%2Fnew%3Fsource%3Dgitlab" %}
+  {% else %}
+    {% set provider = integrations.bitbucket %}
+    {% set provider_name = "Bitbucket" %}
+    {% set connect_href = "/api/auth/bitbucket/authorize?next=%2Frepos%2Fnew%3Fsource%3Dbitbucket" %}
+  {% endif %}
+
+  {% if provider.connected %}
+  <section class="mt-6 space-y-5">
+    {# ── Connection banner ── #}
+    <div class="hm-card flex items-center justify-between gap-4 px-5 py-4">
+      <div class="flex items-center gap-3">
+        <span class="flex h-10 w-10 items-center justify-center rounded-full bg-ink-100">{{ ui.provider_mark(active_source, "w-5 h-5") }}</span>
+        <div>
+          <p class="flex items-center gap-2 text-sm font-semibold text-low-700">
+            <span class="h-1.5 w-1.5 rounded-full bg-low-500"></span>{{ provider_name }} connected
+          </p>
+          <p class="mt-0.5 text-sm text-ink-500">Recent repositories load automatically</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <a href="{{ connect_href }}" class="text-sm font-medium text-brand-600 hover:text-brand-700">Reconnect</a>
+        <span class="text-ink-400">{{ ui.icon("kebab", "w-4 h-4") }}</span>
+      </div>
+    </div>
+
+    {# ── Search ── #}
+    <div class="flex items-center gap-3">
+      <div class="relative flex-1">
+        <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400">{{ ui.icon("search", "w-4 h-4") }}</span>
+        <input type="search"
+               name="q"
+               placeholder="Search {{ provider_name }} repositories"
+               class="hm-input pl-10"
+               data-repo-search-input
+               data-repo-search-url="/api/repos/{{ active_source }}/list">
+      </div>
+      <button type="button"
+              aria-label="Refresh"
+              class="hm-btn-secondary px-3 py-2.5"
+              onclick="window.HeimdallRepoConnect.reloadSearch()">
+        {{ ui.icon("refresh", "w-4 h-4") }}
+      </button>
+    </div>
+
+    <div>
+      <h2 class="text-base font-semibold text-ink-900">Recent repositories</h2>
+      <p class="mt-0.5 text-sm text-ink-500">Repositories available from {{ provider_name }}</p>
+    </div>
+
+    <div class="hm-card overflow-hidden">
+      <div class="hidden grid-cols-[minmax(0,1.6fr)_140px_150px_130px_100px] gap-4 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-ink-500 md:grid">
+        <span>Repository</span>
+        <span>Language</span>
+        <span>Default branch</span>
+        <span>Visibility</span>
+        <span class="text-right">Action</span>
+      </div>
+      <div id="repo-import-results"
+           data-repo-search-results>
+        <div class="flex items-center gap-4 px-5 py-6 text-sm text-ink-400">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-100">{{ ui.provider_mark(active_source, "w-4 h-4") }}</span>
+          <span>Loading recent {{ provider_name }} repositories...</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-sm text-ink-500">
+      Can't find a repository? Use
+      <a href="/repos/new?source=git_url" class="font-medium text-brand-600 hover:text-brand-700">Git URL</a>
+      for public HTTPS repositories, or
+      <a href="/repos/new?source=zip" class="font-medium text-brand-600 hover:text-brand-700">Upload ZIP</a>
+      for a local source snapshot.
+    </p>
+  </section>
+  {% else %}
+  <section class="mt-6 hm-card border-2 border-dashed border-ink-200 px-8 py-16 text-center shadow-none">
+    <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-ink-100">
+      {{ ui.provider_mark(active_source, "w-7 h-7") }}
+    </div>
+    <h2 class="mt-5 text-lg font-semibold text-ink-900">Connect {{ provider_name }}</h2>
+    <p class="mx-auto mt-2 max-w-md text-sm text-ink-500">
+      Authorize once and Heimdall will list your repositories so you can pick which to scan. You can also save a
+      personal access token in <a href="/settings" class="font-semibold text-brand-600 hover:text-brand-700">Settings</a> instead.
+    </p>
+    <a href="{{ connect_href }}" class="hm-btn-primary mt-6 justify-center px-5 py-2.5">
+      Continue with {{ provider_name }}
+    </a>
+  </section>
+  {% endif %}
+
+{% elif active_source == "git_url" %}
+<section class="mt-6 hm-card p-6">
+  <div class="max-w-2xl">
+    <h2 class="text-base font-semibold text-ink-900">Add a public Git URL</h2>
+    <p class="mt-1 text-sm text-ink-500">Use this when the repository is public or you want to point Heimdall at a simple HTTPS clone URL.</p>
+  </div>
+
+  <form action="/api/repos"
+        method="post"
+        class="mt-6 grid gap-4 md:grid-cols-2"
+        hx-post="/api/repos"
+        hx-swap="none"
+        hx-on::after-request="HeimdallRepoConnect.handleFormResponse(event)">
+    <input type="hidden" name="source_type" value="git_url">
+
+    <label class="block">
+      <span class="mb-2 block text-sm font-medium text-ink-700">Repository name</span>
+      <input name="name" required class="hm-input" placeholder="acme-api">
+    </label>
+
+    <label class="block">
+      <span class="mb-2 block text-sm font-medium text-ink-700">Default branch</span>
+      <input name="default_branch" class="hm-input" placeholder="main">
+    </label>
+
+    <label class="block md:col-span-2">
+      <span class="mb-2 block text-sm font-medium text-ink-700">HTTPS clone URL</span>
+      <input name="remote_url" required class="hm-input" placeholder="https://github.com/acme/acme-api.git">
+    </label>
+
+    <div class="md:col-span-2">
+      <button type="submit" class="hm-btn-primary">
+        {{ ui.icon("plus", "w-4 h-4") }} Add repository
+      </button>
+    </div>
+  </form>
+</section>
+
+{% else %}
+<section class="mt-6 hm-card p-6">
+  <div class="max-w-2xl">
+    <h2 class="text-base font-semibold text-ink-900">Upload a ZIP archive</h2>
+    <p class="mt-1 text-sm text-ink-500">Use this for local source snapshots or when source control access isn't available.</p>
+  </div>
+
+  <form action="/api/repos/upload"
+        method="post"
+        enctype="multipart/form-data"
+        class="mt-6 space-y-4"
+        hx-post="/api/repos/upload"
+        hx-encoding="multipart/form-data"
+        hx-swap="none"
+        hx-on::after-request="HeimdallRepoConnect.handleFormResponse(event)">
+    <label class="block max-w-xl">
+      <span class="mb-2 block text-sm font-medium text-ink-700">Repository name</span>
+      <input name="name" class="hm-input" placeholder="acme-api-snapshot">
+    </label>
+
+    <label class="block max-w-xl">
+      <span class="mb-2 block text-sm font-medium text-ink-700">ZIP file</span>
+      <input type="file" name="file" accept=".zip" required
+             class="hm-input file:mr-4 file:rounded-lg file:border-0 file:bg-ink-100 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-ink-700">
+    </label>
+
+    <button type="submit" class="hm-btn-primary">
+      {{ ui.icon("plus", "w-4 h-4") }} Upload repository
+    </button>
+  </form>
+</section>
+{% endif %}
+
+<script>
+window.HeimdallRepoConnect = window.HeimdallRepoConnect || {
+    initSearch() {
+        const input = document.querySelector('[data-repo-search-input]');
+        const results = document.querySelector('[data-repo-search-results]');
+        if (!input || !results) {
+            return;
+        }
+
+        const endpoint = input.dataset.repoSearchUrl;
+        let activeController = null;
+        let requestId = 0;
+        let debounceTimer = null;
+
+        const load = async (query) => {
+            if (activeController) {
+                activeController.abort();
+            }
+            const controller = new AbortController();
+            activeController = controller;
+            const thisRequest = ++requestId;
+            const trimmed = (query || '').trim();
+            const url = trimmed ? `${endpoint}?q=${encodeURIComponent(trimmed)}` : endpoint;
+
+            results.setAttribute('aria-busy', 'true');
+            try {
+                const response = await fetch(url, {
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'text/html',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    signal: controller.signal
+                });
+                const html = await response.text();
+                if (!response.ok) {
+                    throw new Error(html || `Request failed (${response.status})`);
+                }
+                if (thisRequest === requestId) {
+                    results.innerHTML = html;
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                if (thisRequest === requestId) {
+                    results.innerHTML = '<div class="flex items-center gap-4 px-5 py-6 text-sm text-rose-600">Unable to load repositories right now.</div>';
+                }
+            } finally {
+                if (thisRequest === requestId) {
+                    results.removeAttribute('aria-busy');
+                }
+            }
+        };
+
+        input.addEventListener('input', () => {
+            window.clearTimeout(debounceTimer);
+            debounceTimer = window.setTimeout(() => load(input.value), 250);
+        });
+        input.addEventListener('search', () => load(input.value));
+
+        window.HeimdallRepoConnect.reloadSearch = () => load(input.value);
+
+        load(input.value);
+    },
+
+    handleFormResponse(event) {
+        const xhr = event.detail.xhr;
+        let payload = null;
+        try { payload = JSON.parse(xhr.responseText); } catch (_) { payload = null; }
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+            const redirectHeader = xhr.getResponseHeader('HX-Redirect');
+            const redirectPath = redirectHeader || (payload && payload.data ? `/repos/${payload.data.id}` : null);
+            if (redirectPath) {
+                window.location.href = redirectPath;
+                return;
+            }
+        }
+
+        const message = payload && payload.error
+            ? (payload.error.message || payload.error)
+            : 'Something went wrong while connecting the repository.';
+
+        if (window.HeimdallUI && typeof window.HeimdallUI.error === 'function') {
+            window.HeimdallUI.error(message);
+        }
+    }
+};
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => window.HeimdallRepoConnect.initSearch());
+} else {
+    window.HeimdallRepoConnect.initSearch();
+}
+</script>
+{% endblock %}

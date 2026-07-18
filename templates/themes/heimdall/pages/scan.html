@@ -1,0 +1,654 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+
+{% set active_nav = "repositories" %}
+{% set breadcrumb = [
+  {"label": "Repositories", "href": "/repos"},
+  {"label": repo.name, "href": "/repos/" ~ repo.id},
+  {"label": "Scan " ~ scan.short_id}
+] %}
+{% set page_title = "Scan " ~ scan.short_id %}
+
+{% macro stage_icon(status, cls="h-7 w-7") %}
+  {% if status == "completed" %}
+  <span class="flex {{ cls }} shrink-0 items-center justify-center rounded-full border-2 border-low-500 bg-low-50 text-low-700">{{ ui.icon("check", "h-4 w-4") }}</span>
+  {% elif status == "running" %}
+  <span class="flex {{ cls }} shrink-0 items-center justify-center rounded-full border-2 border-brand-500 bg-brand-50 text-brand-700">
+    <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-brand-500"></span>
+  </span>
+  {% elif status == "failed" %}
+  <span class="flex {{ cls }} shrink-0 items-center justify-center rounded-full border-2 border-crit-500 bg-crit-50 text-crit-700">{{ ui.icon("x", "h-4 w-4") }}</span>
+  {% else %}
+  <span class="flex {{ cls }} shrink-0 items-center justify-center rounded-full border-2 border-ink-300 bg-white text-ink-500">{{ ui.icon("clock", "h-4 w-4") }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% block title %}Scan {{ scan.short_id }} · Heimdall{% endblock %}
+
+{% block content %}
+<div id="scan-page-root"
+     data-scan-id="{{ scan.id }}"
+     data-scan-live="{{ 'true' if scan.is_live else 'false' }}"
+     data-live-url="/api/scans/{{ scan.id }}/live"
+     data-stream-url="/api/scans/{{ scan.id }}/progress/stream"
+     class="mx-auto max-w-[1320px] space-y-5">
+
+  <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <a href="/repos/{{ repo.id }}" class="font-medium text-ink-900 hover:text-brand-700">{{ repo.name }}</a>
+        <span class="hm-badge border border-ink-200 bg-ink-50 text-ink-700">{{ scan.scan_type | replace("_", " ") | title }}</span>
+      </div>
+      <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em] text-ink-900">Scan {{ scan.short_id }}</h1>
+      <div class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-500">
+        <span class="font-mono text-ink-700">{{ scan.id }}</span>
+        <span aria-hidden="true">•</span>
+        <span>Updated {{ scan.updated_at }}</span>
+      </div>
+      <div id="scan-fallback-pill"
+           title="{{ fallback.detail if fallback else '' }}"
+           class="mt-3 inline-flex items-center gap-2 rounded-lg border border-high-500 bg-high-50 px-3 py-1.5 text-xs font-medium text-high-700 {{ '' if fallback else 'hidden' }}">
+        {{ ui.icon("alert-triangle", "h-4 w-4") }}
+        <span id="scan-fallback-pill-label">Fallback used{% if fallback and fallback.provider_label %} <span class="px-1 text-high-500">•</span> {{ fallback.provider_label }}{% endif %}</span>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      {% if scan.is_live %}
+      <span id="scan-header-status" class="inline-flex h-9 items-center gap-2 rounded-lg border border-brand-500 bg-brand-50 px-4 text-sm font-medium text-brand-700">
+        <span class="h-2 w-2 animate-pulse rounded-full bg-brand-500"></span>
+        Running
+      </span>
+      <button type="button" data-label="Cancel scan" onclick="HeimdallScanActions.cancel('{{ scan.id }}', this)" class="hm-btn-danger inline-flex h-9 items-center gap-2">
+        Cancel scan
+      </button>
+      {% elif scan.status == "completed" %}
+      <span class="inline-flex h-9 items-center gap-2 px-2 text-sm font-medium text-low-700"><span class="h-2.5 w-2.5 rounded-full bg-low-500"></span>Completed</span>
+      <a href="/scans/{{ scan.id }}/report" class="hm-btn-secondary inline-flex h-9 items-center gap-2">{{ ui.icon("doc", "h-4 w-4") }} Report</a>
+      <a href="/scans/{{ scan.id }}/report?format=sarif" class="hm-btn-secondary inline-flex h-9 items-center gap-2">{{ ui.icon("code", "h-4 w-4") }} SARIF</a>
+      <a href="/scans/{{ scan.id }}/threat-model" class="hm-btn-secondary inline-flex h-9 items-center gap-2">{{ ui.icon("shield", "h-4 w-4") }} Threat model</a>
+      <a href="/scans/{{ scan.id }}/findings" class="hm-btn-primary inline-flex h-9 items-center gap-3">Findings <span class="rounded-full bg-white/20 px-2 py-0.5 text-xs">{{ scan.finding_count }}</span></a>
+      {% else %}
+      <span class="inline-flex h-9 items-center gap-2 px-2 text-sm font-medium {{ 'text-high-700' if scan.status == 'cancelled' else 'text-crit-700' }}">
+        <span class="h-2.5 w-2.5 rounded-full {{ 'bg-high-500' if scan.status == 'cancelled' else 'bg-crit-500' }}"></span>{{ scan.status_label }}
+      </span>
+      <button type="button" data-label="Retry" onclick="HeimdallScanActions.retry('{{ repo.id }}', this)" class="hm-btn-secondary inline-flex h-9 items-center gap-2 border-brand-500 text-brand-700">{{ ui.icon("refresh", "h-4 w-4") }} Retry</button>
+      <a href="/scans/{{ scan.id }}/report" class="hm-btn-secondary inline-flex h-9 items-center gap-2">{{ ui.icon("doc", "h-4 w-4") }} Report</a>
+      <a href="/scans/{{ scan.id }}/report?format=sarif" class="hm-btn-secondary inline-flex h-9 items-center gap-2">{{ ui.icon("code", "h-4 w-4") }} SARIF</a>
+      <a href="/scans/{{ scan.id }}/threat-model" class="hm-btn-secondary inline-flex h-9 items-center gap-2">{{ ui.icon("shield", "h-4 w-4") }} Threat model</a>
+      <a href="/scans/{{ scan.id }}/findings" class="hm-btn-primary inline-flex h-9 items-center gap-3">Findings <span class="rounded-full bg-white/20 px-2 py-0.5 text-xs">{{ scan.finding_count }}</span></a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if scan.is_live %}
+  <section id="scan-live-panel" class="overflow-hidden rounded-xl border border-brand-500 bg-brand-50 shadow-card">
+    <div class="flex flex-col gap-5 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
+      <div class="flex min-w-0 items-start gap-4">
+        <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+          <span class="h-3 w-3 animate-pulse rounded-full bg-brand-500"></span>
+        </span>
+        <div class="min-w-0">
+          <h2 id="scan-current-task-title" class="text-base font-semibold text-ink-900">{{ current_task.title }}</h2>
+          <p id="scan-current-task-detail" class="mt-1 text-xs leading-5 text-ink-600">{{ current_task.detail }}</p>
+        </div>
+      </div>
+      <div class="shrink-0 text-right">
+        <p id="scan-current-task-progress-label" class="text-[28px] font-semibold leading-none text-brand-700">{{ current_task.progress_pct if current_task.progress_pct is not none else 0 }}%</p>
+        <p id="scan-last-updated" class="mt-4 text-xs text-ink-500">Updated {{ scan.updated_at }}</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-5 px-5 pb-4">
+      <span class="shrink-0 text-xs font-medium text-ink-700">Current task</span>
+      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-ink-200">
+        <div id="scan-current-task-progress-bar" class="h-full rounded-full bg-brand-500 transition-all duration-300" style="width: {{ current_task.progress_pct if current_task.progress_pct is not none else 0 }}%"></div>
+      </div>
+    </div>
+    <div id="scan-fallback-row" class="mx-3 mb-3 flex items-start justify-between gap-4 border-t border-brand-200 px-2 pt-3 text-xs {{ '' if fallback else 'hidden' }}">
+      <div class="flex min-w-0 items-start gap-3">
+        <span class="mt-0.5 text-high-700">{{ ui.icon("alert-triangle", "h-4 w-4") }}</span>
+        <div class="min-w-0">
+          <p class="font-medium text-ink-800">Fallback used<span id="scan-fallback-provider">{% if fallback and fallback.provider_label %} <span class="px-1 text-ink-400">•</span> {{ fallback.provider_label }}{% endif %}</span></p>
+          <p id="scan-fallback-detail" class="mt-1 truncate text-ink-500">{{ fallback.detail if fallback else '' }}</p>
+        </div>
+      </div>
+      <span id="scan-fallback-time" class="shrink-0 text-ink-500">{{ fallback.timestamp if fallback else '' }}</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-base font-semibold text-ink-900">Pipeline</h2>
+      <span class="text-xs text-ink-500">{{ stages | length }} stages</span>
+    </div>
+    <div id="scan-stage-list" class="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-5">
+      {% for stage in stages %}
+      <div data-stage-row="{{ stage.stage }}" data-status="{{ stage.status }}" class="min-w-0 py-1">
+        <div class="flex items-start gap-3">
+          <span class="pt-1 font-mono text-[11px] text-ink-500">{{ loop.index }}</span>
+          {{ stage_icon(stage.status, "h-8 w-8") }}
+          <div class="min-w-0">
+            <p class="truncate text-xs font-medium text-ink-900">{{ stage.label }}</p>
+            <p class="mt-1 text-xs {{ 'text-low-700' if stage.status == 'completed' else 'text-brand-700' if stage.status == 'running' else 'text-crit-700' if stage.status == 'failed' else 'text-ink-500' }}">{{ stage.status | replace("_", " ") | title }}</p>
+            {% if stage.attempt > 0 %}<p class="mt-1 text-[11px] text-ink-500">attempt {{ stage.attempt }}</p>{% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
+    <section class="hm-card overflow-hidden">
+      <div class="flex items-center gap-4 border-b border-ink-200 px-4 py-3">
+        <h2 class="text-sm font-semibold text-ink-900">Execution activity</h2>
+        <span class="inline-flex items-center gap-2 text-xs font-medium text-low-700"><span class="h-2 w-2 rounded-full bg-low-500"></span>Live updates</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[780px] table-fixed text-left">
+          <thead class="border-b border-ink-200 bg-ink-50 text-[11px] text-ink-500">
+            <tr>
+              <th class="w-[13%] px-4 py-2.5 font-medium">Time</th>
+              <th class="w-[11%] px-3 py-2.5 font-medium">Stage</th>
+              <th class="w-[23%] px-3 py-2.5 font-medium">Event</th>
+              <th class="px-3 py-2.5 font-medium">Detail</th>
+              <th class="w-[16%] px-3 py-2.5 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody id="scan-activity-feed" class="divide-y divide-ink-200">
+            {% for activity in activities %}
+            <tr data-activity-key="{{ activity.key }}">
+              <td class="whitespace-nowrap px-4 py-3 text-xs text-ink-600">{{ activity.timestamp }}</td>
+              <td class="px-3 py-3 font-mono text-[11px] text-ink-600">{{ activity.stage if activity.stage else "system" }}</td>
+              <td class="px-3 py-3 text-xs font-medium text-ink-800">{{ activity.title }}</td>
+              <td class="px-3 py-3 text-xs leading-4 text-ink-600">{{ activity.detail }}</td>
+              <td class="px-3 py-3">
+                <span class="inline-flex items-center gap-2 text-xs font-medium
+                  {{ 'text-low-700' if activity.tone == 'success' else
+                     'text-high-700' if activity.tone == 'warning' else
+                     'text-brand-700' if activity.tone == 'active' else
+                     'text-crit-700' if activity.tone == 'error' else
+                     'text-ink-500' }}">
+                  <span class="h-2 w-2 rounded-full
+                    {{ 'bg-low-500' if activity.tone == 'success' else
+                       'bg-high-500' if activity.tone == 'warning' else
+                       'bg-brand-500' if activity.tone == 'active' else
+                       'bg-crit-500' if activity.tone == 'error' else
+                       'bg-ink-400' }}"></span>
+                  {{ (activity.status if activity.status else activity.tone) | replace("_", " ") | title }}{% if activity.progress_pct is not none %} {{ activity.progress_pct }}%{% endif %}
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-ink-500">Execution events will appear here as the pipeline advances.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="space-y-3">
+      <section class="hm-card overflow-hidden">
+        <div class="border-b border-ink-200 px-4 py-3"><h2 class="text-sm font-semibold text-ink-900">Findings so far</h2></div>
+        <div class="grid grid-cols-5 divide-x divide-ink-200 px-2 py-3 text-center">
+          <div><p class="text-[11px] text-ink-500">Total</p><p id="scan-count-total" class="mt-1 text-xl font-semibold text-ink-900">{{ scan.finding_count }}</p></div>
+          <div><p class="text-[11px] text-ink-500">Critical</p><p id="scan-count-critical" class="mt-1 text-xl font-semibold text-crit-500">{{ scan.critical_count }}</p></div>
+          <div><p class="text-[11px] text-ink-500">High</p><p id="scan-count-high" class="mt-1 text-xl font-semibold text-high-500">{{ scan.high_count }}</p></div>
+          <div><p class="text-[11px] text-ink-500">Medium</p><p id="scan-count-medium" class="mt-1 text-xl font-semibold text-med-500">{{ scan.medium_count }}</p></div>
+          <div><p class="text-[11px] text-ink-500">Low</p><p id="scan-count-low" class="mt-1 text-xl font-semibold text-low-500">{{ scan.low_count }}</p></div>
+        </div>
+      </section>
+
+      <section class="hm-card px-4 py-3">
+        <h2 class="text-sm font-semibold text-ink-900">Scan details</h2>
+        <dl class="mt-2 grid grid-cols-[104px_minmax(0,1fr)] gap-x-4 gap-y-1 text-xs">
+          <dt class="text-ink-500">Type</dt><dd class="text-ink-800">{{ scan.scan_type | replace("_", " ") | title }}</dd>
+          <dt class="text-ink-500">Status</dt><dd class="inline-flex items-center gap-2 text-brand-700"><span class="h-2 w-2 rounded-full bg-brand-500"></span>{{ scan.status_label }}</dd>
+          <dt class="text-ink-500">Started</dt><dd class="text-ink-800">{{ scan.created_at }}</dd>
+          <dt class="text-ink-500">Completed</dt><dd class="text-ink-500">—</dd>
+          <dt class="text-ink-500">Scan ID</dt><dd class="truncate font-mono text-[11px] text-ink-700" title="{{ scan.id }}">{{ scan.id }}</dd>
+        </dl>
+      </section>
+
+      <section class="hm-card overflow-hidden">
+        <div class="border-b border-ink-200 px-4 py-3"><h2 class="text-sm font-semibold text-ink-900">Available output</h2></div>
+        <div class="divide-y divide-ink-200 text-xs">
+          <a href="/scans/{{ scan.id }}/threat-model" class="flex items-center justify-between gap-4 px-4 py-2.5 hover:bg-ink-50"><span class="text-ink-700">Threat model</span><span class="inline-flex items-center gap-2 text-brand-700">{{ ui.icon("hourglass", "h-4 w-4") }} Generating</span></a>
+          <a href="/scans/{{ scan.id }}/findings" class="flex items-center justify-between gap-4 px-4 py-2.5 hover:bg-ink-50"><span class="text-ink-700">Findings</span><span id="scan-output-findings" class="text-brand-700">{{ scan.finding_count }}</span></a>
+          <div class="flex items-center justify-between gap-4 px-4 py-2.5"><span class="text-ink-700">Report</span><span class="inline-flex items-center gap-2 text-ink-500">{{ ui.icon("clock", "h-4 w-4") }} After completion</span></div>
+          <div class="flex items-center justify-between gap-4 px-4 py-2.5"><span class="text-ink-700">SARIF</span><span class="inline-flex items-center gap-2 text-ink-500">{{ ui.icon("clock", "h-4 w-4") }} After completion</span></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  {% elif scan.status == "completed" %}
+  <section class="flex flex-col gap-4 rounded-xl border border-low-500 bg-low-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-start gap-4">
+      <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-low-500 text-low-700">{{ ui.icon("check", "h-5 w-5") }}</span>
+      <div>
+        <h2 class="text-base font-semibold text-ink-900">Scan completed</h2>
+        <p class="mt-1 text-xs text-ink-600">This run finished successfully. Review its execution history and outputs.</p>
+      </div>
+    </div>
+    <p class="text-xs text-ink-600">Last updated {{ scan.updated_at }}</p>
+  </section>
+
+  <section class="hm-card grid grid-cols-2 divide-x divide-ink-200 overflow-hidden sm:grid-cols-5">
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">Critical</p><p class="mt-1 text-[26px] font-semibold leading-none text-crit-500">{{ scan.critical_count }}</p></div>
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">High</p><p class="mt-1 text-[26px] font-semibold leading-none text-high-500">{{ scan.high_count }}</p></div>
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">Medium</p><p class="mt-1 text-[26px] font-semibold leading-none text-med-500">{{ scan.medium_count }}</p></div>
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">Low</p><p class="mt-1 text-[26px] font-semibold leading-none text-low-500">{{ scan.low_count }}</p></div>
+    <div class="col-span-2 border-t border-ink-200 px-4 py-3 text-center sm:col-span-1 sm:border-t-0"><p class="text-xs text-ink-500">Total</p><p class="mt-1 text-[26px] font-semibold leading-none text-ink-900">{{ scan.finding_count }}</p></div>
+  </section>
+
+  <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+    <section class="hm-card px-4 py-4">
+      <div class="flex items-center gap-3">
+        <h2 class="text-base font-semibold text-ink-900">Pipeline stages</h2>
+        <span class="hm-badge border border-ink-200 bg-ink-50 text-ink-600">{{ stages | length }} of {{ stages | length }} completed</span>
+      </div>
+      <ol class="mt-3 divide-y divide-ink-200">
+        {% for stage in stages %}
+        <li class="grid grid-cols-[22px_28px_minmax(0,1fr)_100px_100px] items-center gap-3 py-2.5 text-xs">
+          <span class="font-mono text-ink-500">{{ loop.index }}</span>
+          {{ stage_icon(stage.status, "h-6 w-6") }}
+          <span class="font-medium text-ink-900">{{ stage.label }}</span>
+          <span class="{{ 'text-low-700' if stage.status == 'completed' else 'text-crit-700' if stage.status == 'failed' else 'text-ink-500' }}">{{ stage.status | replace("_", " ") | title }}</span>
+          <span class="text-right font-mono text-[11px] text-ink-500">{{ stage.timestamp if stage.timestamp else "—" }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+      <details class="mt-5 rounded-lg border border-ink-200 bg-ink-50">
+        <summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+          {{ ui.icon("chevron-right", "h-4 w-4") }}
+          <span class="text-sm font-medium text-ink-900">Execution log</span>
+          <span class="text-xs text-ink-500">{{ activities | length }} events</span>
+        </summary>
+        <div class="border-t border-ink-200 px-4 py-3">
+          <ol class="space-y-3">
+            {% for activity in activities %}
+            <li class="grid gap-1 text-xs sm:grid-cols-[120px_minmax(0,1fr)]">
+              <span class="font-mono text-[11px] text-ink-500">{{ activity.timestamp }}</span>
+              <span><strong class="font-medium text-ink-800">{{ activity.title }}</strong><span class="ml-2 text-ink-500">{{ activity.detail }}</span></span>
+            </li>
+            {% else %}
+            <li class="text-xs text-ink-500">No execution events were recorded.</li>
+            {% endfor %}
+          </ol>
+        </div>
+      </details>
+    </section>
+
+    <div class="space-y-4">
+      <section class="hm-card px-4 py-4">
+        <h2 class="text-base font-semibold text-ink-900">Run details</h2>
+        <dl class="mt-3 grid grid-cols-[128px_minmax(0,1fr)] gap-x-4 gap-y-2 text-xs">
+          <dt class="text-ink-500">Repository</dt><dd class="font-medium text-ink-800">{{ repo.name }}</dd>
+          <dt class="text-ink-500">Scan type</dt><dd class="text-ink-800">{{ scan.scan_type | replace("_", " ") | title }}</dd>
+          <dt class="text-ink-500">Created</dt><dd class="text-ink-800">{{ scan.created_at }}</dd>
+          <dt class="text-ink-500">Updated</dt><dd class="text-ink-800">{{ scan.updated_at }}</dd>
+          <dt class="text-ink-500">Findings</dt><dd class="text-ink-800">{{ scan.finding_count }}</dd>
+        </dl>
+        {% if fallback %}
+        <div class="mt-4 rounded-lg border border-high-500 bg-high-50 px-3 py-3">
+          <p class="flex items-center gap-2 text-xs font-medium text-ink-900">{{ ui.icon("alert-triangle", "h-4 w-4 text-high-700") }} Fallback used</p>
+          <dl class="mt-2 grid grid-cols-[112px_minmax(0,1fr)] gap-x-4 gap-y-2 text-xs">
+            <dt class="text-ink-500">Provider</dt><dd class="text-ink-800">{{ fallback.provider_label if fallback.provider_label else "Configured fallback" }}</dd>
+            <dt class="text-ink-500">Details</dt><dd class="text-ink-800">{{ fallback.detail }}</dd>
+          </dl>
+        </div>
+        {% endif %}
+      </section>
+
+      <section class="hm-card overflow-hidden">
+        <div class="border-b border-ink-200 px-4 py-3"><h2 class="text-base font-semibold text-ink-900">Outputs</h2></div>
+        <div class="divide-y divide-ink-200 text-xs">
+          <a href="/scans/{{ scan.id }}/findings" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("shield", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">Findings</span><span class="text-ink-500">{{ scan.finding_count }} findings across all severities</span><span class="text-right text-ink-700">Open</span>{{ ui.icon("external", "h-4 w-4 text-ink-500") }}</a>
+          <a href="/scans/{{ scan.id }}/threat-model" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("shield", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">Threat model</span><span class="text-ink-500">Architecture, assumptions, threats, mitigations</span><span class="text-right text-ink-700">Open</span>{{ ui.icon("external", "h-4 w-4 text-ink-500") }}</a>
+          <a href="/scans/{{ scan.id }}/report" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("doc", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">Report</span><span class="text-ink-500">Print-ready scan report</span><span class="text-right text-ink-700">Open</span>{{ ui.icon("external", "h-4 w-4 text-ink-500") }}</a>
+          <a href="/scans/{{ scan.id }}/report?format=sarif" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("code", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">SARIF</span><span class="text-ink-500">Download SARIF 2.1.0</span><span class="text-right text-brand-700">Download</span>{{ ui.icon("download", "h-4 w-4 text-brand-700") }}</a>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  {% else %}
+  <section class="flex flex-col gap-4 rounded-xl border border-crit-500 bg-crit-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex min-w-0 items-start gap-4">
+      <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-crit-500 text-crit-700">{{ ui.icon("alert-triangle", "h-5 w-5") }}</span>
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-ink-900">{% if scan.status == "cancelled" %}Scan cancelled{% elif current_task.stage %}Scan failed during {{ current_task.stage | replace("_", " ") | title }}{% else %}Scan failed{% endif %}</h2>
+        <p class="mt-1 break-words text-xs leading-5 text-ink-800">{{ scan.error_message if scan.error_message else "The pipeline stopped before the scan could complete." }}</p>
+      </div>
+    </div>
+    <p class="shrink-0 text-xs text-ink-600">Last updated {{ scan.updated_at }}</p>
+  </section>
+
+  <section class="hm-card grid grid-cols-2 divide-x divide-ink-200 overflow-hidden sm:grid-cols-5">
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">Critical</p><p class="mt-1 text-[26px] font-semibold leading-none text-crit-500">{{ scan.critical_count }}</p></div>
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">High</p><p class="mt-1 text-[26px] font-semibold leading-none text-high-500">{{ scan.high_count }}</p></div>
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">Medium</p><p class="mt-1 text-[26px] font-semibold leading-none text-med-500">{{ scan.medium_count }}</p></div>
+    <div class="px-4 py-3 text-center"><p class="text-xs text-ink-500">Low</p><p class="mt-1 text-[26px] font-semibold leading-none text-low-500">{{ scan.low_count }}</p></div>
+    <div class="col-span-2 border-t border-ink-200 px-4 py-3 text-center sm:col-span-1 sm:border-t-0"><p class="text-xs text-ink-500">Total</p><p class="mt-1 text-[26px] font-semibold leading-none text-ink-900">{{ scan.finding_count }}</p></div>
+  </section>
+
+  <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+    <section class="hm-card px-4 py-4">
+      <div class="flex items-center gap-3">
+        <h2 class="text-base font-semibold text-ink-900">Pipeline stages</h2>
+        <span class="hm-badge border border-ink-200 bg-ink-50 text-ink-600">{{ stages | length }} stages</span>
+      </div>
+      <ol class="mt-3 divide-y divide-ink-200">
+        {% for stage in stages %}
+        <li class="py-2.5">
+          <div class="grid grid-cols-[22px_28px_minmax(0,1fr)_100px_100px] items-center gap-3 text-xs">
+            <span class="font-mono text-ink-500">{{ loop.index }}</span>
+            {{ stage_icon(stage.status, "h-6 w-6") }}
+            <span class="font-medium text-ink-900">{{ stage.label }}</span>
+            <span class="{{ 'text-low-700' if stage.status == 'completed' else 'text-crit-700' if stage.status == 'failed' else 'text-ink-500' }}">{{ stage.status | replace("_", " ") | title }}{% if stage.attempt > 1 %} <span class="ml-1 rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-[10px] text-ink-600">Attempt {{ stage.attempt }}</span>{% endif %}</span>
+            <span class="text-right font-mono text-[11px] text-ink-500">{{ stage.timestamp if stage.timestamp else "—" }}</span>
+          </div>
+          {% if stage.error %}<p class="ml-[62px] mt-1 break-words text-xs text-crit-700">{{ stage.error }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+      <details class="mt-5 rounded-lg border border-ink-200 bg-ink-50">
+        <summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+          {{ ui.icon("chevron-right", "h-4 w-4") }}
+          <span class="text-sm font-medium text-ink-900">Execution log</span>
+          <span class="text-xs text-ink-500">{{ activities | length }} events</span>
+        </summary>
+        <div class="border-t border-ink-200 px-4 py-3">
+          <ol class="space-y-3">
+            {% for activity in activities %}
+            <li class="grid gap-1 text-xs sm:grid-cols-[120px_minmax(0,1fr)]">
+              <span class="font-mono text-[11px] text-ink-500">{{ activity.timestamp }}</span>
+              <span><strong class="font-medium {{ 'text-crit-700' if activity.tone == 'error' else 'text-ink-800' }}">{{ activity.title }}</strong><span class="ml-2 text-ink-500">{{ activity.detail }}</span></span>
+            </li>
+            {% else %}
+            <li class="text-xs text-ink-500">No execution events were recorded.</li>
+            {% endfor %}
+          </ol>
+        </div>
+      </details>
+    </section>
+
+    <div class="space-y-4">
+      <section class="hm-card px-4 py-4">
+        <h2 class="text-base font-semibold text-ink-900">Failure details</h2>
+        {% for stage in stages %}
+        {% if stage.status == "failed" %}
+        <dl class="mt-3 grid grid-cols-[128px_minmax(0,1fr)] gap-x-4 gap-y-2 text-xs">
+          <dt class="text-ink-500">Stage</dt><dd class="font-medium text-ink-800">{{ stage.label }}</dd>
+          <dt class="text-ink-500">Attempt</dt><dd class="text-ink-800">{{ stage.attempt }}</dd>
+          <dt class="text-ink-500">Status</dt><dd class="text-crit-700">Failed</dd>
+          <dt class="text-ink-500">Timestamp</dt><dd class="text-ink-800">{{ stage.timestamp }}</dd>
+        </dl>
+        <div class="mt-3 rounded-lg border border-crit-500 bg-crit-50 px-3 py-3 font-mono text-xs leading-5 text-crit-700">{{ stage.error if stage.error else scan.error_message }}</div>
+        {% endif %}
+        {% else %}
+        <p class="mt-3 text-xs text-ink-500">No stage-level failure was recorded.</p>
+        {% endfor %}
+        {% if scan.status == "cancelled" %}
+        <p class="mt-3 text-xs text-ink-600">This run was cancelled before all pipeline stages completed.</p>
+        {% endif %}
+      </section>
+
+      <section class="hm-card overflow-hidden">
+        <div class="border-b border-ink-200 px-4 py-3"><h2 class="text-base font-semibold text-ink-900">Available outputs</h2></div>
+        <div class="divide-y divide-ink-200 text-xs">
+          <a href="/scans/{{ scan.id }}/findings" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("shield", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">Findings</span><span class="text-ink-500">{{ scan.finding_count }} findings persisted before failure</span><span class="text-right text-ink-700">Open</span>{{ ui.icon("external", "h-4 w-4 text-ink-500") }}</a>
+          <a href="/scans/{{ scan.id }}/threat-model" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("shield", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">Threat model</span><span class="text-ink-500">Available if generated during Tyr</span><span class="text-right text-ink-700">Open</span>{{ ui.icon("external", "h-4 w-4 text-ink-500") }}</a>
+          <a href="/scans/{{ scan.id }}/report" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("doc", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">Report</span><span class="text-ink-500">Print-ready partial scan report</span><span class="text-right text-ink-700">Open</span>{{ ui.icon("external", "h-4 w-4 text-ink-500") }}</a>
+          <a href="/scans/{{ scan.id }}/report?format=sarif" class="grid grid-cols-[28px_104px_minmax(0,1fr)_64px_20px] items-center gap-2 px-4 py-3 hover:bg-ink-50">{{ ui.icon("code", "h-5 w-5 text-ink-700") }}<span class="font-medium text-ink-900">SARIF</span><span class="text-ink-500">Download persisted findings</span><span class="text-right text-brand-700">Download</span>{{ ui.icon("download", "h-4 w-4 text-brand-700") }}</a>
+        </div>
+        <div class="flex items-center gap-2 border-t border-ink-200 bg-ink-50 px-4 py-2 text-xs text-ink-500">{{ ui.icon("alert-triangle", "h-4 w-4") }} Retry starts a new scan for this repository.</div>
+      </section>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+window.HeimdallScanActions = {
+  async request(url, options) {
+    if (window.HeimdallUI && window.HeimdallUI.fetch) {
+      return window.HeimdallUI.fetch(url, options);
+    }
+    return window.fetch(url, { credentials: 'same-origin', ...options });
+  },
+
+  async cancel(scanId, button) {
+    if (!window.confirm('Cancel this scan? Completed work and persisted findings will be retained.')) return;
+    const label = button.dataset.label || 'Cancel scan';
+    button.disabled = true;
+    button.textContent = 'Cancelling…';
+    try {
+      const response = await this.request('/api/scans/' + scanId + '/cancel', { method: 'POST' });
+      if (!response.ok) throw new Error('Unable to cancel scan');
+      window.location.reload();
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = label;
+      if (window.HeimdallUI) window.HeimdallUI.error(error.message);
+    }
+  },
+
+  async retry(repoId, button) {
+    const label = button.dataset.label || 'Retry';
+    button.disabled = true;
+    button.textContent = 'Starting…';
+    try {
+      const response = await this.request('/api/repos/' + repoId + '/scan', { method: 'POST' });
+      const payload = await response.json().catch(() => null);
+      const nextId = payload && payload.data && payload.data.id;
+      if (!response.ok || !nextId) throw new Error((payload && payload.error && (payload.error.message || payload.error)) || 'Unable to start scan');
+      window.location.href = '/scans/' + nextId;
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = label;
+      if (window.HeimdallUI) window.HeimdallUI.error(error.message);
+    }
+  }
+};
+
+{% if scan.is_live %}
+window.HeimdallLiveScan = {
+  escape(value) {
+    return String(value == null ? '' : value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  },
+
+  humanize(value) {
+    return String(value || '').split('_').filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+  },
+
+  formatTime(value) {
+    if (!value) return 'Just now';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(date);
+  },
+
+  stageIcon(status) {
+    if (status === 'completed') return '<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-low-500 bg-low-50 text-low-700"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 10.5l3.5 3.5L16 6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+    if (status === 'running') return '<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-brand-500 bg-brand-50 text-brand-700"><span class="h-2.5 w-2.5 animate-pulse rounded-full bg-brand-500"></span></span>';
+    if (status === 'failed') return '<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-crit-500 bg-crit-50 text-crit-700"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 5l10 10M15 5 5 15" stroke-linecap="round"/></svg></span>';
+    return '<span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-ink-300 bg-white text-ink-500"><svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l2.6 1.6" stroke-linecap="round"/></svg></span>';
+  },
+
+  statusTextClass(status) {
+    if (status === 'completed') return 'text-low-700';
+    if (status === 'running') return 'text-brand-700';
+    if (status === 'failed') return 'text-crit-700';
+    return 'text-ink-500';
+  },
+
+  toneClasses(tone) {
+    if (tone === 'success') return ['text-low-700', 'bg-low-500'];
+    if (tone === 'warning') return ['text-high-700', 'bg-high-500'];
+    if (tone === 'active') return ['text-brand-700', 'bg-brand-500'];
+    if (tone === 'error') return ['text-crit-700', 'bg-crit-500'];
+    return ['text-ink-500', 'bg-ink-400'];
+  },
+
+  renderStages(stages) {
+    const target = document.getElementById('scan-stage-list');
+    if (!target) return;
+    target.innerHTML = stages.map((stage, index) => `
+      <div data-stage-row="${this.escape(stage.stage)}" data-status="${this.escape(stage.status)}" class="min-w-0 py-1">
+        <div class="flex items-start gap-3">
+          <span class="pt-1 font-mono text-[11px] text-ink-500">${index + 1}</span>
+          ${this.stageIcon(stage.status)}
+          <div class="min-w-0">
+            <p class="truncate text-xs font-medium text-ink-900">${this.escape(stage.label || this.humanize(stage.stage))}</p>
+            <p class="mt-1 text-xs ${this.statusTextClass(stage.status)}">${this.escape(this.humanize(stage.status))}</p>
+            ${stage.attempt > 0 ? `<p class="mt-1 text-[11px] text-ink-500">attempt ${this.escape(stage.attempt)}</p>` : ''}
+          </div>
+        </div>
+      </div>`).join('');
+  },
+
+  renderActivity(activity) {
+    const target = document.getElementById('scan-activity-feed');
+    if (!target) return;
+    if (!activity.length) {
+      target.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-sm text-ink-500">Execution events will appear here as the pipeline advances.</td></tr>';
+      return;
+    }
+    target.innerHTML = activity.map((item) => {
+      const tone = item.tone || (item.status === 'completed' ? 'success' : item.status === 'failed' ? 'error' : item.status === 'running' ? 'active' : 'neutral');
+      const classes = this.toneClasses(tone);
+      const progress = typeof item.progress_pct === 'number' ? ` ${item.progress_pct}%` : '';
+      return `<tr data-activity-key="${this.escape(item.key)}">
+        <td class="whitespace-nowrap px-4 py-3 text-xs text-ink-600">${this.escape(this.formatTime(item.timestamp))}</td>
+        <td class="px-3 py-3 font-mono text-[11px] text-ink-600">${this.escape(item.stage || 'system')}</td>
+        <td class="px-3 py-3 text-xs font-medium text-ink-800">${this.escape(item.title || this.humanize(item.event_type))}</td>
+        <td class="px-3 py-3 text-xs leading-4 text-ink-600">${this.escape(item.detail)}</td>
+        <td class="px-3 py-3"><span class="inline-flex items-center gap-2 text-xs font-medium ${classes[0]}"><span class="h-2 w-2 rounded-full ${classes[1]}"></span>${this.escape(this.humanize(item.status || tone))}${progress}</span></td>
+      </tr>`;
+    }).join('');
+  },
+
+  apply(snapshot) {
+    if (!snapshot || !snapshot.scan) return;
+    if (!snapshot.scan.is_live) {
+      this.stop();
+      window.location.reload();
+      return;
+    }
+
+    const task = snapshot.current_task || {};
+    const progress = typeof task.progress_pct === 'number' ? Math.max(0, Math.min(100, task.progress_pct)) : 0;
+    document.getElementById('scan-current-task-title').textContent = task.title || 'Live execution';
+    document.getElementById('scan-current-task-detail').textContent = task.detail || 'Waiting for the next pipeline event.';
+    document.getElementById('scan-current-task-progress-label').textContent = progress + '%';
+    document.getElementById('scan-current-task-progress-bar').style.width = progress + '%';
+    document.getElementById('scan-last-updated').textContent = 'Updated ' + this.formatTime(snapshot.scan.updated_at);
+
+    const counts = snapshot.counts || {};
+    const countIds = { total: 'scan-count-total', critical: 'scan-count-critical', high: 'scan-count-high', medium: 'scan-count-medium', low: 'scan-count-low' };
+    Object.entries(countIds).forEach(([key, id]) => {
+      if (typeof counts[key] !== 'undefined') document.getElementById(id).textContent = counts[key];
+    });
+    if (typeof counts.total !== 'undefined') document.getElementById('scan-output-findings').textContent = counts.total;
+
+    this.renderFallback(snapshot.fallback || null);
+
+    this.renderStages(snapshot.stages || []);
+    this.renderActivity(snapshot.activity || []);
+  },
+
+  renderFallback(fallback) {
+    const active = !!(fallback && fallback.used);
+    const pill = document.getElementById('scan-fallback-pill');
+    if (pill) {
+      pill.classList.toggle('hidden', !active);
+      if (active) {
+        const label = fallback.provider_label ? ' • ' + fallback.provider_label : '';
+        const pillLabel = document.getElementById('scan-fallback-pill-label');
+        if (pillLabel) pillLabel.textContent = 'Fallback used' + label;
+        pill.title = fallback.detail || '';
+      }
+    }
+    const fallbackRow = document.getElementById('scan-fallback-row');
+    if (fallbackRow) {
+      fallbackRow.classList.toggle('hidden', !active);
+      if (active) {
+        document.getElementById('scan-fallback-provider').textContent = fallback.provider_label ? ' • ' + fallback.provider_label : '';
+        document.getElementById('scan-fallback-detail').textContent = fallback.detail || 'The configured fallback continued this stage.';
+        document.getElementById('scan-fallback-time').textContent = this.formatTime(fallback.timestamp);
+      }
+    }
+  },
+
+  schedule(delay = 100) {
+    window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = window.setTimeout(() => this.refresh(), delay);
+  },
+
+  async refresh() {
+    if (this.refreshing) {
+      this.pending = true;
+      return;
+    }
+    this.refreshing = true;
+    try {
+      const response = await window.fetch(this.root.dataset.liveUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload && payload.data) this.apply(payload.data);
+    } finally {
+      this.refreshing = false;
+      if (this.pending) {
+        this.pending = false;
+        this.schedule(0);
+      }
+    }
+  },
+
+  connect() {
+    if (this.stream) return;
+    this.stream = new EventSource(this.root.dataset.streamUrl);
+    ['status_change', 'stage_update', 'finding_added', 'scan_complete', 'error'].forEach((eventName) => {
+      this.stream.addEventListener(eventName, () => this.schedule(50));
+    });
+    this.stream.onerror = () => {
+      if (this.stream) this.stream.close();
+      this.stream = null;
+      this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
+    };
+  },
+
+  stop() {
+    window.clearInterval(this.pollTimer);
+    window.clearTimeout(this.refreshTimer);
+    window.clearTimeout(this.reconnectTimer);
+    if (this.stream) this.stream.close();
+    this.stream = null;
+  },
+
+  init() {
+    this.root = document.getElementById('scan-page-root');
+    if (!this.root || this.root.dataset.scanLive !== 'true') return;
+    this.refreshing = false;
+    this.pending = false;
+    this.pollTimer = window.setInterval(() => this.schedule(0), 2500);
+    this.connect();
+    this.schedule(0);
+    window.addEventListener('beforeunload', () => this.stop(), { once: true });
+  }
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => window.HeimdallLiveScan.init(), { once: true });
+} else {
+  window.HeimdallLiveScan.init();
+}
+{% endif %}
+</script>
+{% endblock %}

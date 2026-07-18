@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block title %}Sign In · Heimdall{% endblock %}
+
+{% block body %}
+<div class="min-h-screen flex flex-col lg:flex-row">
+
+    {# ── Left brand panel ── #}
+    <div class="hidden lg:flex lg:w-[42%] relative flex-col items-center justify-center bg-sidebar px-10 py-16">
+        <div class="flex flex-col items-center text-center">
+            {{ ui.logo("light", "w-36 h-36") }}
+            <h1 class="mt-6 text-4xl font-bold tracking-tight text-white">Heimdall</h1>
+            <p class="mt-2 text-base text-ink-300">Agentic code security review</p>
+            <p class="mt-10 max-w-xs text-sm text-ink-400">Your code stays in view. Heimdall keeps watch.</p>
+        </div>
+        <div class="absolute bottom-10 left-10 flex items-center gap-2 text-sm text-ink-300">
+            <span class="h-2 w-2 rounded-full bg-low-500"></span>
+            Workspace access secured
+        </div>
+    </div>
+
+    {# ── Right form panel ── #}
+    <div class="flex flex-1 items-center justify-center bg-paper px-6 py-16">
+        <div class="w-full max-w-md">
+            <h2 class="text-3xl font-bold tracking-tight text-ink-900">Welcome back</h2>
+            <p class="mt-2 text-sm text-ink-500">Sign in to your Heimdall workspace.</p>
+
+            <div class="mt-8 space-y-3">
+                <a href="/api/auth/github/authorize" hx-boost="false"
+                   class="hm-btn-secondary w-full justify-between px-4 py-3.5">
+                    <span class="flex items-center gap-3">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-100">
+                            {{ ui.provider_mark("github", "w-5 h-5") }}
+                        </span>
+                        <span class="text-sm font-medium text-ink-900">Continue with GitHub</span>
+                    </span>
+                    <span class="text-xs font-medium uppercase tracking-wide text-ink-400">OAuth</span>
+                </a>
+                <a href="/api/auth/gitlab/authorize" hx-boost="false"
+                   class="hm-btn-secondary w-full justify-between px-4 py-3.5">
+                    <span class="flex items-center gap-3">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-ink-100">
+                            {{ ui.provider_mark("gitlab", "w-5 h-5") }}
+                        </span>
+                        <span class="text-sm font-medium text-ink-900">Continue with GitLab</span>
+                    </span>
+                    <span class="text-xs font-medium uppercase tracking-wide text-ink-400">OAuth</span>
+                </a>
+            </div>
+
+            <div class="relative my-7">
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-ink-200"></div>
+                </div>
+                <div class="relative flex justify-center">
+                    <span class="bg-paper px-3 text-xs font-medium uppercase tracking-wide text-ink-400">or sign in with email</span>
+                </div>
+            </div>
+
+            <div id="login-error" class="mb-4 hidden rounded-lg border border-crit-100 bg-crit-50 px-4 py-3">
+                <p id="login-error-text" class="text-sm text-crit-700"></p>
+            </div>
+
+            <form id="login-form" class="space-y-4">
+                <label class="block">
+                    <span class="mb-1.5 block text-sm font-medium text-ink-900">Email address</span>
+                    <input type="email" name="email" id="email" required autocomplete="email"
+                           placeholder="you@company.com" class="hm-input">
+                </label>
+
+                <label class="block">
+                    <span class="mb-1.5 block text-sm font-medium text-ink-900">Password</span>
+                    <div class="relative">
+                        <input type="password" name="password" id="password" required autocomplete="current-password"
+                               placeholder="Enter your password" class="hm-input pr-11">
+                        <button type="button" id="toggle-password" aria-label="Show password"
+                                class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-ink-400 hover:text-ink-600">
+                            {{ ui.icon("eye", "w-5 h-5") }}
+                        </button>
+                    </div>
+                </label>
+
+                <button type="submit" id="login-btn" class="hm-btn-primary w-full justify-center py-3 text-sm font-semibold">
+                    Sign in
+                </button>
+            </form>
+
+            <p class="mt-6 text-center text-sm text-ink-500">
+                New to Heimdall?
+                <a href="/register" class="font-medium text-brand-600 hover:text-brand-700">Create account</a>
+            </p>
+
+            <p class="mt-4 flex items-center justify-center gap-2 text-xs text-ink-400">
+                {{ ui.icon("key", "w-4 h-4") }}
+                Provider sign-in also connects repository access.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('toggle-password').addEventListener('click', function () {
+    const input = document.getElementById('password');
+    input.type = input.type === 'password' ? 'text' : 'password';
+});
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('login-error');
+    const errorText = document.getElementById('login-error-text');
+    const btn = document.getElementById('login-btn');
+    errorEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try {
+        const csrfCookie = document.cookie.split('; ').find(c => c.startsWith('_csrf='));
+        const csrfToken = csrfCookie ? csrfCookie.split('=')[1] : '';
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-Token': csrfToken,
+            },
+            body: JSON.stringify({
+                email: document.getElementById('email').value,
+                password: document.getElementById('password').value,
+            }),
+        });
+
+        const redirect = res.headers.get('HX-Redirect');
+        if (redirect) {
+            window.location.href = redirect;
+            return;
+        }
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            const next = new URLSearchParams(window.location.search).get('next');
+            if (next) {
+                try {
+                    const target = new URL(next, window.location.origin);
+                    if (target.origin === window.location.origin || target.hostname === window.location.hostname) {
+                        window.location.href = target.href;
+                        return;
+                    }
+                } catch (_) {}
+            }
+            window.location.href = '/';
+        } else {
+            const message = data && data.error
+                ? (typeof data.error === 'string'
+                    ? data.error
+                    : (data.error.message || 'Login failed'))
+                : 'Login failed';
+            errorText.textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+    } catch (err) {
+        errorText.textContent = 'Network error. Please try again.';
+        errorEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+    }
+});
+</script>
+{% endblock %}

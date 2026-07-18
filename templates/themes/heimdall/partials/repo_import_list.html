@@ -1,0 +1,80 @@
+{% import "macros.html" as ui %}
+<div class="hm-card overflow-hidden">
+  {% if error_message %}
+  <div class="flex items-start gap-2 border-b border-ink-200 bg-med-50 px-5 py-3 text-sm text-med-700">
+    {{ ui.icon("alert-triangle", "w-4 h-4 shrink-0 mt-0.5") }}
+    <span>{{ error_message }}</span>
+  </div>
+  {% endif %}
+
+  {% if repos | length == 0 %}
+  <div class="px-5 py-14 text-center">
+    <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-ink-100 text-ink-400">
+      {{ ui.icon("search", "w-5 h-5") }}
+    </div>
+    <p class="mt-3 text-sm font-medium text-ink-900">{{ empty_title }}</p>
+    <p class="mt-1 text-sm text-ink-500">{{ empty_message }}</p>
+  </div>
+  {% else %}
+  <div class="grid grid-cols-[minmax(0,2.3fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-4 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
+    <div>Repository</div>
+    <div>Language</div>
+    <div>Default branch</div>
+    <div>Visibility</div>
+    <div class="text-right">Action</div>
+  </div>
+  <div class="divide-y divide-ink-200">
+    {% for repo in repos %}
+    <div class="grid grid-cols-[minmax(0,2.3fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,0.8fr)] items-center gap-4 px-5 py-4">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-ink-200 bg-white">
+          {{ ui.provider_mark(provider, "w-5 h-5") }}
+        </span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold text-ink-900">{{ repo.full_name }}</p>
+          <p class="mt-0.5 truncate text-sm text-ink-500">{{ repo.description or "No description provided." }}</p>
+        </div>
+      </div>
+
+      <div class="text-sm text-ink-600">
+        {% if repo.language %}
+        <span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-brand-500"></span>{{ repo.language }}</span>
+        {% else %}
+        <span class="text-ink-400">Unknown</span>
+        {% endif %}
+      </div>
+
+      <div class="truncate text-sm font-mono text-ink-600">{{ repo.default_branch }}</div>
+
+      <div>
+        {% if repo.private %}
+        <span class="hm-badge border border-ink-200 bg-white text-ink-600">{{ ui.icon("key", "w-3.5 h-3.5") }}Private</span>
+        {% else %}
+        <span class="hm-badge border border-ink-200 bg-white text-ink-600">{{ ui.icon("globe", "w-3.5 h-3.5") }}Public</span>
+        {% endif %}
+      </div>
+
+      <div class="flex justify-end">
+        {% if repo.already_connected %}
+        <span class="hm-badge bg-low-50 text-low-700">
+          <span class="h-1.5 w-1.5 rounded-full bg-low-500"></span>Connected
+        </span>
+        {% else %}
+        <form action="/api/repos/import" method="post" hx-post="/api/repos/import" hx-swap="none"
+              hx-on::after-request="HeimdallRepoConnect.handleCreateResponse(event)" class="m-0">
+          <input type="hidden" name="provider" value="{{ provider }}">
+          <input type="hidden" name="full_name" value="{{ repo.full_name }}">
+          <input type="hidden" name="clone_url" value="{{ repo.clone_url }}">
+          <input type="hidden" name="name" value="{{ repo.full_name }}">
+          <input type="hidden" name="default_branch" value="{{ repo.default_branch }}">
+          <button type="submit" class="hm-btn-primary px-3 py-1.5 text-xs">
+            {{ ui.icon("plus", "w-3.5 h-3.5") }}Add
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

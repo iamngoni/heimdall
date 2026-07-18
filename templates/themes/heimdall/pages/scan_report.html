@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block title %}Heimdall Security Scan Report — {{ repo.name }}{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-ink-150 py-10 print:bg-white print:py-0">
+
+  {# ── Screen-only print toolbar ── #}
+  <div class="fixed right-4 top-4 z-50 flex items-center gap-3 print:hidden">
+    <span class="hidden text-sm text-ink-500 sm:inline">Heimdall report &middot; {{ repo.name }}</span>
+    <button onclick="window.print()" class="inline-flex items-center gap-2 rounded-full bg-ink-900 px-4 py-2 text-sm font-semibold text-white shadow-overlay transition hover:bg-ink-800">
+      {{ ui.icon("download", "w-4 h-4") }} Save as PDF
+    </button>
+  </div>
+
+  {# ═══════════════════════ PAGE 1: cover ═══════════════════════ #}
+  <section id="page-cover" class="mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-[14mm_16mm] shadow-card print:mx-0 print:mb-0 print:w-auto print:max-w-none print:break-after-page print:p-0 print:shadow-none">
+
+    <header class="mb-8 flex items-center justify-between border-b border-ink-200 pb-4">
+      <div class="flex items-center gap-3">
+        {{ ui.logo("dark", "w-9 h-9") }}
+        <span class="text-xl font-bold tracking-tightest text-ink-900">Heimdall</span>
+      </div>
+      <span class="text-sm text-ink-500">Security scan report</span>
+    </header>
+
+    <h1 class="font-serif text-[42px] font-bold leading-[1.05] tracking-tightest text-ink-900">Security Scan Report</h1>
+    <p class="mb-8 mt-2 font-serif text-xl text-brand-600">{{ repo.name }}</p>
+
+    <div class="mb-8 grid grid-cols-2 gap-x-10 gap-y-3 text-[13px]">
+      <div><span class="font-semibold text-ink-900">Scan ID:</span> <span class="ml-1 font-mono text-ink-600">{{ scan.id }}</span></div>
+      <div><span class="font-semibold text-ink-900">Commit:</span> <span class="ml-1 font-mono text-ink-600">{{ scan.commit_short | default("—") }}</span></div>
+      <div><span class="font-semibold text-ink-900">Status:</span> <span class="ml-1 text-ink-600">{{ scan.status | default("completed") | capitalize }}</span></div>
+      <div><span class="font-semibold text-ink-900">Branch:</span> <span class="ml-1 text-ink-600">{{ repo.default_branch }}</span></div>
+      <div><span class="font-semibold text-ink-900">Started:</span> <span class="ml-1 text-ink-600">{{ scan.started_at | default("—") }}</span></div>
+      <div><span class="font-semibold text-ink-900">Generated:</span> <span class="ml-1 text-ink-600">{{ generated_at }}</span></div>
+      <div><span class="font-semibold text-ink-900">Completed:</span> <span class="ml-1 text-ink-600">{{ scan.completed_at | default("—") }}</span></div>
+      <div><span class="font-semibold text-ink-900">Scan type:</span> <span class="ml-1 text-ink-600">{{ scan.scan_type | default("full") | replace("_", " ") | capitalize }}</span></div>
+    </div>
+
+    <hr class="mb-6 border-ink-200">
+
+    <h2 class="mb-4 font-serif text-2xl font-bold text-ink-900">Severity summary</h2>
+
+    <div class="mb-4 grid grid-cols-5 text-center">
+      <div class="border-r border-ink-200 px-2">
+        <p class="text-xs font-semibold uppercase tracking-wide text-ink-500">Critical</p>
+        <p class="mt-1 text-3xl font-bold text-crit-500">{{ severity_summary.critical }}</p>
+      </div>
+      <div class="border-r border-ink-200 px-2">
+        <p class="text-xs font-semibold uppercase tracking-wide text-ink-500">High</p>
+        <p class="mt-1 text-3xl font-bold text-high-500">{{ severity_summary.high }}</p>
+      </div>
+      <div class="border-r border-ink-200 px-2">
+        <p class="text-xs font-semibold uppercase tracking-wide text-ink-500">Medium</p>
+        <p class="mt-1 text-3xl font-bold text-med-500">{{ severity_summary.medium }}</p>
+      </div>
+      <div class="border-r border-ink-200 px-2">
+        <p class="text-xs font-semibold uppercase tracking-wide text-ink-500">Low</p>
+        <p class="mt-1 text-3xl font-bold text-low-500">{{ severity_summary.low }}</p>
+      </div>
+      <div class="px-2">
+        <p class="text-xs font-semibold uppercase tracking-wide text-ink-500">Total</p>
+        <p class="mt-1 text-3xl font-bold text-ink-900">{{ severity_summary.total }}</p>
+      </div>
+    </div>
+
+    {% if severity_summary.total > 0 %}
+    <div class="mb-2 flex h-2.5 overflow-hidden rounded-full">
+      <div class="bg-crit-500" style="width:{{ severity_summary.critical_pct }}%"></div>
+      <div class="bg-high-500" style="width:{{ severity_summary.high_pct }}%"></div>
+      <div class="bg-med-500" style="width:{{ severity_summary.medium_pct }}%"></div>
+      <div class="bg-low-500" style="width:{{ severity_summary.low_pct }}%"></div>
+    </div>
+    <div class="mb-8 grid grid-cols-5 text-center text-xs text-ink-500">
+      <span>{{ "%.0f"|format(severity_summary.critical_pct) }}%</span>
+      <span>{{ "%.0f"|format(severity_summary.high_pct) }}%</span>
+      <span>{{ "%.0f"|format(severity_summary.medium_pct) }}%</span>
+      <span>{{ "%.0f"|format(severity_summary.low_pct) }}%</span>
+      <span></span>
+    </div>
+    {% else %}
+    <p class="mb-8 text-sm text-ink-500">No open findings on this scan.</p>
+    {% endif %}
+
+    <hr class="mb-6 border-ink-200">
+
+    <div class="mb-6 grid grid-cols-[1fr_130px] items-center gap-8">
+      <div>
+        <h2 class="mb-3 font-serif text-2xl font-bold text-ink-900">Executive summary</h2>
+        <p class="text-[13px] leading-relaxed text-ink-700">{{ executive_summary }}</p>
+      </div>
+      <div class="relative flex h-[130px] w-[130px] shrink-0 items-center justify-center">
+        <svg viewBox="0 0 120 120" class="h-[130px] w-[130px]">
+          <circle cx="60" cy="60" r="48" stroke="#E4E7E5" stroke-width="12" fill="none"/>
+          <circle cx="60" cy="60" r="48" stroke="#0A6C6C" stroke-width="12" fill="none"
+                  stroke-dasharray="{{ score.dasharray }}" stroke-linecap="round"
+                  transform="rotate(-90 60 60)"/>
+        </svg>
+        <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span class="text-[26px] font-bold leading-none text-ink-900">{{ score.value }}<span class="text-sm font-medium text-ink-500"> / 100</span></span>
+          <span class="mt-1 text-[10px] font-medium uppercase tracking-wide text-ink-500">Security score</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="mb-4 text-[12px] leading-relaxed text-ink-500">
+      Score starts at 100 and applies confidence-weighted severity deductions.
+      Validated PoCs carry a 1.3&times; multiplier. Dismissed and false-positive findings are excluded.
+    </p>
+
+    <div class="mb-8 grid grid-cols-4 gap-4 text-[13px]">
+      <div><span class="mr-1.5 inline-block h-2 w-2 rounded-full bg-crit-500"></span><span class="font-medium text-ink-700">Critical</span><p class="mt-0.5 font-mono text-ink-900">&minus;{{ score.critical_loss }}</p></div>
+      <div><span class="mr-1.5 inline-block h-2 w-2 rounded-full bg-high-500"></span><span class="font-medium text-ink-700">High</span><p class="mt-0.5 font-mono text-ink-900">&minus;{{ score.high_loss }}</p></div>
+      <div><span class="mr-1.5 inline-block h-2 w-2 rounded-full bg-med-500"></span><span class="font-medium text-ink-700">Medium</span><p class="mt-0.5 font-mono text-ink-900">&minus;{{ score.medium_loss }}</p></div>
+      <div><span class="mr-1.5 inline-block h-2 w-2 rounded-full bg-low-500"></span><span class="font-medium text-ink-700">Low</span><p class="mt-0.5 font-mono text-ink-900">&minus;{{ score.low_loss }}</p></div>
+    </div>
+
+    <hr class="mb-4 border-ink-200">
+
+    <h3 class="mb-1 font-serif text-base font-bold text-ink-900">Report contents</h3>
+    <p class="text-sm text-ink-500">
+      {% if threat_model %}<a href="#page-threat-model" class="text-brand-600 hover:text-brand-700">Threat model</a> &middot; {% endif %}
+      <a href="#page-findings" class="text-brand-600 hover:text-brand-700">Validated findings</a>
+    </p>
+
+    <footer class="mt-auto flex items-center justify-between border-t border-ink-200 pt-4 text-xs text-ink-500">
+      <span>Heimdall Security Scan Report &middot; {{ repo.name }}</span>
+      <span>{{ scan.short_id }} &middot; 1</span>
+    </footer>
+  </section>
+
+  {# ═══════════════════════ PAGE 2: threat model ═══════════════════════ #}
+  {% if threat_model %}
+  <section id="page-threat-model" class="mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-[14mm_16mm] shadow-card print:mx-0 print:mb-0 print:w-auto print:max-w-none print:break-after-page print:p-0 print:shadow-none">
+
+    <h2 class="mb-4 font-serif text-2xl font-bold text-ink-900">Threat model</h2>
+    <hr class="mb-6 border-ink-700">
+
+    {% if threat_model.summary %}
+    <div class="mb-8 border-l-[3px] border-ink-700 pl-4">
+      <p class="text-[13px] leading-relaxed text-ink-700">{{ threat_model.summary }}</p>
+    </div>
+    {% endif %}
+
+    {% if threat_model.scope and threat_model.scope.subject %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("box", "w-4 h-4 text-ink-700") }} Scope</h3>
+      <div class="overflow-hidden rounded-lg border border-ink-200">
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ threat_model.scope.subject }}
+            {% if threat_model.scope.system_type %}<span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ threat_model.scope.system_type }}</span>{% endif %}
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if threat_model.scope.assets and threat_model.scope.assets | length > 0 %}<span class="block text-ink-500">Assets: {% for item in threat_model.scope.assets %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+            {% if threat_model.scope.entry_points and threat_model.scope.entry_points | length > 0 %}<span class="block text-ink-500">Entry points: {% for item in threat_model.scope.entry_points %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.assumptions and threat_model.assumptions | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("alert-triangle", "w-4 h-4 text-ink-700") }} Assumptions</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for a in threat_model.assumptions %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">{{ a.statement | default("Assumption") }}</div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if a.why_it_matters %}{{ a.why_it_matters }}{% endif %}
+            {% if a.how_to_validate %}<span class="mt-0.5 block text-ink-500">Validate: {{ a.how_to_validate }}</span>{% endif %}
+            {% if a.stale_if %}<span class="mt-0.5 block text-ink-500">Stale if: {{ a.stale_if }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.boundaries and threat_model.boundaries | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("box", "w-4 h-4 text-ink-700") }} Trust boundaries</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for b in threat_model.boundaries %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ b.name | default("Boundary") }}
+            {% if b.from_zone or b.to_zone %}<span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ b.from_zone | default("—") }} &rarr; {{ b.to_zone | default("—") }}</span>{% endif %}
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">{{ b.description | default("") }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.surfaces and threat_model.surfaces | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("radar", "w-4 h-4 text-ink-700") }} Attack surfaces</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for s in threat_model.surfaces %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ s.name | default("Surface") }}
+            {% if s.file %}<span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ s.file }}{% if s.line %}:{{ s.line }}{% endif %}</span>{% endif %}
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if s.endpoint %}<code class="rounded bg-ink-50 px-1.5 py-0.5 font-mono text-[11px]">{{ s.endpoint }}</code>{% endif %}
+            {% if s.risk_level %}{{ ui.sev_pill(s.risk_level) }}{% endif %}
+            {% if s.description %}<span class="mt-0.5 block text-ink-500">{{ s.description }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.threats and threat_model.threats | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("shield", "w-4 h-4 text-ink-700") }} Threats</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for t in threat_model.threats %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ t.name | default("Threat") }}
+            {% if t.related_surface %}<span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ t.related_surface }}</span>{% endif %}
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if t.risk_level %}{{ ui.sev_pill(t.risk_level) }}{% endif %}
+            {% if t.description %}<span class="mt-0.5 block text-ink-500">{{ t.description }}</span>{% endif %}
+            {% if t.stride and t.stride | length > 0 %}<span class="mt-0.5 block text-ink-500">STRIDE: {% for item in t.stride %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+            {% if t.mitre_attack and t.mitre_attack | length > 0 %}
+            <span class="mt-0.5 block text-ink-500">ATT&amp;CK: {% for m in t.mitre_attack %}{{ m.tactic }}{% if m.technique_id %} {{ m.technique_id }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.data_flows and threat_model.data_flows | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("git-branch", "w-4 h-4 text-ink-700") }} Data flows</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for d in threat_model.data_flows %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ d.name | default("Flow") }}
+            <span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ d.source | default("source") }} &rarr; {{ d.sink | default("sink") }}</span>
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if d.description %}{{ d.description }}{% endif %}
+            {% if d.sensitive_data %}<span class="mt-0.5 block text-ink-500">Sensitive data: {{ d.sensitive_data }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.mitigations and threat_model.mitigations | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("check-circle", "w-4 h-4 text-ink-700") }} Mitigations</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for m in threat_model.mitigations %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ m.threat | default("Threat") }}
+            {% if m.status %}<span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ m.status }}</span>{% endif %}
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if m.action %}{{ m.action }}{% endif %}
+            {% if m.validation %}<span class="mt-0.5 block text-ink-500">Validate: {{ m.validation }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.validation_plan and threat_model.validation_plan | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("doc", "w-4 h-4 text-ink-700") }} Validation plan</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for v in threat_model.validation_plan %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ v.target | default("Validation") }}
+            {% if v.status %}<span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ v.status }}</span>{% endif %}
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if v.method %}{{ v.method }}{% endif %}
+            {% if v.expected_evidence %}<span class="mt-0.5 block text-ink-500">{{ v.expected_evidence }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if threat_model.assurance_claims and threat_model.assurance_claims | length > 0 %}
+    <div class="mb-8">
+      <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-ink-900">{{ ui.icon("check-circle", "w-4 h-4 text-ink-700") }} Assurance claims</h3>
+      <div class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200">
+        {% for c in threat_model.assurance_claims %}
+        <div class="grid grid-cols-[26%_1fr]">
+          <div class="bg-ink-50 p-3 text-[12px] font-semibold text-ink-900">
+            {{ c.claim | default("Claim") }}
+            {% if c.confidence %}<span class="mt-0.5 block text-[11px] font-medium text-ink-500">{{ c.confidence }} confidence</span>{% endif %}
+          </div>
+          <div class="p-3 text-[12px] leading-relaxed text-ink-700">
+            {% if c.evidence and c.evidence | length > 0 %}<span class="block text-ink-500">Evidence: {% for item in c.evidence %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+            {% if c.gaps and c.gaps | length > 0 %}<span class="mt-0.5 block text-ink-500">Gaps: {% for item in c.gaps %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <footer class="mt-auto flex items-center justify-between border-t border-ink-200 pt-4 text-xs text-ink-500">
+      <span>Heimdall Security Scan Report &middot; Threat Model</span>
+      <span>{{ scan.short_id }} &middot; 2</span>
+    </footer>
+  </section>
+  {% endif %}
+
+  {# ═══════════════════════ PAGE 3+: validated findings ═══════════════════════ #}
+  <section id="page-findings" class="mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-[14mm_16mm] shadow-card print:mx-0 print:mb-0 print:w-auto print:max-w-none print:p-0 print:shadow-none">
+
+    <h2 class="mb-4 font-serif text-2xl font-bold text-ink-900">Validated findings</h2>
+    <hr class="mb-6 border-ink-700">
+
+    {% if severity_summary.total > 0 %}
+    <div class="mb-6 flex gap-5 text-[12px] font-semibold text-ink-700">
+      <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full bg-crit-500"></span>{{ severity_summary.critical }} Critical</span>
+      <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full bg-high-500"></span>{{ severity_summary.high }} High</span>
+      <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full bg-med-500"></span>{{ severity_summary.medium }} Medium</span>
+      <span class="inline-flex items-center gap-1.5"><span class="h-3 w-3 rounded-full bg-low-500"></span>{{ severity_summary.low }} Low</span>
+    </div>
+    {% else %}
+    <div class="mb-6 rounded-lg border border-dashed border-ink-200 py-6 text-center text-sm text-ink-500">No open findings on this scan.</div>
+    {% endif %}
+
+    {% for bucket in finding_buckets %}
+    <div class="mb-3 flex items-center gap-3 border-t border-ink-200 pt-6 first:border-t-0 first:pt-0 print:break-after-avoid">
+      <h3 class="font-serif text-lg font-bold text-ink-900">{{ bucket.label }} severity</h3>
+      <span class="text-[11px] font-semibold text-ink-500">{{ bucket.count }} finding{{ "s" if bucket.count != 1 else "" }}</span>
+      {{ ui.sev_pill(bucket.severity) }}
+    </div>
+
+    {% for f in bucket.findings %}
+    <article class="mb-4 overflow-hidden rounded-lg border border-ink-200 break-inside-avoid-page">
+      <header class="flex flex-wrap items-center justify-between gap-2 bg-ink-50 px-4 py-2.5">
+        <div class="flex items-center gap-3">
+          {{ ui.sev_pill(f.severity) }}
+          <span class="text-[14px] font-bold text-ink-900">{{ f.display_index }}. {{ f.title }}</span>
+          {% if f.poc_validated %}<span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-low-700">{{ ui.icon("check", "w-3 h-3") }} Validated</span>{% endif %}
+        </div>
+        <span class="text-[11px] font-semibold text-ink-500">Confidence: {{ f.confidence | upper }} &middot; {{ f.confidence_pct }}%</span>
+      </header>
+
+      <div class="flex flex-wrap gap-3 border-b border-ink-200 bg-white px-4 py-2 font-mono text-[11px] text-ink-600">
+        <span>{{ f.file_path }}:{{ f.line_start }}</span>
+        {% if f.cwe_id %}<span class="text-ink-300">|</span><span>{{ f.cwe_id }}</span>{% endif %}
+        {% if f.cve_id %}<span class="text-ink-300">|</span><span>{{ f.cve_id }}</span>{% endif %}
+        {% if f.owasp_code %}<span class="text-ink-300">|</span><span>{{ f.owasp_code }} &ndash; {{ f.owasp_title }}</span>{% endif %}
+        <span class="text-ink-300">|</span><span>source: {{ f.source }}</span>
+      </div>
+
+      <div class="p-4">
+        {% if f.description %}
+        <p class="mb-1 text-[10px] font-bold uppercase tracking-wide text-ink-700">Description</p>
+        <p class="mb-3 text-[12.5px] leading-relaxed text-ink-800">{{ f.description }}</p>
+        {% endif %}
+
+        {% if f.code_snippet %}
+          {% set has_diff = f.suggested_patch and not f.suggested_patch_is_prose %}
+          <div class="mb-3 grid gap-3 {{ 'grid-cols-2' if has_diff else 'grid-cols-1' }}">
+            <div class="overflow-hidden rounded-lg border border-ink-200">
+              <p class="border-b border-ink-200 bg-ink-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-700">Vulnerable code</p>
+              <pre class="overflow-x-auto p-2 font-mono text-[10.5px] leading-relaxed">{% for line in f.code_snippet.lines %}<span class="block{% if line.number == f.line_start %} bg-crit-50{% endif %}"><span class="mr-2 inline-block w-8 select-none text-right text-ink-400">{{ line.number }}</span>{{ line.text }}{% if line.line_truncated %} …{% endif %}</span>
+{% endfor %}{% if f.code_snippet.truncated %}<span class="block bg-ink-50 px-3 py-1 text-center italic text-ink-500">… windowed around line {{ f.line_start }} of {{ f.code_snippet.original_line_count }} total lines …</span>{% endif %}</pre>
+            </div>
+            {% if has_diff %}
+            <div class="overflow-hidden rounded-lg border border-ink-200">
+              <p class="border-b border-ink-200 bg-ink-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-700">Suggested fix</p>
+              <pre class="overflow-x-auto p-2 font-mono text-[10.5px] leading-relaxed">{{ f.suggested_patch }}</pre>
+            </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {% if f.suggested_patch and f.suggested_patch_is_prose %}
+        <p class="mb-1 text-[10px] font-bold uppercase tracking-wide text-ink-700">Recommended remediation</p>
+        <div class="mb-3 rounded-lg border border-ink-200 bg-ink-50 p-3 text-[12px] leading-relaxed text-ink-800"><pre class="whitespace-pre-wrap font-sans">{{ f.suggested_patch }}</pre></div>
+        {% endif %}
+
+        {% if f.fix_summary %}
+        <p class="mb-1 mt-2 text-[10px] font-bold uppercase tracking-wide text-ink-700">Fix summary</p>
+        <p class="mb-3 text-[12.5px] leading-relaxed text-ink-800">{{ f.fix_summary }}</p>
+        {% endif %}
+
+        {% if f.agent_reasoning %}
+        <p class="mb-1 text-[10px] font-bold uppercase tracking-wide text-ink-700">Validation evidence</p>
+        <p class="mb-3 text-[12.5px] leading-relaxed text-ink-800">{{ f.agent_reasoning }}</p>
+        {% endif %}
+
+        {% if f.references and f.references | length > 0 %}
+        <div class="break-all text-[11px] leading-relaxed text-ink-500">
+          <strong class="text-ink-700">References:</strong>
+          {% for ref in f.references %}<a href="{{ ref }}" class="text-brand-600 hover:text-brand-700">{{ ref }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+    {% endfor %}
+
+    <footer class="mt-auto flex items-center justify-between border-t border-ink-200 pt-4 text-xs text-ink-500">
+      <span>Heimdall Security Scan Report &middot; Findings</span>
+      <span>{{ scan.short_id }} &middot; {{ "3" if threat_model else "2" }}</span>
+    </footer>
+  </section>
+
+</div>
+{% endblock %}

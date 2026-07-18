@@ -1,0 +1,154 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+{% set active_nav = "repositories" %}
+{% set breadcrumb = [{"label": "Repositories"}] %}
+{% block title %}Repositories · Heimdall{% endblock %}
+
+{% block content %}
+<div class="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold text-ink-900">Repositories</h1>
+    <p class="mt-1 text-sm text-ink-500">Connected codebases ready for scanning and review.</p>
+  </div>
+  <div class="mt-4 flex items-center gap-3 sm:mt-0">
+    <div class="relative">
+      <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400">{{ ui.icon("search", "w-4 h-4") }}</span>
+      <input id="repo-filter" type="search" placeholder="Filter this page" class="hm-input w-64 pl-9">
+    </div>
+    <a href="/repos/new" class="hm-btn-primary">{{ ui.icon("plus", "w-4 h-4") }}Add repository</a>
+  </div>
+</div>
+
+{# ── Provider connection status row ── #}
+<div class="mt-6 flex flex-wrap items-center gap-5 border-b border-ink-200 pb-5 text-sm">
+  <div class="flex items-center gap-2">
+    {{ ui.provider_mark("github", "w-5 h-5") }}
+    <span class="font-medium text-ink-900">GitHub</span>
+    <span class="inline-flex items-center gap-1.5 text-ink-500">
+      <span class="h-1.5 w-1.5 rounded-full {{ 'bg-low-500' if integrations.github.connected else 'bg-ink-300' }}"></span>
+      {{ "Connected" if integrations.github.connected else "Not connected" }}
+    </span>
+  </div>
+  <span class="h-4 w-px bg-ink-200"></span>
+  <div class="flex items-center gap-2">
+    {{ ui.provider_mark("gitlab", "w-5 h-5") }}
+    <span class="font-medium text-ink-900">GitLab</span>
+    <span class="inline-flex items-center gap-1.5 text-ink-500">
+      <span class="h-1.5 w-1.5 rounded-full {{ 'bg-low-500' if integrations.gitlab.connected else 'bg-ink-300' }}"></span>
+      {{ "Connected" if integrations.gitlab.connected else "Not connected" }}
+    </span>
+  </div>
+  <span class="h-4 w-px bg-ink-200"></span>
+  <div class="flex items-center gap-2">
+    {{ ui.provider_mark("bitbucket", "w-5 h-5") }}
+    <span class="font-medium text-ink-900">Bitbucket</span>
+    <span class="inline-flex items-center gap-1.5 text-ink-500">
+      <span class="h-1.5 w-1.5 rounded-full {{ 'bg-low-500' if integrations.bitbucket.connected else 'bg-ink-300' }}"></span>
+      {{ "Connected" if integrations.bitbucket.connected else "Not connected" }}
+    </span>
+  </div>
+</div>
+
+{% if repos | length == 0 %}
+<div class="hm-card mt-6 px-8 py-16 text-center">
+  <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+    {{ ui.icon("folder", "w-6 h-6") }}
+  </div>
+  <h2 class="mt-4 text-lg font-semibold text-ink-900">Connect your first repository</h2>
+  <p class="mx-auto mt-2 max-w-md text-sm text-ink-500">
+    Link a codebase from GitHub, GitLab, Bitbucket, a public Git URL, or a ZIP upload. Heimdall will build a code index and run security scans automatically.
+  </p>
+  <a href="/repos/new" class="hm-btn-primary mt-6 inline-flex">{{ ui.icon("plus", "w-4 h-4") }}Add repository</a>
+</div>
+{% else %}
+<div class="hm-card mt-6 overflow-hidden">
+  <div class="grid grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,0.9fr)_28px] items-center gap-4 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
+    <div>Repository</div>
+    <div>Source</div>
+    <div>Branch</div>
+    <div>Last scan</div>
+    <div>Findings</div>
+    <div>Added</div>
+    <div></div>
+  </div>
+  <div class="divide-y divide-ink-200">
+    {% for repo in repos %}
+    <a href="/repos/{{ repo.id }}"
+       data-repo-row
+       data-search="{{ repo.name | lower }} {{ repo.host | lower }} {{ repo.source_label | lower }}"
+       class="grid grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,0.9fr)_28px] items-center gap-4 px-5 py-4 transition-colors hover:bg-ink-50">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-ink-200 bg-white">
+          {% if repo.source_type in ["github", "gitlab", "bitbucket"] %}
+          {{ ui.provider_mark(repo.source_type, "w-5 h-5") }}
+          {% elif repo.source_type == "git_url" %}
+          {{ ui.icon("globe", "w-4 h-4 text-ink-500") }}
+          {% else %}
+          {{ ui.icon("doc", "w-4 h-4 text-ink-500") }}
+          {% endif %}
+        </span>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold text-ink-900">{{ repo.name }}</p>
+          <p class="mt-0.5 truncate text-sm text-ink-500">{{ repo.host }}</p>
+        </div>
+      </div>
+
+      <div class="text-sm text-ink-600">{{ repo.source_label }}</div>
+
+      <div class="truncate text-sm font-mono text-ink-600">{{ repo.default_branch or "—" }}</div>
+
+      <div>
+        {% if repo.last_scan_status %}
+        <div class="flex items-center gap-1.5">
+          <span class="h-1.5 w-1.5 rounded-full {{ 'bg-low-500' if repo.last_scan_status == 'completed' else 'bg-crit-500' if repo.last_scan_status == 'failed' else 'bg-high-500' if repo.last_scan_status == 'cancelled' else 'bg-info-500' }}"></span>
+          <span class="text-sm font-medium {{ 'text-low-700' if repo.last_scan_status == 'completed' else 'text-crit-700' if repo.last_scan_status == 'failed' else 'text-high-700' if repo.last_scan_status == 'cancelled' else 'text-info-700' }}">
+            {{ repo.last_scan_status | replace("_", " ") | title }}
+          </span>
+        </div>
+        <p class="mt-0.5 pl-3.5 text-xs text-ink-400">{{ repo.last_scan_at }}</p>
+        {% else %}
+        <span class="text-sm text-ink-400">Never scanned</span>
+        {% endif %}
+      </div>
+
+      <div class="text-sm font-medium {{ 'text-ink-900' if repo.finding_count else 'text-ink-300' }}">{{ repo.finding_count }}</div>
+
+      <div class="text-sm text-ink-500">{{ repo.created_at }}</div>
+
+      <div class="flex justify-end text-ink-300">{{ ui.icon("chevron-right", "w-4 h-4") }}</div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="mt-4 flex items-center justify-between">
+  <p class="text-sm text-ink-500">Page {{ page }} of {{ total_pages }} &middot; {{ total }} repositories</p>
+  <div class="flex items-center gap-2">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}&per_page={{ per_page }}" class="hm-btn-secondary">{{ ui.icon("chevron-left", "w-4 h-4") }}Previous</a>
+    {% else %}
+    <span class="hm-btn-secondary cursor-not-allowed opacity-50">{{ ui.icon("chevron-left", "w-4 h-4") }}Previous</span>
+    {% endif %}
+    {% if page < total_pages %}
+    <a href="?page={{ page + 1 }}&per_page={{ per_page }}" class="hm-btn-secondary">Next{{ ui.icon("chevron-right", "w-4 h-4") }}</a>
+    {% else %}
+    <span class="hm-btn-secondary cursor-not-allowed opacity-50">Next{{ ui.icon("chevron-right", "w-4 h-4") }}</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const filter = document.getElementById('repo-filter');
+  if (!filter) return;
+  filter.addEventListener('input', () => {
+    const needle = filter.value.trim().toLowerCase();
+    document.querySelectorAll('[data-repo-row]').forEach((row) => {
+      const haystack = row.dataset.search || '';
+      row.classList.toggle('hidden', needle.length > 0 && !haystack.includes(needle));
+    });
+  });
+});
+</script>
+{% endblock %}

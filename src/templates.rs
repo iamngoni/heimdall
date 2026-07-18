@@ -11,16 +11,17 @@ use minijinja::{Environment, path_loader};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// The default theme used when no user preference is set.
-pub const DEFAULT_THEME: &str = "sentinel";
+/// The single active theme. The multi-theme system (sentinel/oatmeal/editorial)
+/// and the Appearance picker were retired in favor of one Basecoat theme.
+pub const DEFAULT_THEME: &str = "heimdall";
 
-/// Known theme identifiers.
-pub const KNOWN_THEMES: &[&str] = &["sentinel", "oatmeal", "editorial"];
+/// Known theme identifiers. Only one theme ships now.
+pub const KNOWN_THEMES: &[&str] = &["heimdall"];
 
-/// Normalize legacy or invalid theme identifiers to a valid active theme.
+/// Normalize any stored/legacy theme identifier to the single active theme.
+/// Users whose `theme` column still holds an old value resolve to `heimdall`.
 pub fn normalize_theme(theme: &str) -> &str {
     match theme {
-        "classic" => DEFAULT_THEME,
         candidate if KNOWN_THEMES.contains(&candidate) => candidate,
         _ => DEFAULT_THEME,
     }

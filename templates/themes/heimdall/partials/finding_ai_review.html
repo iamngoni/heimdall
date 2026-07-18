@@ -1,0 +1,172 @@
+{% import "macros.html" as ui %}
+{% set target_finding_id = finding_id or finding.id %}
+<section id="finding-ai-review" class="hm-card p-5">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div class="max-w-lg">
+            <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">AI review</h2>
+            <p class="mt-1.5 text-sm text-ink-500">Ask Heimdall to explain why this alert fired, or run a second-pass verification before triaging it.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <button hx-post="/api/findings/{{ target_finding_id }}/explain"
+                    hx-target="#finding-ai-review"
+                    hx-swap="outerHTML"
+                    hx-indicator="#finding-ai-review-loading"
+                    class="hm-btn-secondary text-sm">
+                {{ ui.icon("sparkle", "w-4 h-4") }}
+                <span>Explain finding</span>
+                <span class="htmx-indicator-flex ml-1 items-center gap-1.5 text-ink-400">
+                    <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                    </svg>
+                    <span class="text-xs font-semibold uppercase tracking-[0.1em]">Running</span>
+                </span>
+            </button>
+            <button hx-post="/api/findings/{{ target_finding_id }}/verify"
+                    hx-target="#finding-ai-review"
+                    hx-swap="outerHTML"
+                    hx-indicator="#finding-ai-review-loading"
+                    class="hm-btn-secondary text-sm">
+                {{ ui.icon("check", "w-4 h-4") }}
+                <span>Verify finding</span>
+                <span class="htmx-indicator-flex ml-1 items-center gap-1.5 text-ink-400">
+                    <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                    </svg>
+                    <span class="text-xs font-semibold uppercase tracking-[0.1em]">Running</span>
+                </span>
+            </button>
+        </div>
+    </div>
+
+    <div id="finding-ai-review-loading"
+         class="htmx-indicator-flex mt-4 items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3.5 text-brand-700">
+        <svg class="mt-0.5 h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+        <div>
+            <p class="text-sm font-semibold">Heimdall is reviewing this finding</p>
+            <p class="mt-0.5 text-sm leading-6 text-brand-700/80">Pulling the evidence back into context and checking the code path.</p>
+        </div>
+    </div>
+
+    <div class="mt-4 space-y-4">
+        {# ── Explanation ── #}
+        {% if explain_review %}
+        <div class="rounded-xl border border-ink-200 bg-ink-50 p-4">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="hm-badge bg-brand-50 text-brand-700">AI</span>
+                    <p class="text-sm font-semibold text-ink-900">Explanation</p>
+                </div>
+                <button hx-post="/api/findings/{{ target_finding_id }}/explain"
+                        hx-target="#finding-ai-review"
+                        hx-swap="outerHTML"
+                        hx-indicator="#finding-ai-review-loading"
+                        class="hm-btn-ghost shrink-0 text-xs">
+                    {{ ui.icon("refresh", "w-3.5 h-3.5") }}
+                    <span>Run again</span>
+                </button>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-ink-700">
+                {{ explain_review.metadata.summary or explain_review.comment or "Explanation generated." }}
+            </p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                <div class="rounded-lg bg-white px-3.5 py-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">Why it was flagged</p>
+                    <p class="mt-1.5 text-sm leading-6 text-ink-600">
+                        {{ explain_review.metadata.why_flagged or "Review the evidence and surrounding code path to confirm the risk." }}
+                    </p>
+                </div>
+                <div class="rounded-lg bg-white px-3.5 py-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">What to review</p>
+                    <p class="mt-1.5 text-sm leading-6 text-ink-600">
+                        {{ explain_review.metadata.what_to_review or "Inspect the referenced file, surrounding control flow, and how the value is produced." }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="rounded-xl border border-dashed border-ink-200 bg-white px-4 py-5 text-center text-sm">
+            <p class="font-medium text-ink-600">No explanation yet</p>
+            <p class="mt-1 text-ink-400">Click "Explain finding" for a plain-language breakdown of why this was flagged.</p>
+        </div>
+        {% endif %}
+
+        {# ── Verification ── #}
+        {% if verify_review %}
+        {% set verdict = verify_review.metadata.verdict or "needs_review" %}
+        {% if verdict == "confirmed" %}
+            {% set verdict_tone = "text-low-700" %}
+            {% set verdict_label = "likely valid" %}
+        {% elif verdict == "false_positive_likely" %}
+            {% set verdict_tone = "text-med-700" %}
+            {% set verdict_label = "likely false positive" %}
+        {% else %}
+            {% set verdict_tone = "text-info-700" %}
+            {% set verdict_label = verdict|replace("_", " ") %}
+        {% endif %}
+        <div class="rounded-xl border border-ink-200 bg-ink-50 p-4">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="hm-badge bg-brand-50 text-brand-700">AI</span>
+                    <p class="text-sm font-semibold text-ink-900">
+                        Verification:
+                        <span class="{{ verdict_tone }}">{{ verdict_label }}</span>
+                    </p>
+                </div>
+                <button hx-post="/api/findings/{{ target_finding_id }}/verify"
+                        hx-target="#finding-ai-review"
+                        hx-swap="outerHTML"
+                        hx-indicator="#finding-ai-review-loading"
+                        class="hm-btn-ghost shrink-0 text-xs">
+                    {{ ui.icon("refresh", "w-3.5 h-3.5") }}
+                    <span>Run again</span>
+                </button>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-ink-700">
+                {{ verify_review.metadata.rationale or verify_review.comment or "Verification review completed." }}
+            </p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                <div class="rounded-lg bg-white px-3.5 py-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">True positive signals</p>
+                    {% if verify_review.metadata.true_positive_signals %}
+                    <ul class="mt-1.5 space-y-1.5 text-sm text-ink-600">
+                        {% for signal in verify_review.metadata.true_positive_signals %}
+                        <li>{{ signal }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="mt-1.5 text-sm text-ink-500">No strong true-positive signals were recorded.</p>
+                    {% endif %}
+                </div>
+                <div class="rounded-lg bg-white px-3.5 py-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">False positive signals</p>
+                    {% if verify_review.metadata.false_positive_signals %}
+                    <ul class="mt-1.5 space-y-1.5 text-sm text-ink-600">
+                        {% for signal in verify_review.metadata.false_positive_signals %}
+                        <li>{{ signal }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="mt-1.5 text-sm text-ink-500">No false-positive indicators were recorded.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% if verify_review.metadata.recommended_status %}
+            <div class="mt-3 rounded-lg border border-ink-200 bg-white px-3.5 py-3">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-400">Suggested triage status</p>
+                <p class="mt-1.5 text-sm font-semibold text-ink-900">{{ verify_review.metadata.recommended_status|replace("_", " ") }}</p>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="rounded-xl border border-dashed border-ink-200 bg-white px-4 py-5 text-center text-sm">
+            <p class="font-medium text-ink-600">No verification yet</p>
+            <p class="mt-1 text-ink-400">Click "Verify finding" for a second-pass triage to separate true issues from noise.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>

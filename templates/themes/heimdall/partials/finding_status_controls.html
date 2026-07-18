@@ -1,0 +1,61 @@
+{% import "macros.html" as ui %}
+{% set status_tone_map = {
+  "confirmed": "success",
+  "open": "danger",
+  "false_positive": "warning",
+  "dismissed": "neutral",
+  "fixed": "info"
+} %}
+<div id="finding-status" class="hm-card p-5"
+     hx-on::after-swap="if(window.HeimdallUI){window.HeimdallUI.success('Finding status updated to ' + '{{ finding.status }}'.replace('_',' '), 3000)}">
+    <div class="flex items-center justify-between gap-3">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Finding status</h2>
+        {{ ui.status_badge(status_tone_map[finding.status] if finding.status in status_tone_map else "neutral", finding.status|replace("_", " ")|capitalize) }}
+    </div>
+
+    <div class="mt-4 grid grid-cols-2 gap-2">
+        <button hx-patch="/api/findings/{{ finding.id }}/status"
+                hx-target="#finding-status"
+                hx-swap="outerHTML"
+                hx-vals='{"status":"confirmed"}'
+                hx-indicator="#finding-status-loading"
+                class="hm-btn-primary w-full justify-center text-sm {{ 'ring-2 ring-brand-200' if finding.status == 'confirmed' }}">
+            {{ ui.icon("check", "w-4 h-4") }}
+            <span>Accept</span>
+        </button>
+        <button hx-patch="/api/findings/{{ finding.id }}/status"
+                hx-target="#finding-status"
+                hx-swap="outerHTML"
+                hx-vals='{"status":"dismissed"}'
+                hx-indicator="#finding-status-loading"
+                class="hm-btn-secondary w-full justify-center text-sm {{ 'ring-2 ring-ink-200 bg-ink-50' if finding.status == 'dismissed' }}">
+            <span>Dismiss</span>
+        </button>
+        <button hx-patch="/api/findings/{{ finding.id }}/status"
+                hx-target="#finding-status"
+                hx-swap="outerHTML"
+                hx-vals='{"status":"false_positive"}'
+                hx-indicator="#finding-status-loading"
+                class="hm-btn-secondary w-full justify-center text-sm {{ 'ring-2 ring-med-200 bg-med-50 text-med-700' if finding.status == 'false_positive' }}">
+            <span>False Positive</span>
+        </button>
+        <button hx-patch="/api/findings/{{ finding.id }}/status"
+                hx-target="#finding-status"
+                hx-swap="outerHTML"
+                hx-vals='{"status":"fixed"}'
+                hx-indicator="#finding-status-loading"
+                class="hm-btn-secondary w-full justify-center text-sm {{ 'ring-2 ring-info-200 bg-info-50 text-info-700' if finding.status == 'fixed' }}">
+            {{ ui.icon("check", "w-4 h-4") }}
+            <span>Mark Fixed</span>
+        </button>
+    </div>
+
+    <div id="finding-status-loading"
+         class="htmx-indicator-flex mt-3 items-center gap-2 rounded-lg bg-ink-50 px-3 py-2 text-xs font-medium text-ink-500">
+        <svg class="h-3.5 w-3.5 animate-spin text-ink-400" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+        <span>Saving status&hellip;</span>
+    </div>
+</div>

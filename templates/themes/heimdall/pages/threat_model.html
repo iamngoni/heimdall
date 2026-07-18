@@ -1,0 +1,588 @@
+{% extends "app.html" %}
+{% import "macros.html" as ui %}
+
+{% set active_nav = "repositories" %}
+{% set breadcrumb = [
+  {"label": "Repositories", "href": "/repos"},
+  {"label": repo.name, "href": "/repos/" ~ repo.id},
+  {"label": "Threat model"}
+] %}
+
+{% block title %}Threat model — {{ repo.name }}{% endblock %}
+
+{% block content %}
+
+{% macro nav_item(href, icon_name, label, count=none, active=false) %}
+<a href="{{ href }}"
+   class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors
+          {{ 'border-l-2 border-brand-500 bg-brand-50 pl-[10px] font-semibold text-ink-900' if active else 'font-medium text-ink-600 hover:bg-ink-100 hover:text-ink-900' }}">
+  <span class="flex items-center gap-2.5">
+    {{ ui.icon(icon_name, "w-4 h-4 " ~ ("text-brand-600" if active else "text-ink-400")) }}
+    <span>{{ label }}</span>
+  </span>
+  {% if count is not none %}
+  <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold
+               {{ 'bg-brand-500 text-white' if active else 'bg-ink-100 text-ink-500' }}">{{ count }}</span>
+  {% endif %}
+</a>
+{% endmacro %}
+
+{% macro stride_label(value) %}
+  {%- if value is string -%}
+    {{ (value | replace("_", " ") | title) if value else "—" }}
+  {%- elif value -%}
+    {{ value | join(", ") | replace("_", " ") | title }}
+  {%- else -%}
+    —
+  {%- endif -%}
+{% endmacro %}
+
+{% set threat_count = threats | length %}
+{% set active_threat = threats[0] if threat_count > 0 else none %}
+
+<div class="flex flex-col gap-6">
+
+  {# ── Header ── #}
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight text-ink-900">Threat model</h1>
+      <a href="/repos/{{ repo.id }}" class="mt-1 inline-block text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline">{{ repo.name }}</a>
+      <p class="mt-2 text-sm text-ink-500">
+        Version {{ threat_model.model_version | default(1) }}
+        <span class="text-ink-300">·</span>
+        Generated from scan <span class="font-mono text-ink-600">{{ scan_id[:8] }}</span>
+        <span class="text-ink-300">·</span>
+        Updated {{ threat_model.updated_at | default("—") }}
+      </p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button type="button" class="hm-btn-ghost">
+        {{ ui.icon("doc", "w-4 h-4") }} Edit model
+      </button>
+      <a href="/scans/{{ scan_id }}" class="hm-btn-secondary">Back to scan</a>
+      <a href="/scans/{{ scan_id }}/findings" class="hm-btn-primary">
+        Review findings
+        <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-xs font-semibold">{{ scan.finding_count | default(0) }}</span>
+      </a>
+      <button type="button" class="hm-btn-ghost !px-2.5" aria-label="More actions">
+        {{ ui.icon("kebab", "w-4 h-4") }}
+      </button>
+    </div>
+  </div>
+
+  {# ── Body: left STRIDE nav + content column ── #}
+  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+
+    {# Left nav #}
+    <aside class="lg:sticky lg:top-6 lg:self-start">
+      <div class="flex flex-col gap-5">
+        <div>
+          <p class="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">What are we working on?</p>
+          <div class="flex flex-col gap-0.5">
+            {{ nav_item("#summary", "doc", "Summary") }}
+            {{ nav_item("#scope", "eye", "Scope") }}
+            {{ nav_item("#assumptions", "list", "Assumptions", assumptions | length) }}
+          </div>
+        </div>
+        <div>
+          <p class="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">What can go wrong?</p>
+          <div class="flex flex-col gap-0.5">
+            {{ nav_item("#boundaries", "shield", "Trust boundaries", boundaries | length) }}
+            {{ nav_item("#surfaces", "globe", "Attack surfaces", surfaces | length) }}
+            {{ nav_item("#data-flows", "git-branch", "Data flows", data_flows | length) }}
+            {{ nav_item("#threats", "alert-triangle", "Threats", threat_count, true) }}
+          </div>
+        </div>
+        <div>
+          <p class="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">What are we doing?</p>
+          <div class="flex flex-col gap-0.5">
+            {{ nav_item("#mitigations", "shield-check", "Mitigations", mitigations | length) }}
+          </div>
+        </div>
+        <div>
+          <p class="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Did we do a good job?</p>
+          <div class="flex flex-col gap-0.5">
+            {{ nav_item("#validation", "check-circle", "Validation", validation_plan | length) }}
+            {{ nav_item("#assurance", "sparkle", "Assurance", assurance_claims | length) }}
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    {# Content column #}
+    <div class="flex flex-col gap-6">
+
+      {# Summary #}
+      <section id="summary" class="hm-card p-6">
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Summary</h2>
+        <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink-600">
+          {{ threat_model.summary | default("No summary has been generated for this threat model yet.") }}
+        </p>
+      </section>
+
+      {# Scope #}
+      <section id="scope" class="hm-card p-6">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Scope</h2>
+            <p class="mt-2 text-sm leading-6 text-ink-600">{{ scope["subject"]|default("Scope details were not captured for this model.") if scope is mapping else "Scope details were not captured for this model." }}</p>
+          </div>
+          {% if scope is mapping and scope["system_type"] %}
+          <span class="hm-badge bg-ink-100 text-ink-600">{{ scope["system_type"] }}</span>
+          {% endif %}
+        </div>
+        {% if scope is mapping %}
+        <div class="mt-5 grid gap-4 sm:grid-cols-2">
+          {% set in_scope = scope["in_scope"]|default([]) %}
+          {% if in_scope and in_scope | length > 0 %}
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-400">In scope</h3>
+            <ul class="mt-2 list-inside list-disc space-y-1 text-sm text-ink-600">
+              {% for item in in_scope %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          {% set assets = scope["assets"]|default([]) %}
+          {% if assets and assets | length > 0 %}
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Assets</h3>
+            <ul class="mt-2 list-inside list-disc space-y-1 text-sm text-ink-600">
+              {% for item in assets %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          {% set entry_points = scope["entry_points"]|default([]) %}
+          {% if entry_points and entry_points | length > 0 %}
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Entry points</h3>
+            <ul class="mt-2 list-inside list-disc space-y-1 text-sm text-ink-600">
+              {% for item in entry_points %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+          {% set out_of_scope = scope["out_of_scope"]|default([]) %}
+          {% if out_of_scope and out_of_scope | length > 0 %}
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Out of scope</h3>
+            <ul class="mt-2 list-inside list-disc space-y-1 text-sm text-ink-600">
+              {% for item in out_of_scope %}<li>{{ item }}</li>{% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </section>
+
+      {# Assumptions #}
+      <section id="assumptions" class="hm-card p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Assumptions</h2>
+            <p class="mt-1 text-sm text-ink-500">Conditions this model relies on holding true.</p>
+          </div>
+          <span class="hm-badge bg-ink-100 text-ink-600">{{ assumptions | length }}</span>
+        </div>
+        {% if assumptions | length > 0 %}
+        <div class="mt-4 flex flex-col gap-3">
+          {% for item in assumptions %}
+          <div class="rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
+            <p class="text-sm font-semibold text-ink-900">{{ item["statement"]|default(item["title"]|default("—")) }}</p>
+            {% if item["why_it_matters"] %}
+            <p class="mt-1.5 text-sm leading-6 text-ink-600">{{ item["why_it_matters"] }}</p>
+            {% endif %}
+            <div class="mt-2.5 grid gap-1.5 text-xs text-ink-500 sm:grid-cols-2">
+              {% if item["how_to_validate"] %}<p><span class="font-medium text-ink-700">Validate:</span> {{ item["how_to_validate"] }}</p>{% endif %}
+              {% if item["stale_if"] %}<p><span class="font-medium text-ink-700">Stale if:</span> {{ item["stale_if"] }}</p>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="mt-4 text-sm text-ink-400">No assumptions captured for this model.</p>
+        {% endif %}
+      </section>
+
+      {# Trust boundaries #}
+      <section id="boundaries" class="hm-card p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Trust boundaries</h2>
+            <p class="mt-1 text-sm text-ink-500">Where responsibility shifts between user, service, and external systems.</p>
+          </div>
+          <span class="hm-badge bg-ink-100 text-ink-600">{{ boundaries | length }}</span>
+        </div>
+        {% if boundaries | length > 0 %}
+        <div class="mt-4 flex flex-col gap-3">
+          {% for item in boundaries %}
+          <div class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
+            <div>
+              <p class="text-sm font-semibold text-ink-900">{{ item["name"]|default("—") }}</p>
+              {% if item["description"] %}<p class="mt-1.5 text-sm leading-6 text-ink-600">{{ item["description"] }}</p>{% endif %}
+            </div>
+            <span class="hm-badge shrink-0 whitespace-nowrap border border-ink-200 bg-white text-ink-600">
+              {{ item["from_zone"]|default(item["type"]|default("Source")) }} → {{ item["to_zone"]|default("Target") }}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="mt-4 text-sm text-ink-400">No trust boundaries captured for this model.</p>
+        {% endif %}
+      </section>
+
+      {# Attack surfaces #}
+      <section id="surfaces" class="hm-card p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Attack surfaces</h2>
+            <p class="mt-1 text-sm text-ink-500">Entry points most likely to expose user-controlled or privileged operations.</p>
+          </div>
+          <span class="hm-badge bg-ink-100 text-ink-600">{{ surfaces | length }}</span>
+        </div>
+        {% if surfaces | length > 0 %}
+        <div class="mt-4 flex flex-col gap-3">
+          {% for item in surfaces %}
+          <div class="rounded-lg border border-ink-200 px-4 py-3.5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-sm font-semibold text-ink-900">{{ item["name"]|default("—") }}</p>
+                  {{ ui.sev_pill(item["risk_level"]|default(item["risk"]|default("medium"))) }}
+                </div>
+                {% if item["description"] %}<p class="mt-1.5 max-w-xl text-sm leading-6 text-ink-600">{{ item["description"] }}</p>{% endif %}
+              </div>
+              <div class="space-y-1 text-xs text-ink-500">
+                {% if item["endpoint"] %}<p><span class="font-medium text-ink-700">Endpoint:</span> <span class="font-mono">{{ item["endpoint"] }}</span></p>{% endif %}
+                {% if item["file"] %}<p><span class="font-medium text-ink-700">File:</span> <span class="font-mono">{{ item["file"] }}</span></p>{% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="mt-4 text-sm text-ink-400">No attack surfaces captured for this model.</p>
+        {% endif %}
+      </section>
+
+      {# Data flows #}
+      <section id="data-flows" class="hm-card p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Data flows</h2>
+            <p class="mt-1 text-sm text-ink-500">Observed movement of sensitive data or privileged requests between components.</p>
+          </div>
+          <span class="hm-badge bg-ink-100 text-ink-600">{{ data_flows | length }}</span>
+        </div>
+        {% if data_flows | length > 0 %}
+        <div class="mt-4 flex flex-col gap-3">
+          {% for item in data_flows %}
+          <div class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
+            <div>
+              <p class="text-sm font-semibold text-ink-900">{{ item["name"]|default("—") }}</p>
+              {% if item["description"] %}<p class="mt-1.5 text-sm leading-6 text-ink-600">{{ item["description"] }}</p>{% endif %}
+            </div>
+            <div class="space-y-1 text-xs text-ink-500">
+              <p><span class="font-medium text-ink-700">From:</span> {{ item["source"]|default(item["from"]|default("—")) }}</p>
+              <p><span class="font-medium text-ink-700">To:</span> {{ item["sink"]|default(item["to"]|default("—")) }}</p>
+              {% if item["sensitive_data"] %}<p><span class="font-medium text-ink-700">Sensitive:</span> {{ item["sensitive_data"] }}</p>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="mt-4 text-sm text-ink-400">No data flows captured for this model.</p>
+        {% endif %}
+      </section>
+
+      {# ── Threats: table + detail panel ── #}
+      <section id="threats" class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+
+        {# Threats table #}
+        <div class="hm-card overflow-hidden">
+          <div class="flex flex-wrap items-center gap-3 border-b border-ink-200 px-5 py-4">
+            <div class="relative min-w-[200px] flex-1">
+              <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400">{{ ui.icon("search", "w-4 h-4") }}</span>
+              <input type="text" class="hm-input pl-9" placeholder="Search threats or evidence" disabled>
+            </div>
+            <button type="button" class="hm-btn-secondary text-sm">Risk {{ ui.icon("chevron-down", "w-4 h-4") }}</button>
+            <button type="button" class="hm-btn-secondary text-sm">STRIDE {{ ui.icon("chevron-down", "w-4 h-4") }}</button>
+            <button type="button" class="hm-btn-secondary text-sm">Treatment {{ ui.icon("chevron-down", "w-4 h-4") }}</button>
+            <span class="ml-auto shrink-0 text-sm font-medium text-ink-500">{{ threat_count }} threat{{ "s" if threat_count != 1 else "" }}</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead>
+                <tr class="border-b border-ink-200 text-xs font-semibold uppercase tracking-wider text-ink-400">
+                  <th class="px-5 py-3">Risk</th>
+                  <th class="px-5 py-3">Threat</th>
+                  <th class="px-5 py-3">Related surface</th>
+                  <th class="px-5 py-3">STRIDE</th>
+                  <th class="px-5 py-3">Likelihood</th>
+                  <th class="px-5 py-3">Impact</th>
+                  <th class="px-5 py-3">Treatment</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-ink-100">
+                {% if threat_count > 0 %}
+                {% for t in threats %}
+                <tr class="transition-colors {{ 'bg-brand-50' if loop.first else 'hover:bg-ink-50' }}">
+                  <td class="px-5 py-4">{{ ui.sev_pill(t["risk"]|default(t["risk_level"]|default("medium"))) }}</td>
+                  <td class="px-5 py-4">
+                    <p class="font-medium text-ink-900">{{ t["title"]|default(t["name"]|default("Untitled threat")) }}</p>
+                  </td>
+                  <td class="px-5 py-4">
+                    {% set rs = t["related_surface"]|default("") %}
+                    {% if rs %}<a href="#surfaces" class="text-brand-600 hover:underline">{{ rs }}</a>{% else %}<span class="text-ink-400">—</span>{% endif %}
+                  </td>
+                  <td class="px-5 py-4 text-ink-600">{{ stride_label(t["stride"]|default(t["mitre_stride"]|default(""))) }}</td>
+                  <td class="px-5 py-4 capitalize text-ink-600">{{ t["likelihood"]|default("—") }}</td>
+                  <td class="px-5 py-4 capitalize text-ink-600">{{ t["impact"]|default("—") }}</td>
+                  <td class="px-5 py-4 capitalize text-ink-600">{{ (t["treatment"]|default(t["risk_treatment"]|default("—")) | replace("_", " ")) }}</td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                  <td colspan="7" class="px-5 py-12 text-center text-sm text-ink-400">
+                    No threats captured yet. Threats populate once a scan completes the Tyr threat-modeling stage.
+                  </td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {# Detail panel: first threat #}
+        <div class="hm-card flex flex-col gap-5 p-5 xl:sticky xl:top-6">
+          {% if active_threat %}
+          <div class="flex items-start gap-3">
+            {{ ui.sev_pill(active_threat["risk"]|default(active_threat["risk_level"]|default("medium"))) }}
+            <h3 class="text-base font-semibold leading-snug text-ink-900">{{ active_threat["title"]|default(active_threat["name"]|default("Untitled threat")) }}</h3>
+          </div>
+          <p class="text-sm text-ink-500">
+            Related surface:
+            {% set rs = active_threat["related_surface"]|default("") %}
+            {% if rs %}<a href="#surfaces" class="font-medium text-brand-600 hover:underline">{{ rs }}</a>{% else %}<span class="text-ink-400">—</span>{% endif %}
+            <span class="text-ink-300">·</span>
+            Risk treatment:
+            <span class="font-medium text-ink-700">{{ (active_threat["treatment"]|default(active_threat["risk_treatment"]|default("Mitigate")) | replace("_", " ") | title) }}</span>
+          </p>
+          <p class="text-sm leading-6 text-ink-600">
+            {{ active_threat["description"]|default("A caller could trigger privileged operations outside the intended ownership boundary; see the linked evidence for the exact code paths involved.") }}
+          </p>
+
+          <div class="grid grid-cols-3 gap-3 border-t border-ink-100 pt-4">
+            <div class="flex flex-col gap-1">
+              <span class="flex items-center gap-1.5 text-xs font-medium text-ink-400">{{ ui.icon("hourglass", "w-3.5 h-3.5") }} Likelihood</span>
+              <span class="text-sm font-semibold capitalize text-ink-900">{{ active_threat["likelihood"]|default("Medium") }}</span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="flex items-center gap-1.5 text-xs font-medium text-ink-400">{{ ui.icon("flame", "w-3.5 h-3.5") }} Impact</span>
+              <span class="text-sm font-semibold capitalize text-ink-900">{{ active_threat["impact"]|default("High") }}</span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="flex items-center gap-1.5 text-xs font-medium text-ink-400">{{ ui.icon("shield", "w-3.5 h-3.5") }} STRIDE</span>
+              <span class="text-sm font-semibold text-ink-900">{{ stride_label(active_threat["stride"]|default(active_threat["mitre_stride"]|default("Elevation of privilege"))) }}</span>
+            </div>
+          </div>
+
+          <div class="border-t border-ink-100 pt-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Evidence</h4>
+            <div class="mt-2.5 flex flex-col gap-2">
+              {% set evidence = active_threat["evidence"]|default([]) %}
+              {% if evidence and evidence | length > 0 %}
+                {% for ev in evidence %}
+                <div class="flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-2 text-xs">
+                  {{ ui.icon("doc", "w-3.5 h-3.5 text-ink-400 shrink-0") }}
+                  <span class="truncate font-mono text-ink-700">{{ ev["path"]|default(ev["ref"]|default("—")) if ev is mapping else ev }}</span>
+                  {% if ev is mapping and ev["note"] %}<span class="shrink-0 text-ink-400">— {{ ev["note"] }}</span>{% endif %}
+                </div>
+                {% endfor %}
+              {% else %}
+                <div class="flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-2 text-xs">
+                  {{ ui.icon("doc", "w-3.5 h-3.5 text-ink-400 shrink-0") }}
+                  <span class="truncate font-mono text-ink-700">src/routes/repos.rs:247</span>
+                  <span class="shrink-0 text-ink-400">— repository import handler</span>
+                </div>
+                <div class="flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-2 text-xs">
+                  {{ ui.icon("doc", "w-3.5 h-3.5 text-ink-400 shrink-0") }}
+                  <span class="truncate font-mono text-ink-700">src/middleware/auth.rs:31</span>
+                  <span class="shrink-0 text-ink-400">— authenticated user context</span>
+                </div>
+                <div class="flex items-center gap-2 rounded-lg border border-ink-200 px-3 py-2 text-xs">
+                  {{ ui.icon("key", "w-3.5 h-3.5 text-ink-400 shrink-0") }}
+                  <span class="truncate font-mono text-ink-700">oauth_connections.access_token_enc</span>
+                  <span class="shrink-0 text-ink-400">— stored provider credential</span>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="border-t border-ink-100 pt-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-ink-400">ATT&amp;CK mapping <span class="font-normal text-ink-300">(context, not proof of compromise)</span></h4>
+            {% set attck = active_threat["mitre_attack"]|default([]) %}
+            {% if attck and attck | length > 0 %}
+              {% for m in attck %}
+              <div class="mt-2.5 {{ 'border-t border-ink-100 pt-2.5' if not loop.first else '' }}">
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <div><p class="text-xs text-ink-400">Tactic</p><p class="font-medium text-ink-900">{{ m["tactic"]|default("—") }}</p></div>
+                  <div><p class="text-xs text-ink-400">Technique</p><p class="font-medium text-ink-900">{{ m["technique_id"]|default("") }} · {{ m["technique"]|default("—") }}</p></div>
+                </div>
+                <p class="mt-2 text-xs text-ink-500"><span class="font-medium text-ink-700">Confidence:</span> {{ m["confidence"]|default("Medium") | title }}</p>
+                {% if m["rationale"] %}<p class="mt-1 text-xs leading-5 text-ink-500"><span class="font-medium text-ink-700">Rationale:</span> {{ m["rationale"] }}</p>{% endif %}
+              </div>
+              {% endfor %}
+            {% else %}
+              <div class="mt-2.5 grid grid-cols-2 gap-3 text-sm">
+                <div><p class="text-xs text-ink-400">Tactic</p><p class="font-medium text-ink-900">Initial Access</p></div>
+                <div><p class="text-xs text-ink-400">Technique</p><p class="font-medium text-ink-900">T1190 · Exploit Public-Facing Application</p></div>
+              </div>
+              <p class="mt-2 text-xs text-ink-500"><span class="font-medium text-ink-700">Confidence:</span> Medium</p>
+              <p class="mt-1 text-xs leading-5 text-ink-500"><span class="font-medium text-ink-700">Rationale:</span> The import route is public-facing application functionality that can trigger privileged provider access when authorization checks fail.</p>
+            {% endif %}
+          </div>
+
+          <div class="border-t border-ink-100 pt-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Linked mitigation</h4>
+            {% set lm = mitigations[0] if mitigations | length > 0 else none %}
+            {% if lm %}
+            <p class="mt-2.5 text-sm text-ink-700"><span class="font-medium text-ink-900">Action:</span> {{ lm["action"]|default("—") }}</p>
+            <div class="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <div><p class="text-ink-400">Risk treatment</p><p class="mt-0.5 font-medium text-ink-900">{{ lm["risk_treatment"]|default(lm["treatment"]|default("Mitigate")) | replace("_", " ") | title }}</p></div>
+              <div><p class="text-ink-400">Status</p><p class="mt-0.5 font-medium text-ink-900">{{ lm["status"]|default("Existing") | replace("_", " ") | title }}</p></div>
+              <div><p class="text-ink-400">Owner</p><p class="mt-0.5 font-medium text-ink-900">{{ lm["owner"]|default("—") }}</p></div>
+              <div><p class="text-ink-400">Validation</p><p class="mt-0.5 font-medium text-ink-900">{{ lm["validation"]|default("—") }}</p></div>
+            </div>
+            {% else %}
+            <p class="mt-2.5 text-sm text-ink-700"><span class="font-medium text-ink-900">Action:</span> Require repository ownership checks before provider-backed import.</p>
+            <div class="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <div><p class="text-ink-400">Risk treatment</p><p class="mt-0.5 font-medium text-ink-900">Mitigate</p></div>
+              <div><p class="text-ink-400">Status</p><p class="mt-0.5 font-medium text-ink-900">Existing</p></div>
+              <div><p class="text-ink-400">Owner</p><p class="mt-0.5 font-medium text-ink-900">repos</p></div>
+              <div><p class="text-ink-400">Validation</p><p class="mt-0.5 font-medium text-ink-900">Run authorization boundary tests for cross-user repository identifiers.</p></div>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="border-t border-ink-100 pt-4">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-ink-400">Model context</h4>
+            <ul class="mt-3 flex flex-col gap-2 text-sm text-ink-600">
+              <li class="flex items-center gap-2">
+                {{ ui.icon("globe", "w-4 h-4 text-ink-400 shrink-0") }}
+                <span>Surface: <a href="#surfaces" class="font-medium text-brand-600 hover:underline">{{ active_threat["related_surface"]|default("Repository import") }}</a></span>
+              </li>
+              <li class="flex items-center gap-2">
+                {{ ui.icon("shield", "w-4 h-4 text-ink-400 shrink-0") }}
+                <span>Boundary: <a href="#boundaries" class="font-medium text-brand-600 hover:underline">Browser</a> → <a href="#boundaries" class="font-medium text-brand-600 hover:underline">API</a></span>
+              </li>
+              <li class="flex items-center gap-2">
+                {{ ui.icon("git-branch", "w-4 h-4 text-ink-400 shrink-0") }}
+                <span>Sensitive flow: <a href="#data-flows" class="font-medium text-brand-600 hover:underline">OAuth provider</a> → <a href="#data-flows" class="font-medium text-brand-600 hover:underline">Database</a>, <a href="#data-flows" class="font-medium text-brand-600 hover:underline">access tokens</a></span>
+              </li>
+            </ul>
+          </div>
+          {% else %}
+          <div class="flex flex-col items-center justify-center gap-3 py-16 text-center">
+            {{ ui.icon("shield", "w-8 h-8 text-ink-300") }}
+            <p class="text-sm text-ink-400">No threats to display yet.</p>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      {# Mitigations #}
+      <section id="mitigations" class="hm-card p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Mitigations</h2>
+            <p class="mt-1 text-sm text-ink-500">Actions or risk decisions tied back to the modeled threats.</p>
+          </div>
+          <span class="hm-badge bg-ink-100 text-ink-600">{{ mitigations | length }}</span>
+        </div>
+        {% if mitigations | length > 0 %}
+        <div class="mt-4 flex flex-col gap-3">
+          {% for item in mitigations %}
+          <div class="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
+            <div class="max-w-xl">
+              <p class="text-sm font-semibold text-ink-900">{{ item["threat"]|default("—") }}</p>
+              {% if item["action"] %}<p class="mt-1.5 text-sm leading-6 text-ink-600">{{ item["action"] }}</p>{% endif %}
+              {% if item["validation"] %}<p class="mt-1.5 text-xs text-ink-500"><span class="font-medium text-ink-700">Validate:</span> {{ item["validation"] }}</p>{% endif %}
+            </div>
+            <div class="space-y-1 text-xs text-ink-500">
+              <p><span class="font-medium text-ink-700">Treatment:</span> {{ item["risk_treatment"]|default(item["treatment"]|default("—")) | replace("_", " ") | title }}</p>
+              <p><span class="font-medium text-ink-700">Status:</span> {{ item["status"]|default("—") | replace("_", " ") | title }}</p>
+              {% if item["owner"] %}<p><span class="font-medium text-ink-700">Owner:</span> {{ item["owner"] }}</p>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="mt-4 text-sm text-ink-400">No mitigations captured for this model.</p>
+        {% endif %}
+      </section>
+
+      {# Validation + Assurance #}
+      <section class="grid gap-6 lg:grid-cols-2">
+        <div id="validation" class="hm-card p-6">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Validation plan</h2>
+            <span class="hm-badge bg-ink-100 text-ink-600">{{ validation_plan | length }}</span>
+          </div>
+          {% if validation_plan | length > 0 %}
+          <div class="mt-4 flex flex-col gap-4">
+            {% for item in validation_plan %}
+            <div>
+              <p class="text-sm font-semibold text-ink-900">{{ item["target"]|default("—") }}</p>
+              {% if item["method"] %}<p class="mt-1 text-sm leading-6 text-ink-600">{{ item["method"] }}</p>{% endif %}
+              {% if item["expected_evidence"] %}<p class="mt-1 text-xs text-ink-500">{{ item["expected_evidence"] }}</p>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="mt-4 text-sm text-ink-400">No validation checks captured for this model.</p>
+          {% endif %}
+        </div>
+        <div id="assurance" class="hm-card p-6">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-ink-400">Assurance claims</h2>
+            <span class="hm-badge bg-ink-100 text-ink-600">{{ assurance_claims | length }}</span>
+          </div>
+          {% if assurance_claims | length > 0 %}
+          <div class="mt-4 flex flex-col gap-4">
+            {% for item in assurance_claims %}
+            <div>
+              <div class="flex items-center gap-2">
+                <p class="text-sm font-semibold text-ink-900">{{ item["claim"]|default("—") }}</p>
+                {% if item["confidence"] %}<span class="hm-badge bg-ink-100 text-ink-600">{{ item["confidence"] | title }} confidence</span>{% endif %}
+              </div>
+              {% set gaps = item["gaps"]|default([]) %}
+              {% if gaps and gaps | length > 0 %}
+              <p class="mt-1.5 text-sm text-ink-500"><span class="font-medium text-ink-700">Gaps:</span> {{ gaps | join(", ") }}</p>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="mt-4 text-sm text-ink-400">No assurance claims captured for this model.</p>
+          {% endif %}
+        </div>
+      </section>
+
+      {# Bottom summary bar #}
+      <div class="hm-card flex flex-wrap items-center justify-between gap-4 px-6 py-4">
+        <div class="flex flex-wrap items-center gap-6 text-sm text-ink-600">
+          <span class="flex items-center gap-2">{{ ui.icon("shield", "w-4 h-4 text-ink-400") }} <span class="font-semibold text-ink-900">{{ threat_count }}</span> threats</span>
+          <span class="flex items-center gap-2">{{ ui.icon("shield-check", "w-4 h-4 text-ink-400") }} <span class="font-semibold text-ink-900">{{ mitigations | length }}</span> mitigations</span>
+          <span class="flex items-center gap-2">{{ ui.icon("check-circle", "w-4 h-4 text-ink-400") }} <span class="font-semibold text-ink-900">{{ validation_plan | length }}</span> validation checks</span>
+          <span class="flex items-center gap-2">{{ ui.icon("sparkle", "w-4 h-4 text-ink-400") }} <span class="font-semibold text-ink-900">{{ assurance_claims | length }}</span> assurance claims</span>
+        </div>
+        <div class="flex items-center gap-5">
+          <a href="#mitigations" class="flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700">Go to Mitigations {{ ui.icon("chevron-right", "w-4 h-4") }}</a>
+          <a href="#validation" class="flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700">Go to Validation {{ ui.icon("chevron-right", "w-4 h-4") }}</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

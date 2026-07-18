@@ -1,0 +1,78 @@
+{% import "macros.html" as ui %}
+{% set target_finding_id = finding_id or finding.id %}
+<section id="finding-remediation-panel"
+         class="hm-card p-5"
+         {% if remediation.running %}hx-get="/api/findings/{{ target_finding_id }}/remediation" hx-trigger="load delay:5s" hx-swap="outerHTML"{% endif %}>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Fix PR</h2>
+        </div>
+
+        {% if remediation.pr_opened and remediation.run.pr_url %}
+        <a href="{{ remediation.run.pr_url }}" target="_blank" rel="noreferrer" class="hm-btn-primary shrink-0 text-sm">
+            <span>Open PR</span>
+        </a>
+        {% elif remediation.supported and not remediation.running %}
+        <button hx-post="/api/findings/{{ target_finding_id }}/remediate"
+                hx-target="#finding-remediation-panel"
+                hx-swap="outerHTML"
+                hx-indicator="#finding-remediation-loading"
+                class="hm-btn-primary shrink-0 text-sm">
+            <span>Create Fix PR</span>
+            <span class="htmx-indicator-flex ml-1 items-center gap-1.5 text-white/80">
+                <svg class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+                </svg>
+                <span class="text-xs font-semibold uppercase tracking-[0.1em]">Starting</span>
+            </span>
+        </button>
+        {% endif %}
+    </div>
+
+    {% if remediation.supported %}
+        {% if remediation.pr_opened and remediation.run %}
+        <div class="mt-3 rounded-xl border border-low-200 bg-low-50 p-3.5">
+            <div class="flex flex-wrap items-center gap-1.5">
+                <span class="hm-badge bg-white text-low-700">PR #{{ remediation.run.external_pr_number or "open" }}</span>
+                <span class="hm-badge bg-white text-low-700 font-mono">{{ remediation.run.branch_name }}</span>
+            </div>
+            {% if remediation.run.summary %}
+            <p class="mt-2.5 text-sm leading-6 text-low-700">{{ remediation.run.summary }}</p>
+            {% endif %}
+        </div>
+        {% elif remediation.running and remediation.run %}
+        <div class="mt-3 rounded-xl border border-brand-200 bg-brand-50 p-3.5 text-brand-700">
+            <p class="text-sm font-semibold">Agent running</p>
+            <p class="mt-1 text-sm leading-6 text-brand-700/80">{{ remediation.run.status|replace("_", " ")|title }} &middot; {{ remediation.run.branch_name }}</p>
+        </div>
+        {% elif remediation.failed and remediation.run %}
+        <div class="mt-3 rounded-xl border border-med-200 bg-med-50 p-3.5">
+            <p class="text-sm font-semibold text-med-700">Agent failed</p>
+            <p class="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-med-700/90">{{ remediation.run.error_message or "The fix PR agent failed before opening a pull request." }}</p>
+        </div>
+        {% else %}
+        <div class="mt-3 rounded-xl border border-dashed border-ink-200 bg-ink-50 px-3.5 py-3.5">
+            <p class="text-sm font-medium text-ink-600">No fix PR run yet</p>
+            <p class="mt-0.5 text-sm text-ink-400">Available for provider-connected repositories.</p>
+        </div>
+        {% endif %}
+
+        <div id="finding-remediation-loading"
+             class="htmx-indicator-flex mt-3 items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-3.5 py-3 text-brand-700">
+            <svg class="mt-0.5 h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+            </svg>
+            <div>
+                <p class="text-sm font-semibold">Starting fix agent</p>
+                <p class="mt-0.5 text-sm leading-6 text-brand-700/80">Preparing a branch and draft pull request.</p>
+            </div>
+        </div>
+    {% else %}
+    <div class="mt-3 rounded-xl border border-med-200 bg-med-50 p-3.5">
+        <p class="text-sm font-semibold text-med-700">Fix PR unavailable</p>
+        <p class="mt-1.5 text-sm leading-6 text-med-700/90">Connect this repository through GitHub OAuth to enable fix PR generation.</p>
+    </div>
+    {% endif %}
+</section>
