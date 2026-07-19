@@ -116,7 +116,7 @@
                                         <h3 class="text-sm font-semibold text-ink-900">GitHub</h3>
                                         <p class="mt-1 text-xs text-ink-500">
                                             {% if integrations.github.connected %}
-                                            Connected via {{ integrations.github.token_source|upper }}{% if integrations.github.updated_at %} · updated {{ integrations.github.updated_at }}{% endif %}
+                                            Connected via {{ integrations.github.token_source|upper }}{% if integrations.github.updated_at %} · updated {{ integrations.github.updated_at | short_dt }}{% endif %}
                                             {% else %}
                                             Sync repositories and scan pull requests.
                                             {% endif %}
@@ -174,7 +174,7 @@
                                         <h3 class="text-sm font-semibold text-ink-900">GitLab</h3>
                                         <p class="mt-1 text-xs text-ink-500">
                                             {% if integrations.gitlab.connected %}
-                                            Connected via {{ integrations.gitlab.token_source|upper }}{% if integrations.gitlab.updated_at %} · updated {{ integrations.gitlab.updated_at }}{% endif %}
+                                            Connected via {{ integrations.gitlab.token_source|upper }}{% if integrations.gitlab.updated_at %} · updated {{ integrations.gitlab.updated_at | short_dt }}{% endif %}
                                             {% else %}
                                             Sync GitLab projects and merge requests.
                                             {% endif %}
@@ -232,7 +232,7 @@
                                         <h3 class="text-sm font-semibold text-ink-900">Bitbucket</h3>
                                         <p class="mt-1 text-xs text-ink-500">
                                             {% if integrations.bitbucket.connected %}
-                                            Connected via {{ integrations.bitbucket.token_source|upper }}{% if integrations.bitbucket.updated_at %} · updated {{ integrations.bitbucket.updated_at }}{% endif %}
+                                            Connected via {{ integrations.bitbucket.token_source|upper }}{% if integrations.bitbucket.updated_at %} · updated {{ integrations.bitbucket.updated_at | short_dt }}{% endif %}
                                             {% else %}
                                             Sync Bitbucket repositories and pull requests.
                                             {% endif %}

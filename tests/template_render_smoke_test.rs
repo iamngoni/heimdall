@@ -19,6 +19,14 @@ fn every_template_renders_without_structural_errors() {
     let mut env = Environment::new();
     env.set_loader(path_loader("templates/themes/heimdall"));
     env.set_undefined_behavior(UndefinedBehavior::Chainable);
+    // Mirror the production filters registered in TemplateEngine::new so
+    // templates using them don't trip a false "unknown filter" here.
+    env.add_filter("short_dt", |v: Option<String>| -> String {
+        match v {
+            Some(s) if !s.trim().is_empty() => s.trim().replacen('T', " ", 1).chars().take(16).collect(),
+            _ => "—".to_string(),
+        }
+    });
 
     let templates = [
         "pages/dashboard.html",

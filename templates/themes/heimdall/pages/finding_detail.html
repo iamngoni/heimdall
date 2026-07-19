@@ -137,7 +137,7 @@
                 <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
                     <p class="text-xs text-ink-400">
                         Generated with finding
-                        {% if patch.created_at %}&middot; stored {{ patch.created_at }}{% endif %}
+                        {% if patch.created_at %}&middot; stored {{ patch.created_at | short_dt }}{% endif %}
                         &middot; <span class="font-medium {{ 'text-low-700' if patch.applied else 'text-ink-500' }}">{{ "Marked applied" if patch.applied else "Not marked applied" }}</span>
                     </p>
                     <div class="flex items-center gap-2">

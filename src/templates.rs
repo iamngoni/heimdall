@@ -27,6 +27,22 @@ pub fn normalize_theme(theme: &str) -> &str {
     }
 }
 
+/// Register shared minijinja filters used across all themes/templates.
+fn register_filters(env: &mut Environment<'static>) {
+    // `short_dt`: render any stored timestamp compactly as "YYYY-MM-DD HH:MM".
+    // Backend datetimes serialize as RFC3339 (e.g. 2026-07-16T19:38:18.666388+00:00);
+    // rendered raw they overflow narrow columns. Also tolerates already-short and
+    // missing/empty values. Drops seconds, microseconds, and the timezone suffix.
+    env.add_filter("short_dt", |value: Option<String>| -> String {
+        match value {
+            Some(s) if !s.trim().is_empty() => {
+                s.trim().replacen('T', " ", 1).chars().take(16).collect()
+            }
+            _ => "—".to_string(),
+        }
+    });
+}
+
 /// Holds the minijinja template environment for a single theme.
 pub struct TemplateEngine {
     env: Environment<'static>,
@@ -37,6 +53,7 @@ impl TemplateEngine {
     pub fn new(template_dir: &str) -> Self {
         let mut env = Environment::new();
         env.set_loader(path_loader(template_dir));
+        register_filters(&mut env);
         Self { env }
     }
 

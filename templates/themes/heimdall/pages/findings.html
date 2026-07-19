@@ -148,7 +148,7 @@
 
         <div class="flex flex-col items-end gap-1">
           {{ ui.status_badge(status_tone, finding.status | default("") | replace("_", " ") | capitalize) }}
-          <span class="text-xs text-ink-400">{{ finding.updated_at }}</span>
+          <span class="text-xs text-ink-400">{{ finding.updated_at | short_dt }}</span>
         </div>
 
         <div class="hidden justify-end text-ink-300 lg:flex">{{ ui.chevron_right() }}</div>

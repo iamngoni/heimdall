@@ -107,7 +107,7 @@
         </div>
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.1em] text-ink-400">Latest scan at</p>
-          <p class="mt-2 text-sm font-medium text-ink-900">{{ latest_scan.created_at | default("—") }}</p>
+          <p class="mt-2 text-sm font-medium text-ink-900">{{ latest_scan.created_at | default("—") | short_dt }}</p>
         </div>
       </div>
     </section>
@@ -139,7 +139,7 @@
             {% endif %}
           </div>
           <div class="text-sm text-ink-700">{{ scan.finding_count }}</div>
-          <div class="font-mono text-sm text-ink-500">{{ scan.created_at }}</div>
+          <div class="font-mono text-sm text-ink-500">{{ scan.created_at | short_dt }}</div>
           <div class="text-ink-400">{{ ui.chevron_right() }}</div>
         </a>
         {% endfor %}

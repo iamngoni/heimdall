@@ -1,7 +1,7 @@
 <div class="flex items-center justify-between gap-4 py-4" id="key-{{ key.id }}">
     <div class="min-w-0 flex-1">
         <p class="text-sm font-medium text-ink-900">{{ key.provider_label or (key.provider or "Unknown")|capitalize }}{% if key.label %} <span class="font-normal text-ink-500">· {{ key.label }}</span>{% endif %}</p>
-        <p class="mt-0.5 text-xs text-ink-400">Created {{ key.created_at }}</p>
+        <p class="mt-0.5 text-xs text-ink-400">Created {{ key.created_at | short_dt }}</p>
     </div>
     <button hx-delete="/api/settings/api-keys/{{ key.id }}"
             hx-target="#key-{{ key.id }}"

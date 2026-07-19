@@ -16,7 +16,7 @@
                     <p class="mt-0.5 text-sm leading-6 text-ink-500">{{ event.detail }}</p>
                 </div>
             </div>
-            <p class="shrink-0 whitespace-nowrap text-xs font-medium text-ink-400">{{ event.created_at }}</p>
+            <p class="shrink-0 whitespace-nowrap text-xs font-medium text-ink-400">{{ event.created_at | short_dt }}</p>
         </div>
         {% endfor %}
     </div>
