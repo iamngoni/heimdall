@@ -9,7 +9,7 @@
 {% block content %}
 <div class="flex items-start justify-between gap-4">
   <div>
-    <h1 class="text-2xl font-semibold tracking-tighter2 text-ink-900">Add repository</h1>
+    <h1 class="text-2xl font-semibold tracking-normal text-ink-900">Add repository</h1>
     <p class="mt-1 text-sm text-ink-500">Connect source code to Heimdall.</p>
   </div>
   <a href="/settings" class="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700">
@@ -99,21 +99,11 @@
       <p class="mt-0.5 text-sm text-ink-500">Repositories available from {{ provider_name }}</p>
     </div>
 
-    <div class="hm-card overflow-hidden">
-      <div class="hidden grid-cols-[minmax(0,1.6fr)_140px_150px_130px_100px] gap-4 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-ink-500 md:grid">
-        <span>Repository</span>
-        <span>Language</span>
-        <span>Default branch</span>
-        <span>Visibility</span>
-        <span class="text-right">Action</span>
-      </div>
-      <div id="repo-import-results"
-           data-repo-search-results>
-        <div class="flex items-center gap-4 px-5 py-6 text-sm text-ink-400">
+    <div id="repo-import-results" data-repo-search-results>
+        <div class="flex items-center gap-4 rounded-lg border border-ink-200 bg-white px-5 py-6 text-sm text-ink-400">
           <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink-100">{{ ui.provider_mark(active_source, "w-4 h-4") }}</span>
           <span>Loading recent {{ provider_name }} repositories...</span>
         </div>
-      </div>
     </div>
 
     <p class="text-sm text-ink-500">

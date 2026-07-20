@@ -16,6 +16,26 @@ fn bearer(token: &str) -> (header::HeaderName, String) {
 }
 
 #[actix_rt::test]
+async fn timestamps_and_row_actions_keep_separate_columns() {
+    let repo_detail = include_str!("../templates/themes/heimdall/pages/repo_detail.html");
+    assert!(repo_detail.contains("sm:grid-cols-[minmax(0,1fr)_112px_64px_132px_20px]"));
+    assert!(
+        repo_detail
+            .contains("min-w-[132px] whitespace-nowrap text-right font-mono text-xs tabular-nums")
+    );
+
+    let repos = include_str!("../templates/themes/heimdall/pages/repos.html");
+    assert!(repos.contains(
+        "grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_72px_132px_20px]"
+    ));
+    assert!(repos.contains("min-w-[900px]"));
+
+    let dashboard = include_str!("../templates/themes/heimdall/pages/dashboard.html");
+    assert!(dashboard.contains("min-w-[760px] table-fixed"));
+    assert!(dashboard.contains("w-[148px] whitespace-nowrap"));
+}
+
+#[actix_rt::test]
 async fn scan_pages_expose_persisted_provider_fallback_status() {
     let scan_pages = [include_str!("../templates/themes/heimdall/pages/scan.html")];
 
@@ -23,6 +43,11 @@ async fn scan_pages_expose_persisted_provider_fallback_status() {
         assert!(body.contains("id=\"scan-fallback-pill\""));
         assert!(body.contains("this.renderFallback(snapshot.fallback || null)"));
         assert!(body.contains("Fallback used"));
+        assert!(body.contains("id=\"execution-log-drawer\""));
+        assert!(body.contains("window.HeimdallExecutionLog.open(this)"));
+        assert!(
+            !body.contains("<details class=\"mt-5 rounded-lg border border-ink-200 bg-ink-50\"")
+        );
     }
 }
 
@@ -37,7 +62,9 @@ async fn repo_add_forms_keep_native_submit_fallbacks() {
         assert!(body.contains("hx-post=\"/api/repos/import\""));
     }
 
-    let add_pages = [include_str!("../templates/themes/heimdall/pages/repo_new.html")];
+    let add_pages = [include_str!(
+        "../templates/themes/heimdall/pages/repo_new.html"
+    )];
     for body in add_pages {
         assert!(body.contains("action=\"/api/repos\""));
         assert!(body.contains("action=\"/api/repos/upload\""));
@@ -154,6 +181,9 @@ async fn threat_model_pages_render_expanded_lifecycle_sections() {
         assert!(body.contains("ATT&amp;CK"));
         assert!(body.contains("Validation"));
         assert!(body.contains("Assurance"));
+        assert!(body.contains("data-threat-search"));
+        assert!(!body.contains("Edit model"));
+        assert!(!body.contains("aria-label=\"More actions\""));
     }
 }
 
@@ -218,9 +248,9 @@ async fn settings_page_renders_compact_openai_compatible_editor() {
 
     assert!(body.contains("OpenAI Compatible"));
     assert!(body.contains("explicit model id."));
-    assert!(body.contains(
-        "lg:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1.35fr)_minmax(180px,0.9fr)_auto]"
-    ));
+    assert!(body.contains("sm:grid-cols-2 sm:items-end"));
+    assert!(body.contains("xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.9fr)]"));
+    assert!(!body.contains("shadow-sm"));
     let endpoint_form_start = body
         .find("hx-post=\"/api/settings/api-keys\"")
         .expect("endpoint form should be rendered");
@@ -235,6 +265,32 @@ async fn settings_page_renders_compact_openai_compatible_editor() {
     assert!(body.contains("Paste-back"));
     assert!(body.contains("hx-post=\"/api/settings/codex/exchange\""));
     assert!(body.contains("Paste callback URL"));
+    for panel in ["profile", "integrations", "providers", "keys", "security"] {
+        assert!(
+            body.contains(&format!(
+                "data-settings-panel=\"{panel}\" data-settings-layout=\"unframed\""
+            )),
+            "{panel} should render as unframed page content"
+        );
+    }
+    for tool in [
+        "integration-list",
+        "provider-table",
+        "provider-routing",
+        "connection-methods",
+        "add-key",
+        "stored-keys",
+    ] {
+        assert!(
+            body.contains(&format!("data-settings-tool=\"{tool}\"")),
+            "{tool} should be a direct settings tool"
+        );
+    }
+    assert!(!body.contains("data-settings-panel=\"keys\" class="));
+    assert!(body.contains("data-settings-jump=\"providers\""));
+    assert!(body.contains("function resetSettingsScroll()"));
+    assert!(body.contains("scroller.scrollTo(0, 0)"));
+    assert!(body.contains("aria-label=\"Breadcrumb\">\n          <span class=\"font-medium text-ink-900\">Settings</span>"));
 }
 
 #[actix_rt::test]

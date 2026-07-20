@@ -39,7 +39,7 @@
         <a href="/repos/{{ repo.id }}" class="font-medium text-ink-900 hover:text-brand-700">{{ repo.name }}</a>
         <span class="hm-badge border border-ink-200 bg-ink-50 text-ink-700">{{ scan.scan_type | replace("_", " ") | title }}</span>
       </div>
-      <h1 class="mt-2 text-[30px] font-semibold tracking-[-0.025em] text-ink-900">Scan {{ scan.short_id }}</h1>
+      <h1 class="mt-2 text-[30px] font-semibold tracking-normal text-ink-900">Scan {{ scan.short_id }}</h1>
       <div class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-ink-500">
         <span class="font-mono text-ink-700">{{ scan.id }}</span>
         <span aria-hidden="true">•</span>
@@ -82,7 +82,7 @@
   </div>
 
   {% if scan.is_live %}
-  <section id="scan-live-panel" class="overflow-hidden rounded-xl border border-brand-500 bg-brand-50 shadow-card">
+  <section id="scan-live-panel" class="overflow-hidden rounded-lg border border-brand-500 bg-brand-50">
     <div class="flex flex-col gap-5 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
       <div class="flex min-w-0 items-start gap-4">
         <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
@@ -117,9 +117,14 @@
   </section>
 
   <section>
-    <div class="mb-3 flex items-center justify-between">
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-base font-semibold text-ink-900">Pipeline</h2>
-      <span class="text-xs text-ink-500">{{ stages | length }} stages</span>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-ink-500">{{ stages | length }} stages</span>
+        <button type="button" onclick="window.HeimdallExecutionLog.open(this)" class="hm-btn-secondary px-3 py-2 text-xs">
+          {{ ui.icon("list", "h-4 w-4") }} Execution log <span data-execution-log-count>{{ activities | length }}</span>
+        </button>
+      </div>
     </div>
     <div id="scan-stage-list" class="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-5">
       {% for stage in stages %}
@@ -138,56 +143,8 @@
     </div>
   </section>
 
-  <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
-    <section class="hm-card overflow-hidden">
-      <div class="flex items-center gap-4 border-b border-ink-200 px-4 py-3">
-        <h2 class="text-sm font-semibold text-ink-900">Execution activity</h2>
-        <span class="inline-flex items-center gap-2 text-xs font-medium text-low-700"><span class="h-2 w-2 rounded-full bg-low-500"></span>Live updates</span>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full min-w-[780px] table-fixed text-left">
-          <thead class="border-b border-ink-200 bg-ink-50 text-[11px] text-ink-500">
-            <tr>
-              <th class="w-[15%] px-4 py-2.5 font-medium">Time</th>
-              <th class="w-[11%] px-3 py-2.5 font-medium">Stage</th>
-              <th class="w-[21%] px-3 py-2.5 font-medium">Event</th>
-              <th class="px-3 py-2.5 font-medium">Detail</th>
-              <th class="w-[16%] px-3 py-2.5 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody id="scan-activity-feed" class="divide-y divide-ink-200">
-            {% for activity in activities %}
-            <tr data-activity-key="{{ activity.key }}">
-              <td class="whitespace-nowrap px-4 py-3 text-xs text-ink-600">{{ activity.timestamp | short_dt }}</td>
-              <td class="px-3 py-3 font-mono text-[11px] text-ink-600">{{ activity.stage if activity.stage else "system" }}</td>
-              <td class="px-3 py-3 text-xs font-medium text-ink-800">{{ activity.title }}</td>
-              <td class="px-3 py-3 text-xs leading-4 text-ink-600">{{ activity.detail }}</td>
-              <td class="px-3 py-3">
-                <span class="inline-flex items-center gap-2 text-xs font-medium
-                  {{ 'text-low-700' if activity.tone == 'success' else
-                     'text-high-700' if activity.tone == 'warning' else
-                     'text-brand-700' if activity.tone == 'active' else
-                     'text-crit-700' if activity.tone == 'error' else
-                     'text-ink-500' }}">
-                  <span class="h-2 w-2 rounded-full
-                    {{ 'bg-low-500' if activity.tone == 'success' else
-                       'bg-high-500' if activity.tone == 'warning' else
-                       'bg-brand-500' if activity.tone == 'active' else
-                       'bg-crit-500' if activity.tone == 'error' else
-                       'bg-ink-400' }}"></span>
-                  {{ (activity.status if activity.status else activity.tone) | replace("_", " ") | title }}{% if activity.progress_pct is not none %} {{ activity.progress_pct }}%{% endif %}
-                </span>
-              </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-ink-500">Execution events will appear here as the pipeline advances.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <aside class="space-y-3">
+  <div>
+    <aside class="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
       <section class="hm-card overflow-hidden">
         <div class="border-b border-ink-200 px-4 py-3"><h2 class="text-sm font-semibold text-ink-900">Findings so far</h2></div>
         <div class="grid grid-cols-5 divide-x divide-ink-200 px-2 py-3 text-center">
@@ -223,7 +180,7 @@
   </div>
 
   {% elif scan.status == "completed" %}
-  <section class="flex flex-col gap-4 rounded-xl border border-low-500 bg-low-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+  <section class="flex flex-col gap-4 rounded-lg border border-low-500 bg-low-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
     <div class="flex items-start gap-4">
       <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-low-500 text-low-700">{{ ui.icon("check", "h-5 w-5") }}</span>
       <div>
@@ -250,34 +207,23 @@
       </div>
       <ol class="mt-3 divide-y divide-ink-200">
         {% for stage in stages %}
-        <li class="grid grid-cols-[22px_28px_minmax(0,1fr)_88px_124px] items-center gap-3 py-2.5 text-xs">
+        <li class="flex min-w-0 items-center gap-3 py-2.5 text-xs">
           <span class="font-mono text-ink-500">{{ loop.index }}</span>
           {{ stage_icon(stage.status, "h-6 w-6") }}
-          <span class="font-medium text-ink-900">{{ stage.label }}</span>
-          <span class="{{ 'text-low-700' if stage.status == 'completed' else 'text-crit-700' if stage.status == 'failed' else 'text-ink-500' }}">{{ stage.status | replace("_", " ") | title }}</span>
-          <span class="whitespace-nowrap text-right font-mono text-[11px] text-ink-500">{{ stage.timestamp | short_dt }}</span>
+          <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-[minmax(0,1fr)_88px_124px] sm:items-center sm:gap-3">
+            <span class="truncate font-medium text-ink-900">{{ stage.label }}</span>
+            <span class="{{ 'text-low-700' if stage.status == 'completed' else 'text-crit-700' if stage.status == 'failed' else 'text-ink-500' }}">{{ stage.status | replace("_", " ") | title }}</span>
+            <span class="whitespace-nowrap font-mono text-[11px] text-ink-500 sm:text-right">{{ stage.timestamp | short_dt }}</span>
+          </div>
         </li>
         {% endfor %}
       </ol>
-      <details class="mt-5 rounded-lg border border-ink-200 bg-ink-50">
-        <summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
-          {{ ui.icon("chevron-right", "h-4 w-4") }}
+      <button type="button" onclick="window.HeimdallExecutionLog.open(this)" class="mt-5 flex w-full items-center gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3 text-left hover:border-brand-200 hover:bg-brand-50">
+          {{ ui.icon("list", "h-4 w-4") }}
           <span class="text-sm font-medium text-ink-900">Execution log</span>
-          <span class="text-xs text-ink-500">{{ activities | length }} events</span>
-        </summary>
-        <div class="border-t border-ink-200 px-4 py-3">
-          <ol class="space-y-3">
-            {% for activity in activities %}
-            <li class="grid gap-1 text-xs sm:grid-cols-[128px_minmax(0,1fr)]">
-              <span class="whitespace-nowrap font-mono text-[11px] text-ink-500">{{ activity.timestamp | short_dt }}</span>
-              <span><strong class="font-medium text-ink-800">{{ activity.title }}</strong><span class="ml-2 text-ink-500">{{ activity.detail }}</span></span>
-            </li>
-            {% else %}
-            <li class="text-xs text-ink-500">No execution events were recorded.</li>
-            {% endfor %}
-          </ol>
-        </div>
-      </details>
+          <span class="text-xs text-ink-500"><span data-execution-log-count>{{ activities | length }}</span> events</span>
+          <span class="ml-auto text-ink-400">{{ ui.icon("chevron-right", "h-4 w-4") }}</span>
+      </button>
     </section>
 
     <div class="space-y-4">
@@ -314,7 +260,7 @@
   </div>
 
   {% else %}
-  <section class="flex flex-col gap-4 rounded-xl border border-crit-500 bg-crit-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+  <section class="flex flex-col gap-4 rounded-lg border border-crit-500 bg-crit-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
     <div class="flex min-w-0 items-start gap-4">
       <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-crit-500 text-crit-700">{{ ui.icon("alert-triangle", "h-5 w-5") }}</span>
       <div class="min-w-0">
@@ -342,36 +288,25 @@
       <ol class="mt-3 divide-y divide-ink-200">
         {% for stage in stages %}
         <li class="py-2.5">
-          <div class="grid grid-cols-[22px_28px_minmax(0,1fr)_88px_124px] items-center gap-3 text-xs">
+          <div class="flex min-w-0 items-start gap-3 text-xs">
             <span class="font-mono text-ink-500">{{ loop.index }}</span>
             {{ stage_icon(stage.status, "h-6 w-6") }}
-            <span class="font-medium text-ink-900">{{ stage.label }}</span>
-            <span class="{{ 'text-low-700' if stage.status == 'completed' else 'text-crit-700' if stage.status == 'failed' else 'text-ink-500' }}">{{ stage.status | replace("_", " ") | title }}{% if stage.attempt > 1 %} <span class="ml-1 rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-[10px] text-ink-600">Attempt {{ stage.attempt }}</span>{% endif %}</span>
-            <span class="whitespace-nowrap text-right font-mono text-[11px] text-ink-500">{{ stage.timestamp | short_dt }}</span>
+            <div class="grid min-w-0 flex-1 gap-1 sm:grid-cols-[minmax(0,1fr)_104px_124px] sm:items-center sm:gap-3">
+              <span class="truncate font-medium text-ink-900">{{ stage.label }}</span>
+              <span class="{{ 'text-low-700' if stage.status == 'completed' else 'text-crit-700' if stage.status == 'failed' else 'text-ink-500' }}">{{ stage.status | replace("_", " ") | title }}{% if stage.attempt > 1 %} <span class="ml-1 rounded border border-ink-200 bg-ink-50 px-1.5 py-0.5 text-[10px] text-ink-600">Attempt {{ stage.attempt }}</span>{% endif %}</span>
+              <span class="whitespace-nowrap font-mono text-[11px] text-ink-500 sm:text-right">{{ stage.timestamp | short_dt }}</span>
+            </div>
           </div>
-          {% if stage.error %}<p class="ml-[62px] mt-1 break-words text-xs text-crit-700">{{ stage.error }}</p>{% endif %}
+          {% if stage.error %}<p class="hm-break-anywhere ml-[62px] mt-1 text-xs text-crit-700">{{ stage.error }}</p>{% endif %}
         </li>
         {% endfor %}
       </ol>
-      <details class="mt-5 rounded-lg border border-ink-200 bg-ink-50">
-        <summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
-          {{ ui.icon("chevron-right", "h-4 w-4") }}
+      <button type="button" onclick="window.HeimdallExecutionLog.open(this)" class="mt-5 flex w-full items-center gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3 text-left hover:border-brand-200 hover:bg-brand-50">
+          {{ ui.icon("list", "h-4 w-4") }}
           <span class="text-sm font-medium text-ink-900">Execution log</span>
-          <span class="text-xs text-ink-500">{{ activities | length }} events</span>
-        </summary>
-        <div class="border-t border-ink-200 px-4 py-3">
-          <ol class="space-y-3">
-            {% for activity in activities %}
-            <li class="grid gap-1 text-xs sm:grid-cols-[128px_minmax(0,1fr)]">
-              <span class="whitespace-nowrap font-mono text-[11px] text-ink-500">{{ activity.timestamp | short_dt }}</span>
-              <span><strong class="font-medium {{ 'text-crit-700' if activity.tone == 'error' else 'text-ink-800' }}">{{ activity.title }}</strong><span class="ml-2 text-ink-500">{{ activity.detail }}</span></span>
-            </li>
-            {% else %}
-            <li class="text-xs text-ink-500">No execution events were recorded.</li>
-            {% endfor %}
-          </ol>
-        </div>
-      </details>
+          <span class="text-xs text-ink-500"><span data-execution-log-count>{{ activities | length }}</span> events</span>
+          <span class="ml-auto text-ink-400">{{ ui.icon("chevron-right", "h-4 w-4") }}</span>
+      </button>
     </section>
 
     <div class="space-y-4">
@@ -410,7 +345,75 @@
   {% endif %}
 </div>
 
+<dialog id="execution-log-drawer" class="hm-drawer w-full max-w-[620px] bg-white text-ink-900">
+  <div class="flex h-full min-w-0 flex-col">
+    <header class="flex shrink-0 items-start justify-between gap-4 border-b border-ink-200 px-5 py-4 sm:px-6">
+      <div class="min-w-0">
+        <h2 class="text-lg font-semibold text-ink-900">Execution log</h2>
+        <p class="mt-1 text-xs text-ink-500"><span data-execution-log-count>{{ activities | length }}</span> events recorded for scan {{ scan.short_id }}</p>
+      </div>
+      <button type="button" aria-label="Close execution log" onclick="window.HeimdallExecutionLog.close()"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink-200 text-ink-500 hover:bg-ink-50 hover:text-ink-900">
+        {{ ui.icon("x", "h-4 w-4") }}
+      </button>
+    </header>
+
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <ol id="scan-activity-feed" class="divide-y divide-ink-200">
+        {% for activity in activities %}
+        <li data-activity-key="{{ activity.key }}" class="min-w-0 px-5 py-4 sm:px-6">
+          <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+            <time class="whitespace-nowrap font-mono text-ink-500">{{ activity.timestamp | short_dt }}</time>
+            <span class="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-ink-600">{{ activity.stage if activity.stage else "system" }}</span>
+            <span class="inline-flex items-center gap-1.5 font-medium
+              {{ 'text-low-700' if activity.tone == 'success' else
+                 'text-high-700' if activity.tone == 'warning' else
+                 'text-brand-700' if activity.tone == 'active' else
+                 'text-crit-700' if activity.tone == 'error' else
+                 'text-ink-500' }}">
+              <span class="h-1.5 w-1.5 rounded-full
+                {{ 'bg-low-500' if activity.tone == 'success' else
+                   'bg-high-500' if activity.tone == 'warning' else
+                   'bg-brand-500' if activity.tone == 'active' else
+                   'bg-crit-500' if activity.tone == 'error' else
+                   'bg-ink-400' }}"></span>
+              {{ (activity.status if activity.status else activity.tone) | replace("_", " ") | title }}{% if activity.progress_pct is not none %} {{ activity.progress_pct }}%{% endif %}
+            </span>
+          </div>
+          <h3 class="hm-break-anywhere mt-2 text-sm font-medium {{ 'text-crit-700' if activity.tone == 'error' else 'text-ink-900' }}">{{ activity.title }}</h3>
+          {% if activity.detail %}<p class="hm-break-anywhere mt-1 text-xs leading-5 text-ink-600">{{ activity.detail }}</p>{% endif %}
+        </li>
+        {% else %}
+        <li class="px-6 py-12 text-center text-sm text-ink-500">No execution events were recorded.</li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+</dialog>
+
 <script>
+window.HeimdallExecutionLog = {
+  trigger: null,
+  dialog() { return document.getElementById('execution-log-drawer'); },
+  open(trigger) {
+    const dialog = this.dialog();
+    if (!dialog || dialog.open) return;
+    this.trigger = trigger || document.activeElement;
+    dialog.showModal();
+  },
+  close() {
+    const dialog = this.dialog();
+    if (dialog && dialog.open) dialog.close();
+  }
+};
+document.getElementById('execution-log-drawer')?.addEventListener('click', function (event) {
+  if (event.target === this) window.HeimdallExecutionLog.close();
+});
+document.getElementById('execution-log-drawer')?.addEventListener('close', function () {
+  const trigger = window.HeimdallExecutionLog.trigger;
+  if (trigger && document.contains(trigger)) trigger.focus();
+});
+
 window.HeimdallScanActions = {
   async request(url, options) {
     if (window.HeimdallUI && window.HeimdallUI.fetch) {
@@ -517,21 +520,26 @@ window.HeimdallLiveScan = {
   renderActivity(activity) {
     const target = document.getElementById('scan-activity-feed');
     if (!target) return;
+    document.querySelectorAll('[data-execution-log-count]').forEach((node) => {
+      node.textContent = activity.length;
+    });
     if (!activity.length) {
-      target.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-sm text-ink-500">Execution events will appear here as the pipeline advances.</td></tr>';
+      target.innerHTML = '<li class="px-6 py-12 text-center text-sm text-ink-500">Execution events will appear here as the pipeline advances.</li>';
       return;
     }
     target.innerHTML = activity.map((item) => {
       const tone = item.tone || (item.status === 'completed' ? 'success' : item.status === 'failed' ? 'error' : item.status === 'running' ? 'active' : 'neutral');
       const classes = this.toneClasses(tone);
       const progress = typeof item.progress_pct === 'number' ? ` ${item.progress_pct}%` : '';
-      return `<tr data-activity-key="${this.escape(item.key)}">
-        <td class="whitespace-nowrap px-4 py-3 text-xs text-ink-600">${this.escape(this.formatTime(item.timestamp))}</td>
-        <td class="px-3 py-3 font-mono text-[11px] text-ink-600">${this.escape(item.stage || 'system')}</td>
-        <td class="px-3 py-3 text-xs font-medium text-ink-800">${this.escape(item.title || this.humanize(item.event_type))}</td>
-        <td class="px-3 py-3 text-xs leading-4 text-ink-600">${this.escape(item.detail)}</td>
-        <td class="px-3 py-3"><span class="inline-flex items-center gap-2 text-xs font-medium ${classes[0]}"><span class="h-2 w-2 rounded-full ${classes[1]}"></span>${this.escape(this.humanize(item.status || tone))}${progress}</span></td>
-      </tr>`;
+      return `<li data-activity-key="${this.escape(item.key)}" class="min-w-0 px-5 py-4 sm:px-6">
+        <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <time class="whitespace-nowrap font-mono text-ink-500">${this.escape(this.formatTime(item.timestamp))}</time>
+          <span class="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-ink-600">${this.escape(item.stage || 'system')}</span>
+          <span class="inline-flex items-center gap-1.5 font-medium ${classes[0]}"><span class="h-1.5 w-1.5 rounded-full ${classes[1]}"></span>${this.escape(this.humanize(item.status || tone))}${progress}</span>
+        </div>
+        <h3 class="hm-break-anywhere mt-2 text-sm font-medium ${tone === 'error' ? 'text-crit-700' : 'text-ink-900'}">${this.escape(item.title || this.humanize(item.event_type))}</h3>
+        ${item.detail ? `<p class="hm-break-anywhere mt-1 text-xs leading-5 text-ink-600">${this.escape(item.detail)}</p>` : ''}
+      </li>`;
     }).join('');
   },
 

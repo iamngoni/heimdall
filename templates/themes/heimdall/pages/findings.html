@@ -18,7 +18,7 @@
   <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
     <div>
       <span class="hm-badge bg-brand-50 text-brand-700 text-[11px] font-semibold uppercase tracking-wide">Scan findings</span>
-      <h1 class="mt-3 text-[26px] font-semibold tracking-tightest text-ink-900">Findings for {{ repo.name }}</h1>
+      <h1 class="mt-3 text-[26px] font-semibold tracking-normal text-ink-900">Findings for {{ repo.name }}</h1>
       <p class="mt-1.5 text-sm text-ink-500">
         Scan <span class="font-mono text-ink-700">{{ scan.id[:8] }}</span>
         <span class="mx-1.5 text-ink-300">·</span>
@@ -148,7 +148,7 @@
 
         <div class="flex flex-col items-end gap-1">
           {{ ui.status_badge(status_tone, finding.status | default("") | replace("_", " ") | capitalize) }}
-          <span class="text-xs text-ink-400">{{ finding.updated_at | short_dt }}</span>
+          <time class="whitespace-nowrap font-mono text-xs tabular-nums text-ink-400">{{ finding.updated_at | short_dt }}</time>
         </div>
 
         <div class="hidden justify-end text-ink-300 lg:flex">{{ ui.chevron_right() }}</div>

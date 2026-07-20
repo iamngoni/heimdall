@@ -23,7 +23,9 @@ fn every_template_renders_without_structural_errors() {
     // templates using them don't trip a false "unknown filter" here.
     env.add_filter("short_dt", |v: Option<String>| -> String {
         match v {
-            Some(s) if !s.trim().is_empty() => s.trim().replacen('T', " ", 1).chars().take(16).collect(),
+            Some(s) if !s.trim().is_empty() => {
+                s.trim().replacen('T', " ", 1).chars().take(16).collect()
+            }
             _ => "—".to_string(),
         }
     });
@@ -66,12 +68,35 @@ fn every_template_renders_without_structural_errors() {
     // Seed every top-level collection as an empty array so `| length` and
     // `for` loops don't abort under Chainable, letting every line execute.
     let collections = [
-        "activities", "assets", "assumptions", "assurance_claims", "attck",
-        "ai_provider_catalog", "api_keys", "boundaries", "data_flows",
-        "entry_points", "events", "evidence", "finding_buckets", "findings",
-        "gaps", "in_scope", "mitigations", "mitre_attack", "out_of_scope",
-        "recent_scans", "references", "repo_summaries", "repos", "scans",
-        "stages", "stride", "surfaces", "threats", "validation_plan",
+        "activities",
+        "assets",
+        "assumptions",
+        "assurance_claims",
+        "attck",
+        "ai_provider_catalog",
+        "api_keys",
+        "boundaries",
+        "data_flows",
+        "entry_points",
+        "events",
+        "evidence",
+        "finding_buckets",
+        "findings",
+        "gaps",
+        "in_scope",
+        "mitigations",
+        "mitre_attack",
+        "out_of_scope",
+        "recent_scans",
+        "references",
+        "repo_summaries",
+        "repos",
+        "scans",
+        "stages",
+        "stride",
+        "surfaces",
+        "threats",
+        "validation_plan",
         "verify_review",
     ];
     let obj = ctx.as_object_mut().unwrap();

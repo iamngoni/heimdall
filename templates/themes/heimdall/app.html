@@ -1,66 +1,112 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 
+{% macro app_nav() %}
+<nav class="flex flex-col gap-1">
+  <a href="/" class="hm-nav {{ 'hm-nav-active' if active_nav == 'overview' else 'hm-nav-idle' }}">
+    {{ ui.icon("grid", "h-5 w-5") }} <span>Overview</span>
+  </a>
+  <a href="/repos" class="hm-nav {{ 'hm-nav-active' if active_nav == 'repositories' else 'hm-nav-idle' }}">
+    {{ ui.icon("folder", "h-5 w-5") }} <span>Repositories</span>
+  </a>
+  <a href="/settings" class="hm-nav {{ 'hm-nav-active' if active_nav == 'settings' else 'hm-nav-idle' }}">
+    {{ ui.icon("gear", "h-5 w-5") }} <span>Settings</span>
+  </a>
+</nav>
+{% endmacro %}
+
+{% macro account_summary() %}
+<div class="flex min-w-0 items-center gap-3 rounded-lg border border-white/15 px-2.5 py-2">
+  <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">{{ user_initial | default('H') }}</span>
+  <div class="min-w-0 flex-1">
+    <p class="truncate text-[13px] font-semibold text-white">{{ user.display_name if user and user.display_name else 'Heimdall User' }}</p>
+    <p class="truncate text-[11px] text-ink-400">{{ user.role | default('Security Engineer') }}</p>
+  </div>
+  <span class="shrink-0 text-ink-400">{{ ui.icon("chevron-down", "h-4 w-4") }}</span>
+</div>
+{% endmacro %}
+
 {% block body %}
-<div class="flex h-full min-h-screen">
-  {# ── Sidebar ── #}
-  <aside class="flex w-[248px] shrink-0 flex-col bg-sidebar px-4 pb-5 pt-6">
-    <div class="mb-6 flex items-center gap-3 pl-2">
-      <span class="flex h-10 w-10 items-center justify-center rounded-full bg-brand-500">{{ ui.logo("light", "w-6 h-6") }}</span>
+<div class="flex h-full min-h-screen overflow-hidden">
+  <aside class="hidden w-[198px] shrink-0 flex-col bg-sidebar px-3 pb-4 pt-5 lg:flex">
+    <div class="mb-6 flex h-12 items-center px-1">
+      {{ ui.logo("light", "h-11 w-11") }}
     </div>
-    <nav class="flex flex-col gap-1">
-      <a href="/" class="hm-nav {{ 'hm-nav-active' if active_nav == 'overview' else 'hm-nav-idle' }}">
-        {{ ui.icon("grid", "w-5 h-5") }} <span>Overview</span>
-      </a>
-      <a href="/repos" class="hm-nav {{ 'hm-nav-active' if active_nav == 'repositories' else 'hm-nav-idle' }}">
-        {{ ui.icon("folder", "w-5 h-5") }} <span>Repositories</span>
-      </a>
-    </nav>
+    {{ app_nav() }}
     <div class="flex-1"></div>
-    <a href="/settings" class="hm-nav mb-2 {{ 'hm-nav-active' if active_nav == 'settings' else 'hm-nav-idle' }}">
-      {{ ui.icon("gear", "w-5 h-5") }} <span>Settings</span>
-    </a>
-    <div class="flex items-center gap-3 rounded-xl px-2 py-2">
-      <span class="flex h-8 w-8 items-center justify-center rounded-full bg-brand-500 text-xs font-semibold text-white">{{ user_initial | default('H') }}</span>
-      <div class="min-w-0 flex-1">
-        <p class="truncate text-[13px] font-semibold text-white">{{ user.display_name if user and user.display_name else 'Heimdall User' }}</p>
-        <p class="truncate text-xs text-ink-400">{{ user.role | default('Security Engineer') }}</p>
-      </div>
-      <span class="text-ink-400">{{ ui.icon("chevron-down", "w-4 h-4") }}</span>
-    </div>
+    {{ account_summary() }}
   </aside>
 
-  {# ── Main column ── #}
+  <dialog id="heimdall-mobile-nav" class="hm-drawer w-[min(86vw,300px)] bg-sidebar text-white lg:hidden">
+    <div class="flex h-full flex-col px-3 pb-4 pt-4">
+      <div class="mb-5 flex h-12 items-center justify-between px-1">
+        {{ ui.logo("light", "h-10 w-10") }}
+        <button type="button" aria-label="Close navigation" onclick="window.HeimdallShell.closeNavigation()"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:bg-white/10 hover:text-white">
+          {{ ui.icon("x", "h-5 w-5") }}
+        </button>
+      </div>
+      {{ app_nav() }}
+      <div class="flex-1"></div>
+      {{ account_summary() }}
+    </div>
+  </dialog>
+
   <div class="flex min-w-0 flex-1 flex-col">
-    {# Topbar #}
-    <header class="flex h-16 shrink-0 items-center justify-between border-b border-ink-200 bg-white px-6">
-      <nav class="flex items-center gap-2 text-sm">
-        {% for crumb in breadcrumb | default([]) %}
-          {% if not loop.first %}<span class="text-ink-300">/</span>{% endif %}
-          {% if crumb.href and not loop.last %}
-            <a href="{{ crumb.href }}" class="text-ink-500 hover:text-ink-700">{{ crumb.label }}</a>
-          {% else %}
-            <span class="font-medium text-ink-900">{{ crumb.label }}</span>
-          {% endif %}
-        {% endfor %}
-      </nav>
-      <div class="flex items-center gap-5">
-        <span class="flex items-center gap-2 text-sm font-medium text-low-700"><span class="h-2 w-2 rounded-full bg-low-500"></span>Scanner online</span>
-        <div class="relative">
-          <span class="text-ink-500">{{ ui.icon("bell", "w-[18px] h-[18px]") }}</span>
-          <span class="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-500 px-1 text-[10px] font-semibold text-white">3</span>
+    <header class="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-ink-200 bg-white px-4 sm:px-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <button type="button" aria-label="Open navigation" aria-controls="heimdall-mobile-nav"
+                onclick="window.HeimdallShell.openNavigation()"
+                class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink-200 text-ink-600 hover:bg-ink-50 lg:hidden">
+          {{ ui.icon("menu", "h-5 w-5") }}
+        </button>
+        <nav class="flex min-w-0 items-center gap-2 overflow-hidden text-sm" aria-label="Breadcrumb">
+          {% block breadcrumb_content %}
+          {% for crumb in breadcrumb | default([]) %}
+            {% if not loop.first %}<span class="shrink-0 text-ink-300">/</span>{% endif %}
+            {% if crumb.href and not loop.last %}
+              <a href="{{ crumb.href }}" class="max-w-[180px] truncate text-ink-500 hover:text-ink-700">{{ crumb.label }}</a>
+            {% else %}
+              <span class="max-w-[260px] truncate font-medium text-ink-900">{{ crumb.label }}</span>
+            {% endif %}
+          {% endfor %}
+          {% endblock %}
+        </nav>
+      </div>
+      <div class="flex shrink-0 items-center gap-3 sm:gap-5">
+        <span class="hidden items-center gap-2 text-sm font-medium text-low-700 sm:flex"><span class="h-2 w-2 rounded-full bg-low-500"></span>Scanner online</span>
+        <div class="relative hidden sm:block">
+          <span class="text-ink-500">{{ ui.icon("bell", "h-[18px] w-[18px]") }}</span>
+          <span class="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white">3</span>
         </div>
-        <div class="flex items-center gap-2 rounded-lg border border-ink-200 py-1.5 pl-1.5 pr-2.5">
-          <span class="flex h-6 w-6 items-center justify-center rounded-full bg-ink-100 text-ink-500">{{ ui.icon("person", "w-4 h-4") }}</span>
-          <span class="text-[13px] font-medium text-ink-900">{{ user.email if user and user.email else 'account' }}</span>
-          <span class="text-ink-400">{{ ui.icon("chevron-down", "w-4 h-4") }}</span>
+        <div class="flex min-w-0 items-center gap-2 rounded-lg border border-ink-200 py-1.5 pl-1.5 pr-2">
+          <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-700 text-[11px] font-semibold text-white">{{ user_initial | default('H') }}</span>
+          <span class="hidden max-w-[210px] truncate text-[13px] font-medium text-ink-900 xl:block">{{ user.email if user and user.email else 'account' }}</span>
+          <span class="hidden text-ink-400 xl:block">{{ ui.icon("chevron-down", "h-4 w-4") }}</span>
         </div>
       </div>
     </header>
 
-    <main class="min-w-0 flex-1 overflow-y-auto px-8 py-7">
+    <main class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
       {% block content %}{% endblock %}
     </main>
   </div>
 </div>
+
+<script>
+window.HeimdallShell = {
+  dialog() { return document.getElementById('heimdall-mobile-nav'); },
+  openNavigation() {
+    const dialog = this.dialog();
+    if (dialog && !dialog.open) dialog.showModal();
+  },
+  closeNavigation() {
+    const dialog = this.dialog();
+    if (dialog && dialog.open) dialog.close();
+  }
+};
+document.getElementById('heimdall-mobile-nav')?.addEventListener('click', function (event) {
+  if (event.target === this) this.close();
+});
+</script>
 {% endblock %}

@@ -155,6 +155,12 @@ enum AnthropicResponseBlock {
         name: String,
         input: serde_json::Value,
     },
+    #[serde(rename = "thinking")]
+    Thinking,
+    #[serde(rename = "redacted_thinking")]
+    RedactedThinking,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Deserialize)]
@@ -173,6 +179,29 @@ struct AnthropicErrorDetail {
     message: String,
     #[serde(rename = "type")]
     error_type: String,
+}
+
+fn collect_response_content(blocks: &[AnthropicResponseBlock]) -> (String, Vec<ToolCall>) {
+    let mut text_parts = Vec::new();
+    let mut tool_calls = Vec::new();
+
+    for block in blocks {
+        match block {
+            AnthropicResponseBlock::Text { text } => text_parts.push(text.clone()),
+            AnthropicResponseBlock::ToolUse { id, name, input } => {
+                tool_calls.push(ToolCall {
+                    id: id.clone(),
+                    name: name.clone(),
+                    arguments: input.clone(),
+                });
+            }
+            AnthropicResponseBlock::Thinking
+            | AnthropicResponseBlock::RedactedThinking
+            | AnthropicResponseBlock::Unknown => {}
+        }
+    }
+
+    (text_parts.join(""), tool_calls)
 }
 
 #[async_trait::async_trait]
@@ -249,21 +278,7 @@ impl ModelProvider for ClaudeProvider {
 
         let api_resp: AnthropicResponse = resp.json().await?;
 
-        let mut text_parts = Vec::new();
-        let mut tool_calls = Vec::new();
-
-        for block in &api_resp.content {
-            match block {
-                AnthropicResponseBlock::Text { text } => text_parts.push(text.clone()),
-                AnthropicResponseBlock::ToolUse { id, name, input } => {
-                    tool_calls.push(ToolCall {
-                        id: id.clone(),
-                        name: name.clone(),
-                        arguments: input.clone(),
-                    });
-                }
-            }
-        }
+        let (content, tool_calls) = collect_response_content(&api_resp.content);
 
         let stop_reason = match api_resp.stop_reason.as_str() {
             "end_turn" => StopReason::EndTurn,
@@ -274,7 +289,7 @@ impl ModelProvider for ClaudeProvider {
         };
 
         Ok(CompletionResponse {
-            content: text_parts.join(""),
+            content,
             tool_calls: if tool_calls.is_empty() {
                 None
             } else {
@@ -299,7 +314,7 @@ impl ModelProvider for ClaudeProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::model_supports_custom_temperature;
+    use super::{AnthropicResponse, collect_response_content, model_supports_custom_temperature};
 
     #[test]
     fn old_models_allow_custom_temperature() {
@@ -344,5 +359,50 @@ mod tests {
         assert!(model_supports_custom_temperature("anthropic/claude-3-opus"));
         // No extractable version → assume legacy behavior (allow).
         assert!(model_supports_custom_temperature("claude-some-future-name"));
+    }
+
+    #[test]
+    fn response_accepts_thinking_and_future_content_blocks() {
+        let response: AnthropicResponse = serde_json::from_value(serde_json::json!({
+            "content": [
+                {
+                    "type": "thinking",
+                    "thinking": "internal reasoning",
+                    "signature": "signature"
+                },
+                {
+                    "type": "redacted_thinking",
+                    "data": "opaque"
+                },
+                {
+                    "type": "future_content_block",
+                    "data": "ignored"
+                },
+                {
+                    "type": "text",
+                    "text": "visible answer"
+                },
+                {
+                    "type": "tool_use",
+                    "id": "tool_1",
+                    "name": "search",
+                    "input": { "q": "auth" }
+                }
+            ],
+            "stop_reason": "tool_use",
+            "usage": {
+                "input_tokens": 12,
+                "output_tokens": 34
+            }
+        }))
+        .expect("response should deserialize");
+
+        let (content, tool_calls) = collect_response_content(&response.content);
+
+        assert_eq!(content, "visible answer");
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "tool_1");
+        assert_eq!(tool_calls[0].name, "search");
+        assert_eq!(tool_calls[0].arguments["q"], "auth");
     }
 }

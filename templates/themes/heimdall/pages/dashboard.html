@@ -11,7 +11,7 @@
 <div class="mx-auto max-w-[1320px] space-y-6">
   <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
     <div>
-      <h1 class="text-[28px] font-semibold tracking-[-0.02em] text-ink-900">Security Overview</h1>
+      <h1 class="text-[28px] font-semibold tracking-normal text-ink-900">Security Overview</h1>
       <p class="mt-1 text-sm text-ink-500">Repository intake, scan activity, and current exposure.</p>
     </div>
     <a href="/repos/new" class="hm-btn-primary inline-flex items-center gap-2">
@@ -23,7 +23,7 @@
   <section class="hm-card overflow-hidden" aria-label="Security summary">
     <div class="grid divide-y divide-ink-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
       <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
-        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-brand-500 bg-brand-50 text-brand-700">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-brand-500 bg-brand-50 text-brand-700">
           {{ ui.icon("box", "h-6 w-6") }}
         </span>
         <div>
@@ -32,7 +32,7 @@
         </div>
       </div>
       <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
-        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-brand-500 bg-brand-50 text-brand-700">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-brand-500 bg-brand-50 text-brand-700">
           {{ ui.icon("radar", "h-6 w-6") }}
         </span>
         <div>
@@ -41,7 +41,7 @@
         </div>
       </div>
       <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
-        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-high-500 bg-high-50 text-high-700">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-high-500 bg-high-50 text-high-700">
           {{ ui.icon("doc", "h-6 w-6") }}
         </span>
         <div>
@@ -50,7 +50,7 @@
         </div>
       </div>
       <div class="flex items-center gap-4 px-5 py-5 xl:px-6">
-        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-crit-500 bg-crit-50 text-crit-700">
+        <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-crit-500 bg-crit-50 text-crit-700">
           {{ ui.icon("shield", "h-6 w-6") }}
         </span>
         <div>
@@ -61,23 +61,51 @@
     </div>
   </section>
 
-  <div class="grid items-start gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(440px,1fr)]">
-    <section class="hm-card overflow-hidden">
+  <div class="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(440px,1fr)]">
+    <section class="hm-card min-w-0 overflow-hidden">
       <div class="flex items-center justify-between border-b border-ink-200 px-5 py-4">
         <h2 class="text-base font-semibold text-ink-900">Recent scans</h2>
         <a href="/repos" class="text-sm font-medium text-brand-700 hover:text-brand-600">View repositories</a>
       </div>
 
       {% if recent_scans | length > 0 %}
-      <div class="overflow-x-auto">
-        <table class="w-full min-w-[680px] table-fixed text-left">
+      <div class="divide-y divide-ink-200 sm:hidden">
+        {% for scan in recent_scans %}
+        <a href="/scans/{{ scan.id }}" class="block px-4 py-4 transition hover:bg-ink-50">
+          <div class="flex min-w-0 items-start justify-between gap-3">
+            <span class="flex min-w-0 items-center gap-3">
+              <span class="shrink-0">{{ ui.provider_mark("github", "h-5 w-5") }}</span>
+              <span class="truncate text-sm font-medium text-ink-900">{{ scan.repo_name }}</span>
+            </span>
+            <span class="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium
+              {{ 'text-low-700' if scan.status == 'completed' else
+                 'text-crit-700' if scan.status == 'failed' else
+                 'text-high-700' if scan.status == 'cancelled' else
+                 'text-brand-700' }}">
+              <span class="h-1.5 w-1.5 rounded-full
+                {{ 'bg-low-500' if scan.status == 'completed' else
+                   'bg-crit-500' if scan.status == 'failed' else
+                   'bg-high-500' if scan.status == 'cancelled' else
+                   'bg-brand-500' }}"></span>
+              {{ scan.status | replace("_", " ") | title }}
+            </span>
+          </div>
+          <div class="mt-2 flex items-center justify-between gap-3 pl-8 text-xs text-ink-500">
+            <span>{{ scan.scan_type | replace("_", " ") | title }} · {{ scan.finding_count }} findings</span>
+            <time class="shrink-0 font-mono text-[10px]">{{ scan.created_at | short_dt }}</time>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      <div class="hidden overflow-x-auto sm:block">
+        <table class="w-full min-w-[760px] table-fixed text-left">
           <thead class="border-b border-ink-200 bg-ink-50 text-xs font-medium text-ink-500">
             <tr>
-              <th class="w-[38%] px-5 py-3 font-medium">Repository</th>
-              <th class="w-[16%] px-3 py-3 font-medium">Type</th>
-              <th class="w-[18%] px-3 py-3 font-medium">Status</th>
-              <th class="w-[12%] px-3 py-3 font-medium">Findings</th>
-              <th class="px-3 py-3 font-medium">Started</th>
+              <th class="w-[34%] px-5 py-3 font-medium">Repository</th>
+              <th class="w-[14%] px-3 py-3 font-medium">Type</th>
+              <th class="w-[17%] px-3 py-3 font-medium">Status</th>
+              <th class="w-[11%] px-3 py-3 font-medium">Findings</th>
+              <th class="w-[148px] px-3 py-3 text-right font-medium">Started</th>
               <th class="w-9 px-2 py-3"><span class="sr-only">Open</span></th>
             </tr>
           </thead>
@@ -106,7 +134,7 @@
                 </span>
               </td>
               <td class="px-3 py-4 text-[13px] text-ink-700">{{ scan.finding_count }}</td>
-              <td class="whitespace-nowrap px-3 py-4 font-mono text-xs text-ink-500">{{ scan.created_at | short_dt }}</td>
+              <td class="w-[148px] whitespace-nowrap px-3 py-4 text-right font-mono text-[10px] tabular-nums text-ink-500"><time>{{ scan.created_at | short_dt }}</time></td>
               <td class="px-2 py-4">
                 <a href="/scans/{{ scan.id }}" aria-label="Open scan {{ scan.id }}" class="text-ink-400 transition group-hover:text-brand-700">
                   {{ ui.icon("chevron-right", "h-4 w-4") }}
@@ -119,7 +147,7 @@
       </div>
       {% else %}
       <div class="px-6 py-14 text-center">
-        <span class="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-700">{{ ui.icon("radar", "h-5 w-5") }}</span>
+        <span class="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-brand-50 text-brand-700">{{ ui.icon("radar", "h-5 w-5") }}</span>
         <h3 class="mt-4 text-sm font-semibold text-ink-900">No scans yet</h3>
         <p class="mx-auto mt-1 max-w-sm text-sm text-ink-500">Add a repository and run its first scan to start building your security history.</p>
         <a href="/repos/new" class="hm-btn-primary mt-5 inline-flex items-center gap-2">{{ ui.icon("plus", "h-4 w-4") }} Add repository</a>
@@ -127,15 +155,47 @@
       {% endif %}
     </section>
 
-    <div class="space-y-6">
-      <section class="hm-card overflow-hidden">
+    <div class="min-w-0 space-y-6">
+      <section class="hm-card min-w-0 overflow-hidden">
         <div class="flex items-center justify-between border-b border-ink-200 px-5 py-4">
           <h2 class="text-base font-semibold text-ink-900">Connected repositories</h2>
           <a href="/repos/new" class="text-sm font-medium text-brand-700 hover:text-brand-600">Add more</a>
         </div>
 
         {% if repo_summaries | length > 0 %}
-        <div class="overflow-x-auto">
+        <div class="divide-y divide-ink-200 sm:hidden">
+          {% for repo in repo_summaries %}
+          <a href="/repos/{{ repo.id }}" class="block px-4 py-4 transition hover:bg-ink-50">
+            <div class="flex min-w-0 items-start justify-between gap-3">
+              <span class="flex min-w-0 items-start gap-3">
+                <span class="mt-0.5 shrink-0">{{ ui.provider_mark(repo.source_label, "h-5 w-5") }}</span>
+                <span class="min-w-0">
+                  <span class="block truncate text-sm font-medium text-ink-900">{{ repo.name }}</span>
+                  <span class="mt-0.5 block text-xs text-ink-500">{{ repo.source_label }} · {{ repo.finding_count }} findings</span>
+                </span>
+              </span>
+              {% if repo.last_scan_status %}
+              <span class="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium
+                {{ 'text-low-700' if repo.last_scan_status == 'completed' else
+                   'text-crit-700' if repo.last_scan_status == 'failed' else
+                   'text-high-700' if repo.last_scan_status == 'cancelled' else
+                   'text-brand-700' }}">
+                <span class="h-1.5 w-1.5 rounded-full
+                  {{ 'bg-low-500' if repo.last_scan_status == 'completed' else
+                     'bg-crit-500' if repo.last_scan_status == 'failed' else
+                     'bg-high-500' if repo.last_scan_status == 'cancelled' else
+                     'bg-brand-500' }}"></span>
+                {{ repo.last_scan_status | replace("_", " ") | title }}
+              </span>
+              {% else %}
+              <span class="shrink-0 text-xs text-ink-500">No scans</span>
+              {% endif %}
+            </div>
+            {% if repo.last_scan_at %}<time class="mt-2 block pl-8 font-mono text-[10px] text-ink-500">{{ repo.last_scan_at | short_dt }}</time>{% endif %}
+          </a>
+          {% endfor %}
+        </div>
+        <div class="hidden overflow-x-auto sm:block">
           <table class="w-full min-w-[580px] table-fixed text-left">
             <thead class="border-b border-ink-200 bg-ink-50 text-xs text-ink-500">
               <tr>
@@ -195,7 +255,7 @@
         {% endif %}
       </section>
 
-      <section class="hm-card overflow-hidden">
+      <section class="hm-card min-w-0 overflow-hidden">
         <div class="flex items-center justify-between border-b border-ink-200 px-5 py-4">
           <h2 class="text-base font-semibold text-ink-900">Source control</h2>
           <a href="/settings" class="text-sm font-medium text-brand-700 hover:text-brand-600">Manage</a>

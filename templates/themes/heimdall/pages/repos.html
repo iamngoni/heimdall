@@ -10,12 +10,12 @@
     <h1 class="text-2xl font-semibold text-ink-900">Repositories</h1>
     <p class="mt-1 text-sm text-ink-500">Connected codebases ready for scanning and review.</p>
   </div>
-  <div class="mt-4 flex items-center gap-3 sm:mt-0">
-    <div class="relative">
+  <div class="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:mt-0 sm:flex">
+    <div class="relative min-w-0">
       <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400">{{ ui.icon("search", "w-4 h-4") }}</span>
-      <input id="repo-filter" type="search" placeholder="Filter this page" class="hm-input w-64 pl-9">
+      <input id="repo-filter" type="search" placeholder="Filter this page" class="hm-input w-full pl-9 sm:w-64">
     </div>
-    <a href="/repos/new" class="hm-btn-primary">{{ ui.icon("plus", "w-4 h-4") }}Add repository</a>
+    <a href="/repos/new" class="hm-btn-primary shrink-0 px-3 sm:px-4">{{ ui.icon("plus", "w-4 h-4") }}<span class="sm:hidden">Add</span><span class="hidden sm:inline">Add repository</span></a>
   </div>
 </div>
 
@@ -29,7 +29,7 @@
       {{ "Connected" if integrations.github.connected else "Not connected" }}
     </span>
   </div>
-  <span class="h-4 w-px bg-ink-200"></span>
+  <span class="hidden h-4 w-px bg-ink-200 sm:block"></span>
   <div class="flex items-center gap-2">
     {{ ui.provider_mark("gitlab", "w-5 h-5") }}
     <span class="font-medium text-ink-900">GitLab</span>
@@ -38,7 +38,7 @@
       {{ "Connected" if integrations.gitlab.connected else "Not connected" }}
     </span>
   </div>
-  <span class="h-4 w-px bg-ink-200"></span>
+  <span class="hidden h-4 w-px bg-ink-200 sm:block"></span>
   <div class="flex items-center gap-2">
     {{ ui.provider_mark("bitbucket", "w-5 h-5") }}
     <span class="font-medium text-ink-900">Bitbucket</span>
@@ -61,8 +61,8 @@
   <a href="/repos/new" class="hm-btn-primary mt-6 inline-flex">{{ ui.icon("plus", "w-4 h-4") }}Add repository</a>
 </div>
 {% else %}
-<div class="hm-card mt-6 overflow-hidden">
-  <div class="grid grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,0.9fr)_28px] items-center gap-4 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
+<div class="hm-card mt-6 hidden overflow-x-auto md:block">
+  <div class="grid min-w-[900px] grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_72px_132px_20px] items-center gap-4 border-b border-ink-200 bg-ink-50 px-5 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
     <div>Repository</div>
     <div>Source</div>
     <div>Branch</div>
@@ -76,7 +76,7 @@
     <a href="/repos/{{ repo.id }}"
        data-repo-row
        data-search="{{ repo.name | lower }} {{ repo.host | lower }} {{ repo.source_label | lower }}"
-       class="grid grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,0.9fr)_28px] items-center gap-4 px-5 py-4 transition-colors hover:bg-ink-50">
+       class="grid min-w-[900px] grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_72px_132px_20px] items-center gap-4 px-5 py-4 transition-colors hover:bg-ink-50">
       <div class="flex min-w-0 items-center gap-3">
         <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-ink-200 bg-white">
           {% if repo.source_type in ["github", "gitlab", "bitbucket"] %}
@@ -113,15 +113,60 @@
 
       <div class="text-sm font-medium {{ 'text-ink-900' if repo.finding_count else 'text-ink-300' }}">{{ repo.finding_count }}</div>
 
-      <div class="text-sm text-ink-500">{{ repo.created_at | short_dt }}</div>
+      <time class="min-w-[132px] whitespace-nowrap text-right font-mono text-xs tabular-nums text-ink-500">{{ repo.created_at | short_dt }}</time>
 
-      <div class="flex justify-end text-ink-300">{{ ui.icon("chevron-right", "w-4 h-4") }}</div>
+      <span class="flex w-5 shrink-0 justify-end text-ink-300" aria-hidden="true">{{ ui.icon("chevron-right", "h-4 w-4") }}</span>
     </a>
     {% endfor %}
   </div>
 </div>
 
-<div class="mt-4 flex items-center justify-between">
+<div class="hm-card mt-6 overflow-hidden md:hidden">
+  <div class="border-b border-ink-200 bg-ink-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">Repositories</div>
+  <div class="divide-y divide-ink-200">
+    {% for repo in repos %}
+    <a href="/repos/{{ repo.id }}"
+       data-repo-row
+       data-search="{{ repo.name | lower }} {{ repo.host | lower }} {{ repo.source_label | lower }}"
+       class="block px-4 py-4 transition-colors hover:bg-ink-50">
+      <div class="flex min-w-0 items-start gap-3">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-ink-200 bg-white">
+          {% if repo.source_type in ["github", "gitlab", "bitbucket"] %}
+          {{ ui.provider_mark(repo.source_type, "w-5 h-5") }}
+          {% elif repo.source_type == "git_url" %}
+          {{ ui.icon("globe", "w-4 h-4 text-ink-500") }}
+          {% else %}
+          {{ ui.icon("doc", "w-4 h-4 text-ink-500") }}
+          {% endif %}
+        </span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-sm font-semibold text-ink-900">{{ repo.name }}</span>
+          <span class="mt-0.5 block truncate text-xs text-ink-500">{{ repo.source_label }} · {{ repo.default_branch or "No default branch" }}</span>
+        </span>
+        {{ ui.icon("chevron-right", "mt-1 h-4 w-4 shrink-0 text-ink-300") }}
+      </div>
+      <div class="mt-3 grid grid-cols-2 gap-3 pl-12 text-xs">
+        <div>
+          <span class="block text-[10px] font-semibold uppercase tracking-wide text-ink-400">Last scan</span>
+          {% if repo.last_scan_status %}
+          <span class="mt-1 inline-flex items-center gap-1.5 font-medium
+            {{ 'text-low-700' if repo.last_scan_status == 'completed' else 'text-crit-700' if repo.last_scan_status == 'failed' else 'text-high-700' if repo.last_scan_status == 'cancelled' else 'text-info-700' }}">
+            <span class="h-1.5 w-1.5 rounded-full {{ 'bg-low-500' if repo.last_scan_status == 'completed' else 'bg-crit-500' if repo.last_scan_status == 'failed' else 'bg-high-500' if repo.last_scan_status == 'cancelled' else 'bg-info-500' }}"></span>
+            {{ repo.last_scan_status | replace("_", " ") | title }}
+          </span>
+          {% else %}<span class="mt-1 block text-ink-400">Never scanned</span>{% endif %}
+        </div>
+        <div>
+          <span class="block text-[10px] font-semibold uppercase tracking-wide text-ink-400">Findings</span>
+          <span class="mt-1 block font-medium text-ink-700">{{ repo.finding_count }}</span>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
   <p class="text-sm text-ink-500">Page {{ page }} of {{ total_pages }} &middot; {{ total }} repositories</p>
   <div class="flex items-center gap-2">
     {% if page > 1 %}

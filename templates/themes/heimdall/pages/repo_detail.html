@@ -8,10 +8,10 @@
 
 {% block content %}
 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-  <div class="max-w-3xl">
+  <div class="min-w-0 max-w-3xl">
     <div class="flex items-center gap-3">
       {{ ui.provider_mark(repo.source_type, "w-7 h-7") }}
-      <h1 class="text-2xl font-semibold tracking-tighter2 text-ink-900">{{ repo.name }}</h1>
+      <h1 class="text-2xl font-semibold tracking-normal text-ink-900">{{ repo.name }}</h1>
     </div>
     <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink-500">
       <span class="inline-flex items-center gap-1.5">{{ ui.provider_mark(repo.source_type, "w-4 h-4") }} {{ repo.source_label }}</span>
@@ -24,8 +24,8 @@
     </div>
     {% if repo.remote_url %}
     <a href="{{ repo.remote_url }}" target="_blank" rel="noreferrer"
-       class="mt-2 inline-flex items-center gap-1 truncate text-sm text-brand-600 hover:text-brand-700">
-      {{ repo.remote_url }} {{ ui.icon("external", "w-3.5 h-3.5") }}
+       class="mt-2 flex max-w-full items-center gap-1 text-sm text-brand-600 hover:text-brand-700">
+      <span class="truncate">{{ repo.remote_url }}</span>{{ ui.icon("external", "h-3.5 w-3.5 shrink-0") }}
     </a>
     {% endif %}
   </div>
@@ -54,14 +54,14 @@
 </div>
 
 {% if not scan_capability.available %}
-<div class="mt-5 rounded-xl border border-med-200 bg-med-50 px-4 py-3 text-sm text-med-700">
+<div class="mt-5 rounded-lg border border-med-200 bg-med-50 px-4 py-3 text-sm text-med-700">
   <p class="font-semibold">Scanning isn't ready for this workspace yet.</p>
   <p class="mt-1">{{ scan_capability.reason }}</p>
   <a href="/settings" class="mt-2 inline-flex items-center text-sm font-semibold hover:underline">Open Settings</a>
 </div>
 {% endif %}
 
-<div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_340px]">
+<div class="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,400px)]">
   {# ── Left column ── #}
   <div class="space-y-6">
     <section class="hm-card p-5">
@@ -122,12 +122,12 @@
       <div class="divide-y divide-ink-200">
         {% for scan in scans %}
         <a href="/scans/{{ scan.id }}"
-           class="grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,1fr)_24px] items-center gap-4 px-5 py-4 transition hover:bg-ink-50">
+           class="grid min-w-0 grid-cols-[minmax(0,1fr)_20px] items-center gap-3 px-5 py-4 transition hover:bg-ink-50 sm:grid-cols-[minmax(0,1fr)_112px_64px_132px_20px] sm:gap-4">
           <div class="min-w-0">
             <p class="truncate font-mono text-sm font-semibold text-brand-600">{{ scan.short_id }}</p>
             <p class="mt-0.5 text-xs uppercase tracking-[0.1em] text-ink-400">{{ scan.scan_type }}</p>
           </div>
-          <div>
+          <div class="hidden sm:block">
             {% if scan.status == "completed" %}
             {{ ui.status_badge("success", scan.status | replace("_", " ") | title) }}
             {% elif scan.status == "failed" %}
@@ -138,9 +138,9 @@
             {{ ui.status_badge("warning", scan.status | replace("_", " ") | title) }}
             {% endif %}
           </div>
-          <div class="text-sm text-ink-700">{{ scan.finding_count }}</div>
-          <div class="font-mono text-sm text-ink-500">{{ scan.created_at | short_dt }}</div>
-          <div class="text-ink-400">{{ ui.chevron_right() }}</div>
+          <div class="hidden text-sm text-ink-700 sm:block">{{ scan.finding_count }}</div>
+          <time class="hidden min-w-[132px] whitespace-nowrap text-right font-mono text-xs tabular-nums text-ink-500 sm:block">{{ scan.created_at | short_dt }}</time>
+          <span class="flex w-5 shrink-0 justify-end text-ink-400" aria-hidden="true">{{ ui.chevron_right("h-4 w-4") }}</span>
         </a>
         {% endfor %}
       </div>
@@ -174,7 +174,7 @@
 
   {# ── Right rail ── #}
   <aside class="space-y-6">
-    <section class="hm-card p-5">
+    <section class="hm-card min-w-0 p-5">
       <div class="flex items-center justify-between">
         <h2 class="text-sm font-semibold text-ink-900">Scanning</h2>
         {{ ui.status_badge("success" if scan_capability.available else "neutral", "Ready" if scan_capability.available else "Not ready") }}
@@ -270,33 +270,33 @@
     <section class="hm-card p-5">
       <h2 class="text-sm font-semibold text-ink-900">Repository details</h2>
       <dl class="mt-4 space-y-3 text-sm">
-        <div class="flex items-center justify-between">
+        <div class="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3">
           <dt class="text-ink-500">Source</dt>
-          <dd class="font-medium text-ink-900">{{ repo.source_label }}</dd>
+          <dd class="min-w-0 text-right font-medium text-ink-900">{{ repo.source_label }}</dd>
         </div>
-        <div class="flex items-center justify-between">
+        <div class="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3">
           <dt class="text-ink-500">Host</dt>
-          <dd class="font-medium text-ink-900">{{ repo.host }}</dd>
+          <dd class="hm-break-anywhere min-w-0 text-right font-medium text-ink-900">{{ repo.host }}</dd>
         </div>
-        <div class="flex items-center justify-between">
+        <div class="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3">
           <dt class="text-ink-500">Default branch</dt>
-          <dd class="font-mono font-medium text-ink-900">{{ repo.default_branch | default("—") }}</dd>
+          <dd class="hm-break-anywhere min-w-0 text-right font-mono font-medium text-ink-900">{{ repo.default_branch | default("—") }}</dd>
         </div>
         {% if repo.remote_url %}
-        <div class="flex items-center justify-between gap-3">
-          <dt class="shrink-0 text-ink-500">Remote URL</dt>
-          <dd class="truncate">
-            <a href="{{ repo.remote_url }}" target="_blank" rel="noreferrer" class="truncate text-brand-600 hover:text-brand-700">{{ repo.remote_url }}</a>
+        <div class="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3">
+          <dt class="text-ink-500">Remote URL</dt>
+          <dd class="min-w-0 text-right">
+            <a href="{{ repo.remote_url }}" target="_blank" rel="noreferrer" class="block truncate text-brand-600 hover:text-brand-700" title="{{ repo.remote_url }}">{{ repo.remote_url }}</a>
           </dd>
         </div>
         {% endif %}
-        <div class="flex items-center justify-between gap-3">
-          <dt class="shrink-0 text-ink-500">Repository ID</dt>
-          <dd class="flex items-center gap-1.5">
-            <span class="truncate font-mono text-xs text-ink-700">{{ repo.id }}</span>
+        <div class="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-3">
+          <dt class="text-ink-500">Repository ID</dt>
+          <dd class="flex min-w-0 items-center justify-end gap-1.5">
+            <span class="min-w-0 truncate font-mono text-xs text-ink-700" title="{{ repo.id }}">{{ repo.id }}</span>
             <button type="button" aria-label="Copy repository ID"
                     onclick="HeimdallRepoDetail.copyToClipboard('{{ repo.id }}')"
-                    class="text-ink-400 hover:text-ink-600">{{ ui.icon("copy", "w-3.5 h-3.5") }}</button>
+                    class="shrink-0 text-ink-400 hover:text-ink-600">{{ ui.icon("copy", "h-3.5 w-3.5") }}</button>
           </dd>
         </div>
       </dl>

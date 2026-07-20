@@ -20,14 +20,14 @@
     color: theme("colors.ink.900");
     font-family: theme("fontFamily.sans");
   }
-  h1, h2, h3, h4 { letter-spacing: -0.02em; }
+  h1, h2, h3, h4 { letter-spacing: 0; }
   ::selection { background: theme("colors.brand.100"); color: theme("colors.ink.900"); }
 }
 
 @layer components {
   /* Surface card */
   .hm-card {
-    @apply bg-white border border-ink-200 rounded-xl shadow-card;
+    @apply bg-white border border-ink-200 rounded-lg;
   }
   /* Primary / secondary / ghost buttons */
   .hm-btn { @apply inline-flex items-center gap-2 rounded-lg text-sm font-medium transition-colors; }
@@ -47,6 +47,36 @@
   .hm-nav { @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors; }
   .hm-nav-idle { @apply text-ink-300 hover:bg-white/5; }
   .hm-nav-active { @apply bg-brand-500 text-white; }
+}
+
+/* Long repository URLs, ids, provider models, and event payloads must wrap
+   inside their owning column instead of widening the page. */
+.hm-break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
+
+/* Rich model/report content can include paths, URLs, UUIDs, and generated prose.
+   Keep those values inside their column while preserving horizontal code panes. */
+.hm-content-safe { min-width: 0; }
+.hm-content-safe :where(div, section, article, header, footer, p, span, a, li, dt, dd, h1, h2, h3, h4, code) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Native dialogs provide focus trapping and Escape handling. These rules turn
+   them into edge drawers without giving the main layout a permanent rail. */
+.hm-drawer {
+  inset: 0 0 0 auto;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.hm-drawer::backdrop { background: rgba(16, 22, 26, 0.38); }
+.hm-drawer[open] { animation: hm-drawer-in 160ms ease-out; }
+@keyframes hm-drawer-in {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 /* HTMX swap transitions */

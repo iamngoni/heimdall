@@ -1,6 +1,7 @@
 {% extends "app.html" %}
 
 {% block title %}Settings{% endblock %}
+{% block breadcrumb_content %}<span class="font-medium text-ink-900">Settings</span>{% endblock %}
 
 {% block content %}
 {% set active_nav = "settings" %}
@@ -9,16 +10,16 @@
 {% set ai_connected = (1 if ai_config.has_anthropic else 0) + (1 if ai_config.has_claude_code else 0) + (1 if ai_config.has_codex else 0) + (1 if ai_config.has_xai_oauth else 0) + (1 if ai_config.has_xai else 0) + (1 if ai_config.has_openai else 0) + (1 if ai_config.has_openai_compatible else 0) + (1 if ai_config.has_ollama else 0) %}
 {% set initial_settings_tab = "integrations" if integration_error else "profile" %}
 
-<div class="mx-auto max-w-5xl">
+<div class="mx-auto max-w-[1320px]">
     <div class="mb-8">
-        <h1 class="text-2xl font-semibold tracking-tight text-ink-900">Settings</h1>
-        <p class="mt-1 text-sm text-ink-500">Manage your workspace, integrations, and preferences.</p>
+        <h1 class="text-2xl font-semibold tracking-normal text-ink-900">Settings</h1>
+        <p class="mt-1 text-sm text-ink-500">Manage your account, integrations, and scan infrastructure.</p>
     </div>
 
     {% if integration_error %}
-    <div class="mb-6 flex items-start gap-3 rounded-xl border border-med-200 bg-med-50 px-4 py-3 text-sm text-med-700">
+    <div class="mb-6 flex items-start gap-3 rounded-lg border border-med-200 bg-med-50 px-4 py-3 text-sm text-med-700">
         <span class="mt-0.5 text-med-500">{{ ui.icon("alert-triangle", "h-4 w-4 flex-shrink-0") }}</span>
-        <div>
+        <div class="min-w-0">
             {% if integration_error == "github-account-in-use" %}
             That GitHub account is already linked to another Heimdall user.
             {% elif integration_error == "gitlab-account-in-use" %}
@@ -32,45 +33,44 @@
     </div>
     {% endif %}
 
-    <div class="grid gap-10 lg:grid-cols-[200px_minmax(0,1fr)]">
+    <div class="grid min-w-0 gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside class="lg:sticky lg:top-8 lg:self-start">
             <nav class="flex flex-col gap-0.5 hm-card p-2" data-settings-tabs aria-label="Settings sections">
                 <button type="button" data-settings-tab="profile"
                         class="flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition {{ 'bg-brand-50 font-medium text-brand-700' if initial_settings_tab == 'profile' else 'font-normal text-ink-600 hover:bg-ink-50 hover:text-ink-900' }}">
-                    <span>Profile</span>
+                    <span class="flex items-center gap-2.5">{{ ui.icon("person", "h-4 w-4") }} Profile</span>
                 </button>
                 <button type="button" data-settings-tab="integrations"
                         class="flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition {{ 'bg-brand-50 font-medium text-brand-700' if initial_settings_tab == 'integrations' else 'font-normal text-ink-600 hover:bg-ink-50 hover:text-ink-900' }}">
-                    <span>Integrations</span>
-                    <span class="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-ink-500 ring-1 ring-ink-200">{{ vcs_connected }}/3</span>
+                    <span class="flex items-center gap-2.5">{{ ui.icon("link", "h-4 w-4") }} Integrations</span>
+                    <span class="rounded-full border border-ink-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-ink-500">{{ vcs_connected }}/3</span>
                 </button>
                 <button type="button" data-settings-tab="providers"
                         class="flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition {{ 'bg-brand-50 font-medium text-brand-700' if initial_settings_tab == 'providers' else 'font-normal text-ink-600 hover:bg-ink-50 hover:text-ink-900' }}">
-                    <span>AI Providers</span>
-                    <span class="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-ink-500 ring-1 ring-ink-200">{{ ai_connected }}/7</span>
+                    <span class="flex items-center gap-2.5">{{ ui.icon("sparkle", "h-4 w-4") }} AI Providers</span>
+                    <span class="rounded-full border border-ink-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-ink-500">{{ ai_connected }}/8</span>
                 </button>
                 <button type="button" data-settings-tab="keys"
                         class="flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition {{ 'bg-brand-50 font-medium text-brand-700' if initial_settings_tab == 'keys' else 'font-normal text-ink-600 hover:bg-ink-50 hover:text-ink-900' }}">
-                    <span>API Keys</span>
+                    <span class="flex items-center gap-2.5">{{ ui.icon("key", "h-4 w-4") }} API Keys</span>
                 </button>
                 <button type="button" data-settings-tab="security"
                         class="flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition {{ 'bg-brand-50 font-medium text-brand-700' if initial_settings_tab == 'security' else 'font-normal text-ink-600 hover:bg-ink-50 hover:text-ink-900' }}">
-                    <span>Security</span>
+                    <span class="flex items-center gap-2.5">{{ ui.icon("shield", "h-4 w-4") }} Security</span>
                 </button>
             </nav>
         </aside>
 
         <div>
             <!-- Profile panel -->
-            <section data-settings-panel="profile" class="{{ 'hidden' if initial_settings_tab != 'profile' else '' }}">
-                <div class="hm-card p-6">
-                    <header class="mb-6">
-                        <h2 class="text-xl font-semibold tracking-tight text-ink-900">Profile</h2>
-                        <p class="mt-1 text-sm text-ink-500">Your personal account information.</p>
-                    </header>
+            <section data-settings-panel="profile" data-settings-layout="unframed" class="{{ 'hidden' if initial_settings_tab != 'profile' else '' }}">
+                <header class="mb-6">
+                    <h2 class="text-xl font-semibold tracking-normal text-ink-900">Profile</h2>
+                    <p class="mt-1 text-sm text-ink-500">Your personal account information.</p>
+                </header>
 
-                    <form hx-patch="/api/settings/profile" hx-ext="json-enc" hx-target="#profile-feedback" hx-swap="innerHTML" class="space-y-6 border-t border-ink-200 pt-6">
-                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-6">
+                <form hx-patch="/api/settings/profile" hx-ext="json-enc" hx-target="#profile-feedback" hx-swap="innerHTML" class="border-y border-ink-200">
+                        <div class="grid grid-cols-1 gap-2 py-6 sm:grid-cols-3 sm:gap-6">
                             <label for="profile-email" class="text-sm font-medium text-ink-700">Email</label>
                             <div class="sm:col-span-2">
                                 <input id="profile-email" type="email" disabled value="{{ user.email }}"
@@ -78,7 +78,7 @@
                                 <p class="mt-1.5 text-xs text-ink-400">Email cannot be changed.</p>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-6">
+                        <div class="grid grid-cols-1 gap-2 border-t border-ink-200 py-6 sm:grid-cols-3 sm:gap-6">
                             <label for="profile-display-name" class="text-sm font-medium text-ink-700">Display name</label>
                             <div class="sm:col-span-2">
                                 <input id="profile-display-name" type="text" name="display_name" value="{{ user.display_name or '' }}"
@@ -86,33 +86,31 @@
                                        placeholder="How others see you">
                             </div>
                         </div>
-                        <div class="flex items-center justify-between gap-4 border-t border-ink-200 pt-6">
+                        <div class="flex items-center justify-between gap-4 border-t border-ink-200 py-5">
                             <div id="profile-feedback" class="text-sm"></div>
                             <button type="submit" class="hm-btn-primary px-4 py-2">
                                 Save changes
                             </button>
                         </div>
-                    </form>
-                </div>
+                </form>
             </section>
 
             <!-- Integrations panel -->
-            <section data-settings-panel="integrations" class="{{ 'hidden' if initial_settings_tab != 'integrations' else '' }}">
-                <div class="hm-card p-6">
+            <section data-settings-panel="integrations" data-settings-layout="unframed" class="{{ 'hidden' if initial_settings_tab != 'integrations' else '' }}">
                     <header class="mb-6">
-                        <h2 class="text-xl font-semibold tracking-tight text-ink-900">Integrations</h2>
+                        <h2 class="text-xl font-semibold tracking-normal text-ink-900">Integrations</h2>
                         <p class="mt-1 text-sm text-ink-500">Connect source control providers to sync repositories.</p>
                     </header>
 
-                    <div class="divide-y divide-ink-200 border-t border-ink-200">
+                    <div data-settings-tool="integration-list" class="divide-y divide-ink-200 overflow-hidden rounded-lg border border-ink-200 bg-white">
                         <!-- GitHub -->
-                        <div class="py-6">
-                            <div class="flex items-start justify-between gap-4">
-                                <div class="flex items-start gap-4">
+                        <div class="p-5 sm:p-6">
+                            <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                <div class="flex min-w-0 items-start gap-4">
                                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink-900 text-white">
                                         {{ ui.provider_mark("github", "w-5 h-5") }}
                                     </div>
-                                    <div>
+                                    <div class="min-w-0">
                                         <h3 class="text-sm font-semibold text-ink-900">GitHub</h3>
                                         <p class="mt-1 text-xs text-ink-500">
                                             {% if integrations.github.connected %}
@@ -126,7 +124,7 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                                <div class="flex items-center gap-3">
+                                <div class="flex flex-wrap items-center gap-3 sm:justify-end">
                                     {% if integrations.github.connected %}
                                     {{ ui.status_badge("success", "Connected") }}
                                     <button hx-delete="/api/settings/integrations/github" hx-swap="none" hx-confirm="Disconnect GitHub? Repositories stay in Heimdall, but private resyncs will stop until you reconnect." class="hm-btn-secondary px-3 py-1.5 text-xs">
@@ -137,17 +135,17 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            <div class="mt-4 ml-14">
+                            <div class="mt-4 sm:ml-14">
                                 <details class="group">
                                     <summary class="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
                                         {{ ui.icon("chevron-right", "h-3 w-3 transition group-open:rotate-90") }}
                                         Configure access
                                     </summary>
-                                    <div class="mt-3 space-y-4 rounded-xl bg-ink-50 p-4 border border-ink-100">
+                                    <div class="mt-3 space-y-4 rounded-lg bg-ink-50 p-4 border border-ink-100">
                                         <form hx-post="/api/settings/integrations/github/pat" hx-ext="json-enc" hx-target="#github-pat-feedback" hx-swap="innerHTML" class="space-y-2">
                                             <label class="block text-xs font-medium text-ink-700">Personal access token</label>
-                                            <div class="flex gap-2">
-                                                <input type="password" name="token" class="hm-input flex-1" placeholder="ghp_...">
+                                            <div class="flex flex-col gap-2 sm:flex-row">
+                                                <input type="password" name="token" class="hm-input min-w-0 flex-1" placeholder="ghp_...">
                                                 <button type="submit" class="hm-btn-secondary px-4 py-2">Save</button>
                                             </div>
                                             <p class="text-[11px] text-ink-500">Required scope: <code class="rounded bg-white px-1 py-0.5 border border-ink-200">repo</code></p>
@@ -164,13 +162,13 @@
                         </div>
 
                         <!-- GitLab -->
-                        <div class="py-6">
-                            <div class="flex items-start justify-between gap-4">
-                                <div class="flex items-start gap-4">
+                        <div class="p-5 sm:p-6">
+                            <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                <div class="flex min-w-0 items-start gap-4">
                                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-white">
                                         {{ ui.provider_mark("gitlab", "w-5 h-5") }}
                                     </div>
-                                    <div>
+                                    <div class="min-w-0">
                                         <h3 class="text-sm font-semibold text-ink-900">GitLab</h3>
                                         <p class="mt-1 text-xs text-ink-500">
                                             {% if integrations.gitlab.connected %}
@@ -184,7 +182,7 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                                <div class="flex items-center gap-3">
+                                <div class="flex flex-wrap items-center gap-3 sm:justify-end">
                                     {% if integrations.gitlab.connected %}
                                     {{ ui.status_badge("success", "Connected") }}
                                     <button hx-delete="/api/settings/integrations/gitlab" hx-swap="none" hx-confirm="Disconnect GitLab?" class="hm-btn-secondary px-3 py-1.5 text-xs">
@@ -195,17 +193,17 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            <div class="mt-4 ml-14">
+                            <div class="mt-4 sm:ml-14">
                                 <details class="group">
                                     <summary class="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
                                         {{ ui.icon("chevron-right", "h-3 w-3 transition group-open:rotate-90") }}
                                         Configure access
                                     </summary>
-                                    <div class="mt-3 space-y-4 rounded-xl bg-ink-50 p-4 border border-ink-100">
+                                    <div class="mt-3 space-y-4 rounded-lg bg-ink-50 p-4 border border-ink-100">
                                         <form hx-post="/api/settings/integrations/gitlab/pat" hx-ext="json-enc" hx-target="#gitlab-pat-feedback" hx-swap="innerHTML" class="space-y-2">
                                             <label class="block text-xs font-medium text-ink-700">Personal access token</label>
-                                            <div class="flex gap-2">
-                                                <input type="password" name="token" class="hm-input flex-1" placeholder="glpat-...">
+                                            <div class="flex flex-col gap-2 sm:flex-row">
+                                                <input type="password" name="token" class="hm-input min-w-0 flex-1" placeholder="glpat-...">
                                                 <button type="submit" class="hm-btn-secondary px-4 py-2">Save</button>
                                             </div>
                                             <p class="text-[11px] text-ink-500">Required scopes: <code class="rounded bg-white px-1 py-0.5 border border-ink-200">read_user</code> <code class="rounded bg-white px-1 py-0.5 border border-ink-200">read_api</code> <code class="rounded bg-white px-1 py-0.5 border border-ink-200">read_repository</code></p>
@@ -222,13 +220,13 @@
                         </div>
 
                         <!-- Bitbucket -->
-                        <div class="py-6">
-                            <div class="flex items-start justify-between gap-4">
-                                <div class="flex items-start gap-4">
+                        <div class="p-5 sm:p-6">
+                            <div class="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                <div class="flex min-w-0 items-start gap-4">
                                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-white">
                                         {{ ui.provider_mark("bitbucket", "w-5 h-5") }}
                                     </div>
-                                    <div>
+                                    <div class="min-w-0">
                                         <h3 class="text-sm font-semibold text-ink-900">Bitbucket</h3>
                                         <p class="mt-1 text-xs text-ink-500">
                                             {% if integrations.bitbucket.connected %}
@@ -242,7 +240,7 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                                <div class="flex items-center gap-3">
+                                <div class="flex flex-wrap items-center gap-3 sm:justify-end">
                                     {% if integrations.bitbucket.connected %}
                                     {{ ui.status_badge("success", "Connected") }}
                                     <button hx-delete="/api/settings/integrations/bitbucket" hx-swap="none" hx-confirm="Disconnect Bitbucket?" class="hm-btn-secondary px-3 py-1.5 text-xs">
@@ -253,18 +251,18 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            <div class="mt-4 ml-14">
+                            <div class="mt-4 sm:ml-14">
                                 <details class="group">
                                     <summary class="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
                                         {{ ui.icon("chevron-right", "h-3 w-3 transition group-open:rotate-90") }}
                                         Configure access
                                     </summary>
-                                    <div class="mt-3 space-y-4 rounded-xl bg-ink-50 p-4 border border-ink-100">
+                                    <div class="mt-3 space-y-4 rounded-lg bg-ink-50 p-4 border border-ink-100">
                                         <form hx-post="/api/settings/integrations/bitbucket/pat" hx-ext="json-enc" hx-target="#bitbucket-pat-feedback" hx-swap="innerHTML" class="space-y-2">
                                             <label class="block text-xs font-medium text-ink-700">App password</label>
                                             <input type="email" name="username" required class="hm-input w-full" placeholder="Bitbucket account email">
-                                            <div class="flex gap-2">
-                                                <input type="password" name="token" required class="hm-input flex-1" placeholder="App password">
+                                            <div class="flex flex-col gap-2 sm:flex-row">
+                                                <input type="password" name="token" required class="hm-input min-w-0 flex-1" placeholder="App password">
                                                 <button type="submit" class="hm-btn-secondary px-4 py-2">Save</button>
                                             </div>
                                             <p class="text-[11px] text-ink-500">Required scopes: <code class="rounded bg-white px-1 py-0.5 border border-ink-200">Repositories: Read</code> <code class="rounded bg-white px-1 py-0.5 border border-ink-200">Account: Read</code></p>
@@ -280,14 +278,17 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                    <p class="mt-4 flex items-start gap-2 text-xs leading-5 text-ink-500">
+                        <span class="mt-0.5 shrink-0 text-ink-400">{{ ui.icon("shield", "h-4 w-4") }}</span>
+                        Provider credentials are encrypted at rest. Disconnecting a provider keeps imported repositories but stops private resyncs.
+                    </p>
             </section>
 
             <!-- AI Providers panel -->
-            <section data-settings-panel="providers" class="{{ 'hidden' if initial_settings_tab != 'providers' else '' }}">
-                <div class="hm-card p-6">
-                    <header class="mb-6">
-                        <h2 class="text-xl font-semibold tracking-tight text-ink-900">AI Providers</h2>
+            <section data-settings-panel="providers" data-settings-layout="unframed" class="{{ 'hidden' if initial_settings_tab != 'providers' else '' }}">
+                <div>
+                    <header class="mb-4">
+                        <h2 class="text-xl font-semibold tracking-normal text-ink-900">AI Providers</h2>
                         <p class="mt-1 text-sm text-ink-500">Pick the model used for each provider. Default is <span class="font-mono text-ink-700 bg-ink-50 px-1 py-0.5 rounded">{{ ai_config.default_model }}</span> when left blank, except OpenAI Compatible which requires an explicit model.</p>
                     </header>
 
@@ -302,11 +303,31 @@
                         {"id": "ollama", "label": "Ollama", "blurb": "Local models for self-hosted, private deployments.", "placeholder": "llama3.3", "swatch": "bg-purple-600 text-white", "initial": "L", "enabled": ai_config.has_ollama, "stored": ai_config.stored_ollama, "model": ai_config.provider_models.ollama, "mode": "Local"}
                     ] %}
 
-                    <div data-ai-routing-form class="space-y-6">
-                        <div class="divide-y divide-ink-200 border-t border-ink-200">
+                    <div data-ai-routing-form class="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.9fr)]">
+                        <div data-settings-tool="provider-table" class="hm-card min-w-0 overflow-hidden">
+                          <div class="hidden grid-cols-[minmax(0,1fr)_minmax(180px,240px)] gap-4 border-b border-ink-200 bg-ink-50 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500 sm:grid">
+                            <span>Provider</span><span>Model</span>
+                          </div>
+                          <div class="divide-y divide-ink-200">
                             {% for provider in ai_provider_catalog %}
-                            <div class="grid gap-4 py-5 {% if provider.id == 'openai_compatible' %}lg:grid-cols-1{% else %}sm:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] sm:items-center{% endif %}">
-                                <div class="flex items-start gap-4">
+                            <details class="group/provider" {% if provider.id == ai_config.preferred_provider %}open{% endif %}>
+                              <summary class="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_20px] items-center gap-3 px-4 py-3 hover:bg-ink-50 sm:grid-cols-[minmax(0,1fr)_minmax(140px,220px)_20px]">
+                                <span class="flex min-w-0 items-center gap-3">
+                                  <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md {{ provider.swatch }} text-[11px] font-bold">{{ provider.initial }}</span>
+                                  <span class="min-w-0">
+                                    <span class="flex flex-wrap items-center gap-2">
+                                      <strong class="text-sm font-semibold text-ink-900">{{ provider.label }}</strong>
+                                      <span class="rounded-full border border-ink-200 bg-ink-100 px-2 py-0.5 text-[10px] font-medium text-ink-600">{{ provider.mode }}</span>
+                                      <span class="inline-flex items-center gap-1.5 text-xs {{ 'text-low-700' if provider.enabled else 'text-ink-500' }}"><span class="h-1.5 w-1.5 rounded-full {{ 'bg-low-500' if provider.enabled else 'bg-ink-300' }}"></span>{{ 'Active' if provider.enabled else 'Not set' }}</span>
+                                    </span>
+                                    <span class="mt-0.5 block truncate text-xs text-ink-500 sm:hidden">{{ provider.model if provider.model else 'No model configured' }}</span>
+                                  </span>
+                                </span>
+                                <span class="hidden truncate font-mono text-xs text-ink-500 sm:block">{{ provider.model if provider.model else '—' }}</span>
+                                <span class="text-ink-400 transition group-open/provider:rotate-90">{{ ui.icon("chevron-right", "h-4 w-4") }}</span>
+                              </summary>
+                            <div class="grid min-w-0 gap-4 border-t border-ink-200 bg-ink-50/50 px-4 py-4 {% if provider.id == 'openai_compatible' %}grid-cols-1{% else %}sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)] sm:items-center{% endif %}">
+                                <div class="flex min-w-0 items-start gap-3">
                                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg {{ provider.swatch }} text-sm font-bold">{{ provider.initial }}</div>
                                     <div class="min-w-0 flex-1">
                                         <div class="flex flex-wrap items-center gap-2">
@@ -332,7 +353,7 @@
                                             {% endif %}
                                             <details class="text-[11px]">
                                                 <summary class="cursor-pointer hm-btn-secondary px-2.5 py-1">Paste callback URL</summary>
-                                                <form hx-post="/api/settings/codex/exchange" hx-target="#codex-feedback" hx-swap="innerHTML" class="mt-2 flex flex-col gap-2 rounded-lg border border-ink-200 bg-white p-3" style="min-width:300px">
+                                                <form hx-post="/api/settings/codex/exchange" hx-target="#codex-feedback" hx-swap="innerHTML" class="mt-2 flex w-full min-w-0 flex-col gap-2 rounded-lg border border-ink-200 bg-white p-3 sm:min-w-[300px]">
                                                     <input type="text" name="code" autocomplete="off" spellcheck="false" placeholder="http://localhost:1455/auth/callback?code=..." required class="hm-input font-mono text-xs w-full">
                                                     <button type="submit" class="hm-btn-primary px-3 py-1.5 text-xs self-start mt-2">Exchange code</button>
                                                 </form>
@@ -364,7 +385,7 @@
                                             {% endif %}
                                             <details class="text-[11px]">
                                                 <summary class="cursor-pointer hm-btn-secondary px-2.5 py-1">Paste code</summary>
-                                                <form hx-post="/api/settings/claude-code/exchange" hx-target="#claude-code-feedback" hx-swap="innerHTML" class="mt-2 flex flex-col gap-2 rounded-lg border border-ink-200 bg-white p-3" style="min-width:260px">
+                                                <form hx-post="/api/settings/claude-code/exchange" hx-target="#claude-code-feedback" hx-swap="innerHTML" class="mt-2 flex w-full min-w-0 flex-col gap-2 rounded-lg border border-ink-200 bg-white p-3 sm:min-w-[260px]">
                                                     <input type="text" name="code" autocomplete="off" spellcheck="false" placeholder="code#state" required class="hm-input font-mono text-xs w-full">
                                                     <button type="submit" class="hm-btn-primary px-3 py-1.5 text-xs self-start mt-2">Exchange code</button>
                                                 </form>
@@ -373,7 +394,7 @@
                                         <div id="claude-code-feedback" class="mt-2"></div>
 
                                         {% elif provider.id == "openai_compatible" %}
-                                        <form hx-post="/api/settings/api-keys" hx-ext="json-enc" hx-swap="none" hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('OpenAI Compatible endpoint saved'); setTimeout(function(){ window.location.reload(); }, 300); } else { var msg='Failed to save endpoint'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }" class="mt-4 grid gap-3 border-t border-ink-200 pt-4 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.25fr)_minmax(220px,1.35fr)_minmax(180px,0.9fr)_auto] lg:items-end">
+                                        <form hx-post="/api/settings/api-keys" hx-ext="json-enc" hx-swap="none" hx-on::after-request="if(event.detail.successful){ window.HeimdallUI.success('OpenAI Compatible endpoint saved'); setTimeout(function(){ window.location.reload(); }, 300); } else { var msg='Failed to save endpoint'; try { var r=JSON.parse(event.detail.xhr.responseText); if(r && r.error && r.error.message) msg=r.error.message; } catch(e){} window.HeimdallUI.error(msg); }" class="mt-4 grid min-w-0 gap-3 border-t border-ink-200 pt-4 sm:grid-cols-2 sm:items-end">
                                             <input type="hidden" name="provider" value="openai_compatible">
                                             <input type="hidden" name="label" value="OpenAI Compatible">
                                             <label class="block">
@@ -388,8 +409,8 @@
                                                 <span class="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-ink-500">API key <span class="font-normal normal-case tracking-normal text-ink-400">optional</span></span>
                                                 <input type="password" name="key" autocomplete="off" placeholder="sk-..." class="hm-input font-mono text-xs w-full h-10">
                                             </label>
-                                            <div class="flex items-end">
-                                                <button type="submit" class="hm-btn-primary h-10 w-full sm:w-auto px-4">Save endpoint</button>
+                                            <div class="flex items-end sm:justify-end">
+                                                <button type="submit" class="hm-btn-primary h-10 w-full justify-center px-4 sm:w-auto">Save endpoint</button>
                                             </div>
                                         </form>
                                         {% endif %}
@@ -402,16 +423,19 @@
                                 </label>
                                 {% endif %}
                             </div>
+                            </details>
                             {% endfor %}
+                          </div>
                         </div>
 
-                        <div class="rounded-xl border border-ink-200 bg-ink-50 p-5 mt-6">
+                        <div class="min-w-0 space-y-4">
+                          <div data-settings-tool="provider-routing" class="hm-card min-w-0 p-5">
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                                 <div>
                                     <h3 class="text-sm font-semibold text-ink-900">Routing</h3>
                                     <p class="mt-1 text-xs text-ink-500">Pick a primary provider, then drag the rail below to set fallback priority.</p>
                                 </div>
-                                <label class="inline-flex items-center gap-2.5 self-start rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm font-medium text-ink-700 lg:self-auto">
+                                <label class="inline-flex items-center gap-2.5 self-start text-sm font-medium text-ink-700 lg:self-auto">
                                     <input type="checkbox" name="fallbacks_enabled" value="true" {% if ai_config.fallbacks_enabled %}checked{% endif %} {% if not ai_config.has_any_provider %}disabled{% endif %} class="h-4 w-4 rounded border-ink-300 text-brand-500 focus:ring-brand-200">
                                     Enable fallbacks
                                 </label>
@@ -437,13 +461,13 @@
                                     {% for slug in ai_config.fallback_order %}
                                         {% set provider = ai_provider_catalog | selectattr("id", "equalto", slug) | first %}
                                         {% if provider %}
-                                        <li data-provider="{{ provider.id }}" draggable="true" class="group/item flex cursor-grab items-center gap-3 rounded-lg border border-ink-200 bg-white px-3 py-2.5 text-sm shadow-sm transition hover:border-brand-200 hover:shadow active:cursor-grabbing">
+                                        <li data-provider="{{ provider.id }}" draggable="true" class="group/item flex min-w-0 cursor-grab items-center gap-2 rounded-lg border border-ink-200 bg-white px-2.5 py-2.5 text-sm transition hover:border-brand-200 active:cursor-grabbing">
                                             <span class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-300 transition group-hover/item:bg-ink-50 group-hover/item:text-ink-500" aria-hidden="true">
                                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="3" r="1.4"/><circle cx="5" cy="8" r="1.4"/><circle cx="5" cy="13" r="1.4"/><circle cx="11" cy="3" r="1.4"/><circle cx="11" cy="8" r="1.4"/><circle cx="11" cy="13" r="1.4"/></svg>
                                             </span>
                                             <span data-rank class="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-ink-100 text-[11px] font-bold text-ink-600">{{ loop.index }}</span>
                                             <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md {{ provider.swatch }} text-[11px] font-bold">{{ provider.initial }}</span>
-                                            <span class="font-semibold text-ink-900">{{ provider.label }}</span>
+                                            <span class="min-w-0 truncate font-semibold text-ink-900">{{ provider.label }}</span>
                                             {% if provider.model %}
                                             <span class="ml-auto truncate font-mono text-[11px] text-ink-400">{{ provider.model }}</span>
                                             {% endif %}
@@ -460,23 +484,40 @@
                                     Save Providers
                                 </button>
                             </div>
+                          </div>
+
+                          <section data-settings-tool="connection-methods" class="hm-card overflow-hidden">
+                            <div class="border-b border-ink-200 px-4 py-3">
+                              <h3 class="text-sm font-semibold text-ink-900">Connection methods</h3>
+                            </div>
+                            <dl class="divide-y divide-ink-200 text-xs">
+                              <div class="grid grid-cols-[92px_minmax(0,1fr)] gap-3 px-4 py-2.5"><dt class="font-medium text-ink-800">Paste-back</dt><dd class="text-ink-500">Browser authorization followed by a copied callback or code.</dd></div>
+                              <div class="grid grid-cols-[92px_minmax(0,1fr)] gap-3 px-4 py-2.5"><dt class="font-medium text-ink-800">OAuth</dt><dd class="text-ink-500">Hosted provider callback.</dd></div>
+                              <div class="grid grid-cols-[92px_minmax(0,1fr)] gap-3 px-4 py-2.5"><dt class="font-medium text-ink-800">API key</dt><dd class="text-ink-500">Credentials stored under API Keys.</dd></div>
+                              <div class="grid grid-cols-[92px_minmax(0,1fr)] gap-3 px-4 py-2.5"><dt class="font-medium text-ink-800">Endpoint</dt><dd class="text-ink-500">Base URL, explicit model, and optional key.</dd></div>
+                              <div class="grid grid-cols-[92px_minmax(0,1fr)] gap-3 px-4 py-2.5"><dt class="font-medium text-ink-800">Local</dt><dd class="text-ink-500">Configured Ollama endpoint.</dd></div>
+                            </dl>
+                          </section>
                         </div>
                     </div>
                 </div>
             </section>
 
             <!-- API Keys panel -->
-            <section data-settings-panel="keys" class="{{ 'hidden' if initial_settings_tab != 'keys' else '' }}">
-                <div class="hm-card p-6">
+            <section data-settings-panel="keys" data-settings-layout="unframed" class="{{ 'hidden' if initial_settings_tab != 'keys' else '' }}">
                     <header class="mb-6">
-                        <h2 class="text-xl font-semibold tracking-tight text-ink-900">API Keys</h2>
+                        <h2 class="text-xl font-semibold tracking-normal text-ink-900">API Keys</h2>
                         <p class="mt-1 text-sm text-ink-500">Store provider credentials and validate them before enabling scans.</p>
+                        <p class="mt-2 flex items-center gap-2 text-xs text-ink-500">
+                            <span class="text-ink-600">{{ ui.icon("lock", "h-4 w-4") }}</span>
+                            Keys are encrypted at rest and never returned in full after saving.
+                        </p>
                     </header>
 
-                    <div class="mb-8 rounded-xl border border-ink-200 bg-white p-5 shadow-sm">
+                    <div class="grid min-w-0 gap-4 xl:grid-cols-2">
+                    <div data-settings-tool="add-key" class="hm-card min-w-0 p-5">
                         <h3 class="text-sm font-semibold text-ink-900">Add a key</h3>
-                        <p class="mt-1 text-xs text-ink-500">Keys are encrypted at rest and never returned in full after saving.</p>
-                        <form id="add-key-form" hx-post="/api/settings/api-keys" hx-ext="json-enc" hx-target="#key-list" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) { this.reset(); const empty = document.getElementById('api-keys-empty'); if (empty) empty.remove(); }" class="mt-4 grid gap-3 sm:grid-cols-2">
+                        <form id="add-key-form" hx-post="/api/settings/api-keys" hx-ext="json-enc" hx-target="#key-list" hx-swap="afterbegin" hx-on::after-request="if(event.detail.successful) { this.reset(); const empty = document.getElementById('api-keys-empty'); if (empty) empty.remove(); }" class="mt-4 grid gap-3">
                             <label class="block">
                                 <span class="mb-1.5 block text-xs font-medium text-ink-700">Provider</span>
                                 <select name="provider" onchange="const form=this.closest('form'); const custom=this.value === 'openai_compatible'; form.querySelector('input[name=key]').required = !custom; const base=form.querySelector('input[name=base_url]'); if(base) base.required = custom; const model=form.querySelector('input[name=model]'); if(model) model.required = custom;" class="hm-input w-full">
@@ -491,23 +532,23 @@
                                 <span class="mb-1.5 block text-xs font-medium text-ink-700">Label</span>
                                 <input name="label" class="hm-input w-full" placeholder="Production">
                             </label>
-                            <label class="block sm:col-span-2">
+                            <label class="block">
                                 <span class="mb-1.5 block text-xs font-medium text-ink-700">API key <span class="font-normal text-ink-400">optional for OpenAI Compatible</span></span>
                                 <input type="password" name="key" required class="hm-input font-mono w-full" placeholder="sk-...">
                             </label>
-                            <label class="block sm:col-span-2">
+                            <label class="block">
                                 <span class="mb-1.5 block text-xs font-medium text-ink-700">Base URL <span class="font-normal text-ink-400">for OpenAI Compatible</span></span>
                                 <input name="base_url" class="hm-input font-mono w-full" placeholder="http://localhost:1234/v1">
                             </label>
-                            <label class="block sm:col-span-2">
+                            <label class="block">
                                 <span class="mb-1.5 block text-xs font-medium text-ink-700">Model <span class="font-normal text-ink-400">required for OpenAI Compatible</span></span>
                                 <input name="model" class="hm-input font-mono w-full" placeholder="model-id">
                             </label>
-                            <div class="sm:col-span-2 flex items-center justify-between gap-3 border-t border-ink-200 pt-4">
-                                <button type="button" onclick="document.getElementById('test-connection-drawer').classList.toggle('hidden')" class="text-xs font-medium text-ink-500 hover:text-ink-900 transition">
-                                    Test connection first →
+                            <div class="grid grid-cols-2 gap-3 border-t border-ink-200 pt-4">
+                                <button type="button" onclick="document.getElementById('test-connection-drawer').classList.toggle('hidden')" class="hm-btn-secondary justify-center px-4 py-2 text-xs">
+                                    Test connection
                                 </button>
-                                <button type="submit" class="hm-btn-primary px-4 py-2">
+                                <button type="submit" class="hm-btn-primary justify-center px-4 py-2">
                                     Save key
                                 </button>
                             </div>
@@ -545,8 +586,12 @@
                         </div>
                     </div>
 
-                    <h3 class="mb-4 text-sm font-semibold text-ink-900">Stored keys <span class="ml-1 text-xs font-normal text-ink-400">({{ api_keys|length }})</span></h3>
-                    <div id="key-list" class="divide-y divide-ink-200 border-t border-ink-200">
+                    <section data-settings-tool="stored-keys" class="hm-card min-w-0 overflow-hidden">
+                    <header class="flex items-center gap-2 border-b border-ink-200 px-5 py-4">
+                        <h3 class="text-sm font-semibold text-ink-900">Stored keys</h3>
+                        <span class="rounded bg-ink-100 px-1.5 py-0.5 text-xs font-medium text-ink-600">{{ api_keys|length }}</span>
+                    </header>
+                    <div id="key-list" class="divide-y divide-ink-200 px-5">
                         {% if api_keys|length > 0 %}
                         {% for key in api_keys %}
                         {% include "partials/api_key_row.html" %}
@@ -558,36 +603,40 @@
                         </div>
                         {% endif %}
                     </div>
-                </div>
+                    </section>
+                    </div>
+                    <p class="mt-4 text-xs text-ink-500">Configure preferred providers and fallbacks in <button type="button" data-settings-jump="providers" class="font-medium text-brand-600 hover:text-brand-700">AI Providers</button>.</p>
             </section>
 
             <!-- Security panel -->
-            <section data-settings-panel="security" class="{{ 'hidden' if initial_settings_tab != 'security' else '' }}">
-                <div class="hm-card p-6">
+            <section data-settings-panel="security" data-settings-layout="unframed" class="{{ 'hidden' if initial_settings_tab != 'security' else '' }}">
                     <header class="mb-6">
-                        <h2 class="text-xl font-semibold tracking-tight text-ink-900">Security</h2>
+                        <h2 class="text-xl font-semibold tracking-normal text-ink-900">Security</h2>
                         <p class="mt-1 text-sm text-ink-500">Rotate your account password without touching provider integrations.</p>
                     </header>
 
-                    <form id="password-form" class="divide-y divide-ink-200 border-t border-ink-200 pt-6 space-y-6">
-                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-6">
+                    <form id="password-form" class="border-y border-ink-200">
+                        <div class="grid grid-cols-1 gap-2 py-6 sm:grid-cols-3 sm:gap-6">
                             <label for="current_password" class="text-sm font-medium text-ink-700">Current password</label>
                             <div class="sm:col-span-2">
                                 <input id="current_password" type="password" required class="hm-input w-full max-w-md">
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-6">
+                        <div class="grid grid-cols-1 gap-2 border-t border-ink-200 py-6 sm:grid-cols-3 sm:gap-6">
                             <label for="new_password" class="text-sm font-medium text-ink-700">New password</label>
                             <div class="sm:col-span-2">
                                 <input id="new_password" type="password" required minlength="8" class="hm-input w-full max-w-md" placeholder="At least 8 characters">
                             </div>
                         </div>
-                        <div class="flex items-center justify-between gap-4 border-t border-ink-200 pt-6">
+                        <div class="flex items-center justify-between gap-4 border-t border-ink-200 py-5">
                             <div id="password-result" class="text-sm"></div>
                             <button type="submit" class="hm-btn-primary px-4 py-2">Change password</button>
                         </div>
                     </form>
-                </div>
+                    <p class="mt-4 flex items-start gap-2 text-xs leading-5 text-ink-500">
+                        <span class="mt-0.5 shrink-0 text-ink-400">{{ ui.icon("shield", "h-4 w-4") }}</span>
+                        Changing your password does not revoke source-control or AI-provider credentials.
+                    </p>
             </section>
         </div>
     </div>
@@ -596,6 +645,14 @@
 <script>
 const settingsTabButtons = Array.from(document.querySelectorAll('[data-settings-tab]'));
 const settingsTabPanels = Array.from(document.querySelectorAll('[data-settings-panel]'));
+
+function resetSettingsScroll() {
+    const scroller = document.querySelector('main');
+    if (scroller) {
+        scroller.scrollTo(0, 0);
+    }
+    window.scrollTo(0, 0);
+}
 
 function applyHeimdallSettingsTabState(button, isActive) {
     button.classList.toggle('bg-brand-50', isActive);
@@ -620,6 +677,7 @@ function setSettingsTab(tabName, updateHash) {
 
     if (updateHash) {
         window.history.replaceState(null, '', '#settings-' + tabName);
+        resetSettingsScroll();
     }
 }
 
@@ -635,12 +693,25 @@ if (settingsTabButtons.length && settingsTabPanels.length) {
         : '{{ initial_settings_tab }}';
     const availableTabs = settingsTabButtons.map(function(button) { return button.dataset.settingsTab; });
     setSettingsTab(availableTabs.includes(hashTab) ? hashTab : '{{ initial_settings_tab }}', false);
+    if (window.location.hash.startsWith('#settings-')) {
+        window.requestAnimationFrame(resetSettingsScroll);
+    }
 
     window.addEventListener('hashchange', function() {
         const nextTab = window.location.hash.replace('#settings-', '');
         if (availableTabs.includes(nextTab)) {
             setSettingsTab(nextTab, false);
+            resetSettingsScroll();
         }
+    });
+
+    document.querySelectorAll('[data-settings-jump]').forEach(function(button) {
+        button.addEventListener('click', function() {
+            const nextTab = button.dataset.settingsJump;
+            if (availableTabs.includes(nextTab)) {
+                setSettingsTab(nextTab, true);
+            }
+        });
     });
 }
 

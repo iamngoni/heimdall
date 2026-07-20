@@ -41,7 +41,7 @@
     </div>
 
     <div id="finding-ai-review-loading"
-         class="htmx-indicator-flex mt-4 items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3.5 text-brand-700">
+         class="htmx-indicator-flex mt-4 items-start gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3.5 text-brand-700">
         <svg class="mt-0.5 h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2"></circle>
             <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
@@ -55,7 +55,7 @@
     <div class="mt-4 space-y-4">
         {# ── Explanation ── #}
         {% if explain_review %}
-        <div class="rounded-xl border border-ink-200 bg-ink-50 p-4">
+        <div class="rounded-lg border border-ink-200 bg-ink-50 p-4">
             <div class="flex items-start justify-between gap-3">
                 <div class="flex items-center gap-2">
                     <span class="hm-badge bg-brand-50 text-brand-700">AI</span>
@@ -89,7 +89,7 @@
             </div>
         </div>
         {% else %}
-        <div class="rounded-xl border border-dashed border-ink-200 bg-white px-4 py-5 text-center text-sm">
+        <div class="rounded-lg border border-dashed border-ink-200 bg-white px-4 py-5 text-center text-sm">
             <p class="font-medium text-ink-600">No explanation yet</p>
             <p class="mt-1 text-ink-400">Click "Explain finding" for a plain-language breakdown of why this was flagged.</p>
         </div>
@@ -108,7 +108,7 @@
             {% set verdict_tone = "text-info-700" %}
             {% set verdict_label = verdict|replace("_", " ") %}
         {% endif %}
-        <div class="rounded-xl border border-ink-200 bg-ink-50 p-4">
+        <div class="rounded-lg border border-ink-200 bg-ink-50 p-4">
             <div class="flex items-start justify-between gap-3">
                 <div class="flex items-center gap-2">
                     <span class="hm-badge bg-brand-50 text-brand-700">AI</span>
@@ -163,7 +163,7 @@
             {% endif %}
         </div>
         {% else %}
-        <div class="rounded-xl border border-dashed border-ink-200 bg-white px-4 py-5 text-center text-sm">
+        <div class="rounded-lg border border-dashed border-ink-200 bg-white px-4 py-5 text-center text-sm">
             <p class="font-medium text-ink-600">No verification yet</p>
             <p class="mt-1 text-ink-400">Click "Verify finding" for a second-pass triage to separate true issues from noise.</p>
         </div>

@@ -192,9 +192,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn native_form_submit_with_matching_query_token_passes() {
-        let app =
-            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
-                .await;
+        let app = init_service(
+            App::new()
+                .wrap(CsrfProtection)
+                .route("/api/x", web::post().to(ok)),
+        )
+        .await;
         let req = TestRequest::post()
             .uri("/api/x?_csrf=tok")
             .cookie(Cookie::new("_csrf", "tok"))
@@ -205,9 +208,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn post_without_any_token_is_rejected() {
-        let app =
-            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
-                .await;
+        let app = init_service(
+            App::new()
+                .wrap(CsrfProtection)
+                .route("/api/x", web::post().to(ok)),
+        )
+        .await;
         let req = TestRequest::post()
             .uri("/api/x")
             .cookie(Cookie::new("_csrf", "tok"))
@@ -218,9 +224,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn mismatched_query_token_is_rejected() {
-        let app =
-            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
-                .await;
+        let app = init_service(
+            App::new()
+                .wrap(CsrfProtection)
+                .route("/api/x", web::post().to(ok)),
+        )
+        .await;
         let req = TestRequest::post()
             .uri("/api/x?_csrf=wrong")
             .cookie(Cookie::new("_csrf", "tok"))
@@ -231,9 +240,12 @@ mod tests {
 
     #[actix_rt::test]
     async fn header_token_still_works() {
-        let app =
-            init_service(App::new().wrap(CsrfProtection).route("/api/x", web::post().to(ok)))
-                .await;
+        let app = init_service(
+            App::new()
+                .wrap(CsrfProtection)
+                .route("/api/x", web::post().to(ok)),
+        )
+        .await;
         let req = TestRequest::post()
             .uri("/api/x")
             .cookie(Cookie::new("_csrf", "tok"))

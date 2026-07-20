@@ -4,7 +4,7 @@
 {% block title %}Heimdall Security Scan Report — {{ repo.name }}{% endblock %}
 
 {% block body %}
-<div class="min-h-screen bg-ink-150 py-10 print:bg-white print:py-0">
+<div class="min-h-screen overflow-x-hidden bg-ink-150 pb-6 pt-20 sm:py-10 print:overflow-visible print:bg-white print:py-0">
 
   {# ── Screen-only print toolbar ── #}
   <div class="fixed right-4 top-4 z-50 flex items-center gap-3 print:hidden">
@@ -15,20 +15,20 @@
   </div>
 
   {# ═══════════════════════ PAGE 1: cover ═══════════════════════ #}
-  <section id="page-cover" class="mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-[14mm_16mm] shadow-card print:mx-0 print:mb-0 print:w-auto print:max-w-none print:break-after-page print:p-0 print:shadow-none">
+  <section id="page-cover" class="hm-content-safe mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-5 shadow-card sm:p-[14mm_16mm] print:mx-0 print:mb-0 print:w-auto print:max-w-none print:break-after-page print:p-0 print:shadow-none">
 
     <header class="mb-8 flex items-center justify-between border-b border-ink-200 pb-4">
       <div class="flex items-center gap-3">
         {{ ui.logo("dark", "w-9 h-9") }}
-        <span class="text-xl font-bold tracking-tightest text-ink-900">Heimdall</span>
+        <span class="text-xl font-bold tracking-normal text-ink-900">Heimdall</span>
       </div>
       <span class="text-sm text-ink-500">Security scan report</span>
     </header>
 
-    <h1 class="font-serif text-[42px] font-bold leading-[1.05] tracking-tightest text-ink-900">Security Scan Report</h1>
+    <h1 class="font-serif text-[32px] font-bold leading-[1.05] tracking-normal text-ink-900 sm:text-[42px]">Security Scan Report</h1>
     <p class="mb-8 mt-2 font-serif text-xl text-brand-600">{{ repo.name }}</p>
 
-    <div class="mb-8 grid grid-cols-2 gap-x-10 gap-y-3 text-[13px]">
+    <div class="mb-8 grid grid-cols-1 gap-x-10 gap-y-3 text-[13px] sm:grid-cols-2">
       <div><span class="font-semibold text-ink-900">Scan ID:</span> <span class="ml-1 font-mono text-ink-600">{{ scan.id }}</span></div>
       <div><span class="font-semibold text-ink-900">Commit:</span> <span class="ml-1 font-mono text-ink-600">{{ scan.commit_short | default("—") }}</span></div>
       <div><span class="font-semibold text-ink-900">Status:</span> <span class="ml-1 text-ink-600">{{ scan.status | default("completed") | capitalize }}</span></div>
@@ -133,7 +133,7 @@
 
   {# ═══════════════════════ PAGE 2: threat model ═══════════════════════ #}
   {% if threat_model %}
-  <section id="page-threat-model" class="mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-[14mm_16mm] shadow-card print:mx-0 print:mb-0 print:w-auto print:max-w-none print:break-after-page print:p-0 print:shadow-none">
+  <section id="page-threat-model" class="hm-content-safe mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-5 shadow-card sm:p-[14mm_16mm] print:mx-0 print:mb-0 print:w-auto print:max-w-none print:break-after-page print:p-0 print:shadow-none">
 
     <h2 class="mb-4 font-serif text-2xl font-bold text-ink-900">Threat model</h2>
     <hr class="mb-6 border-ink-700">
@@ -330,7 +330,7 @@
   {% endif %}
 
   {# ═══════════════════════ PAGE 3+: validated findings ═══════════════════════ #}
-  <section id="page-findings" class="mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-[14mm_16mm] shadow-card print:mx-0 print:mb-0 print:w-auto print:max-w-none print:p-0 print:shadow-none">
+  <section id="page-findings" class="hm-content-safe mx-auto mb-8 w-[210mm] max-w-[calc(100vw-2rem)] bg-white p-5 shadow-card sm:p-[14mm_16mm] print:mx-0 print:mb-0 print:w-auto print:max-w-none print:p-0 print:shadow-none">
 
     <h2 class="mb-4 font-serif text-2xl font-bold text-ink-900">Validated findings</h2>
     <hr class="mb-6 border-ink-700">
@@ -380,7 +380,7 @@
 
         {% if f.code_snippet %}
           {% set has_diff = f.suggested_patch and not f.suggested_patch_is_prose %}
-          <div class="mb-3 grid gap-3 {{ 'grid-cols-2' if has_diff else 'grid-cols-1' }}">
+          <div class="mb-3 grid gap-3 {{ 'sm:grid-cols-2' if has_diff else 'grid-cols-1' }}">
             <div class="overflow-hidden rounded-lg border border-ink-200">
               <p class="border-b border-ink-200 bg-ink-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink-700">Vulnerable code</p>
               <pre class="overflow-x-auto p-2 font-mono text-[10.5px] leading-relaxed">{% for line in f.code_snippet.lines %}<span class="block{% if line.number == f.line_start %} bg-crit-50{% endif %}"><span class="mr-2 inline-block w-8 select-none text-right text-ink-400">{{ line.number }}</span>{{ line.text }}{% if line.line_truncated %} …{% endif %}</span>

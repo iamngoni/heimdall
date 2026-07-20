@@ -40,12 +40,12 @@
 {% set threat_count = threats | length %}
 {% set active_threat = threats[0] if threat_count > 0 else none %}
 
-<div class="flex flex-col gap-6">
+<div class="flex min-w-0 flex-col gap-6">
 
   {# ── Header ── #}
   <div class="flex flex-wrap items-start justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight text-ink-900">Threat model</h1>
+      <h1 class="text-2xl font-semibold tracking-normal text-ink-900">Threat model</h1>
       <a href="/repos/{{ repo.id }}" class="mt-1 inline-block text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline">{{ repo.name }}</a>
       <p class="mt-2 text-sm text-ink-500">
         Version {{ threat_model.model_version | default(1) }}
@@ -55,23 +55,17 @@
         Updated {{ threat_model.updated_at | default("—") | short_dt }}
       </p>
     </div>
-    <div class="flex items-center gap-2">
-      <button type="button" class="hm-btn-ghost">
-        {{ ui.icon("doc", "w-4 h-4") }} Edit model
-      </button>
+    <div class="flex min-w-0 flex-wrap items-center gap-2">
       <a href="/scans/{{ scan_id }}" class="hm-btn-secondary">Back to scan</a>
       <a href="/scans/{{ scan_id }}/findings" class="hm-btn-primary">
         Review findings
         <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-xs font-semibold">{{ scan.finding_count | default(0) }}</span>
       </a>
-      <button type="button" class="hm-btn-ghost !px-2.5" aria-label="More actions">
-        {{ ui.icon("kebab", "w-4 h-4") }}
-      </button>
     </div>
   </div>
 
   {# ── Body: left STRIDE nav + content column ── #}
-  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+  <div class="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
 
     {# Left nav #}
     <aside class="lg:sticky lg:top-6 lg:self-start">
@@ -110,7 +104,7 @@
     </aside>
 
     {# Content column #}
-    <div class="flex flex-col gap-6">
+    <div class="hm-content-safe flex min-w-0 flex-col gap-6">
 
       {# Summary #}
       <section id="summary" class="hm-card p-6">
@@ -214,12 +208,12 @@
         {% if boundaries | length > 0 %}
         <div class="mt-4 flex flex-col gap-3">
           {% for item in boundaries %}
-          <div class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
-            <div>
+          <div class="flex min-w-0 flex-wrap items-start justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
+            <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-ink-900">{{ item["name"]|default("—") }}</p>
               {% if item["description"] %}<p class="mt-1.5 text-sm leading-6 text-ink-600">{{ item["description"] }}</p>{% endif %}
             </div>
-            <span class="hm-badge shrink-0 whitespace-nowrap border border-ink-200 bg-white text-ink-600">
+            <span class="hm-badge max-w-full border border-ink-200 bg-white text-ink-600">
               {{ item["from_zone"]|default(item["type"]|default("Source")) }} → {{ item["to_zone"]|default("Target") }}
             </span>
           </div>
@@ -244,14 +238,14 @@
           {% for item in surfaces %}
           <div class="rounded-lg border border-ink-200 px-4 py-3.5">
             <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
+              <div class="min-w-0 flex-1">
                 <div class="flex flex-wrap items-center gap-2">
                   <p class="text-sm font-semibold text-ink-900">{{ item["name"]|default("—") }}</p>
                   {{ ui.sev_pill(item["risk_level"]|default(item["risk"]|default("medium"))) }}
                 </div>
                 {% if item["description"] %}<p class="mt-1.5 max-w-xl text-sm leading-6 text-ink-600">{{ item["description"] }}</p>{% endif %}
               </div>
-              <div class="space-y-1 text-xs text-ink-500">
+              <div class="min-w-0 space-y-1 text-xs text-ink-500 sm:max-w-[45%]">
                 {% if item["endpoint"] %}<p><span class="font-medium text-ink-700">Endpoint:</span> <span class="font-mono">{{ item["endpoint"] }}</span></p>{% endif %}
                 {% if item["file"] %}<p><span class="font-medium text-ink-700">File:</span> <span class="font-mono">{{ item["file"] }}</span></p>{% endif %}
               </div>
@@ -276,12 +270,12 @@
         {% if data_flows | length > 0 %}
         <div class="mt-4 flex flex-col gap-3">
           {% for item in data_flows %}
-          <div class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
-            <div>
+          <div class="flex min-w-0 flex-wrap items-start justify-between gap-3 rounded-lg border border-ink-200 bg-ink-50 px-4 py-3.5">
+            <div class="min-w-0 flex-1">
               <p class="text-sm font-semibold text-ink-900">{{ item["name"]|default("—") }}</p>
               {% if item["description"] %}<p class="mt-1.5 text-sm leading-6 text-ink-600">{{ item["description"] }}</p>{% endif %}
             </div>
-            <div class="space-y-1 text-xs text-ink-500">
+            <div class="min-w-0 space-y-1 text-xs text-ink-500 sm:max-w-[45%]">
               <p><span class="font-medium text-ink-700">From:</span> {{ item["source"]|default(item["from"]|default("—")) }}</p>
               <p><span class="font-medium text-ink-700">To:</span> {{ item["sink"]|default(item["to"]|default("—")) }}</p>
               {% if item["sensitive_data"] %}<p><span class="font-medium text-ink-700">Sensitive:</span> {{ item["sensitive_data"] }}</p>{% endif %}
@@ -299,18 +293,17 @@
 
         {# Threats table #}
         <div class="hm-card overflow-hidden">
+          {% if threat_count > 0 %}
           <div class="flex flex-wrap items-center gap-3 border-b border-ink-200 px-5 py-4">
             <div class="relative min-w-[200px] flex-1">
               <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-ink-400">{{ ui.icon("search", "w-4 h-4") }}</span>
-              <input type="text" class="hm-input pl-9" placeholder="Search threats or evidence" disabled>
+              <input type="search" data-threat-search class="hm-input pl-9" placeholder="Search threats or evidence">
             </div>
-            <button type="button" class="hm-btn-secondary text-sm">Risk {{ ui.icon("chevron-down", "w-4 h-4") }}</button>
-            <button type="button" class="hm-btn-secondary text-sm">STRIDE {{ ui.icon("chevron-down", "w-4 h-4") }}</button>
-            <button type="button" class="hm-btn-secondary text-sm">Treatment {{ ui.icon("chevron-down", "w-4 h-4") }}</button>
-            <span class="ml-auto shrink-0 text-sm font-medium text-ink-500">{{ threat_count }} threat{{ "s" if threat_count != 1 else "" }}</span>
+            <span class="ml-auto shrink-0 text-sm font-medium text-ink-500"><span data-threat-visible-count>{{ threat_count }}</span> threat{{ "s" if threat_count != 1 else "" }}</span>
           </div>
+          {% endif %}
           <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm">
+            <table class="w-full min-w-[920px] text-left text-sm">
               <thead>
                 <tr class="border-b border-ink-200 text-xs font-semibold uppercase tracking-wider text-ink-400">
                   <th class="px-5 py-3">Risk</th>
@@ -325,7 +318,7 @@
               <tbody class="divide-y divide-ink-100">
                 {% if threat_count > 0 %}
                 {% for t in threats %}
-                <tr class="transition-colors {{ 'bg-brand-50' if loop.first else 'hover:bg-ink-50' }}">
+                <tr data-threat-row class="transition-colors {{ 'bg-brand-50' if loop.first else 'hover:bg-ink-50' }}">
                   <td class="px-5 py-4">{{ ui.sev_pill(t["risk"]|default(t["risk_level"]|default("medium"))) }}</td>
                   <td class="px-5 py-4">
                     <p class="font-medium text-ink-900">{{ t["title"]|default(t["name"]|default("Untitled threat")) }}</p>
@@ -585,4 +578,18 @@
     </div>
   </div>
 </div>
+
+<script>
+document.querySelector('[data-threat-search]')?.addEventListener('input', function () {
+  const needle = this.value.trim().toLowerCase();
+  let visible = 0;
+  document.querySelectorAll('[data-threat-row]').forEach(function (row) {
+    const matches = !needle || row.textContent.toLowerCase().includes(needle);
+    row.classList.toggle('hidden', !matches);
+    if (matches) visible += 1;
+  });
+  const count = document.querySelector('[data-threat-visible-count]');
+  if (count) count.textContent = String(visible);
+});
+</script>
 {% endblock %}

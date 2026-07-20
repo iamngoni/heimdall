@@ -22,13 +22,13 @@
 {% set conf_pill_map = {"critical":"bg-crit-50 text-crit-700","high":"bg-high-50 text-high-700","medium":"bg-med-50 text-med-700","low":"bg-low-50 text-low-700"} %}
 {% set conf_l = (finding.confidence | lower) %}
 
-<div class="space-y-6">
+<div class="hm-content-safe min-w-0 space-y-6">
     {# ── Header ── #}
     <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
                 {{ ui.sev_pill(finding.severity) }}
-                <h1 class="text-2xl font-semibold tracking-tighter2 text-ink-900">{{ finding.title }}</h1>
+                <h1 class="text-2xl font-semibold tracking-normal text-ink-900">{{ finding.title }}</h1>
             </div>
 
             <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-ink-500">
@@ -38,14 +38,14 @@
                 <span class="text-ink-300">&middot;</span>
                 <span class="font-semibold {{ status_text_map[finding.status] if finding.status in status_text_map else 'text-ink-600' }}">{{ finding.status|replace("_", " ")|capitalize }}</span>
                 <span class="text-ink-300">&middot;</span>
-                <span class="font-mono text-ink-600">{{ finding.file_path }}:{{ finding.line_start }}{% if finding.line_end and finding.line_end != finding.line_start %}-{{ finding.line_end }}{% endif %}</span>
+                <span class="hm-break-anywhere font-mono text-ink-600">{{ finding.file_path }}:{{ finding.line_start }}{% if finding.line_end and finding.line_end != finding.line_start %}-{{ finding.line_end }}{% endif %}</span>
                 {% if finding.cwe_id %}<span class="text-ink-300">&middot;</span><span class="font-mono text-ink-600">{{ finding.cwe_id }}</span>{% endif %}
             </div>
 
             <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 <a href="/repos/{{ repo.id }}" class="font-medium text-brand-600 hover:text-brand-700">{{ repo.name }}</a>
                 <span class="text-ink-300">&middot;</span>
-                <a href="/scans/{{ finding.scan_id }}" class="font-medium text-brand-600 hover:text-brand-700">Scan {{ finding.scan_id }}</a>
+                <a href="/scans/{{ finding.scan_id }}" class="hm-break-anywhere font-medium text-brand-600 hover:text-brand-700">Scan {{ finding.scan_id }}</a>
             </div>
         </div>
 
@@ -56,14 +56,14 @@
     </div>
 
     {# ── Main grid ── #}
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div class="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         {# ── Left column ── #}
-        <div class="space-y-6">
+        <div class="min-w-0 space-y-6">
             {# Finding #}
             <section class="hm-card p-5">
                 <h2 class="text-xs font-semibold uppercase tracking-[0.12em] text-ink-500">Finding</h2>
                 {% if finding.description %}
-                <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink-700">{{ finding.description }}</p>
+                <p class="hm-break-anywhere mt-3 whitespace-pre-wrap text-sm leading-6 text-ink-700">{{ finding.description }}</p>
                 {% endif %}
 
                 <div class="mt-4 grid grid-cols-2 gap-4 border-t border-ink-100 pt-4 sm:grid-cols-3 lg:grid-cols-6">
